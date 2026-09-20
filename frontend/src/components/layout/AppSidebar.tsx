@@ -40,7 +40,10 @@ import {
   Plus,
   Wrench,
   Command,
+  Users,
+  KeyRound,
 } from 'lucide-react'
+import { ChangePasswordDialog } from '@/components/auth/ChangePasswordDialog'
 
 const getNavigation = (t: TFunction) => [
   {
@@ -88,11 +91,32 @@ type CreateTarget = 'source' | 'notebook' | 'podcast'
 
 export function AppSidebar() {
   const { t } = useTranslation()
-  const navigation = getNavigation(t)
   const pathname = usePathname()
-  const { logout } = useAuth()
+  const { logout, user, isAdmin } = useAuth()
   const { isCollapsed, toggleCollapse } = useSidebarStore()
   const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
+  const [changePwOpen, setChangePwOpen] = useState(false)
+
+  // Admins get a "User Management" entry appended to the Manage section.
+  const baseNavigation = getNavigation(t)
+  const navigation = isAdmin
+    ? baseNavigation.map((section) =>
+        section.title === t('navigation.manage')
+          ? {
+              ...section,
+              items: [
+                ...section.items,
+                {
+                  name: t('users.title'),
+                  href: '/settings/users',
+                  icon: Users,
+                  iconClass: undefined,
+                },
+              ],
+            }
+          : section
+      )
+    : baseNavigation
 
   // The active item is the longest href that prefixes the current path.
   // Longest-wins keeps `/settings` from also highlighting on `/settings/models`
@@ -363,13 +387,54 @@ export function AppSidebar() {
             )}
           </div>
 
+          {/* Signed-in user identity */}
+          {user && !isCollapsed && (
+            <div className="px-3 py-1 text-xs">
+              <div className="font-medium text-sidebar-foreground truncate">
+                {user.name || user.username}
+              </div>
+              <div className="text-[10px] uppercase tracking-wide text-sidebar-foreground/50">
+                {user.role === 'admin'
+                  ? t('users.roleAdmin')
+                  : t('users.roleUser')}
+              </div>
+            </div>
+          )}
+
+          {/* Change password */}
+          {isCollapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-center sidebar-menu-item"
+                  onClick={() => setChangePwOpen(true)}
+                  aria-label={t('auth.changePassword')}
+                >
+                  <KeyRound className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{t('auth.changePassword')}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 sidebar-menu-item"
+              onClick={() => setChangePwOpen(true)}
+              aria-label={t('auth.changePassword')}
+            >
+              <KeyRound className="h-4 w-4" />
+              {t('auth.changePassword')}
+            </Button>
+          )}
+
           {isCollapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
                   className="w-full justify-center sidebar-menu-item"
-                  onClick={logout}
+                  onClick={() => void logout()}
                   aria-label={t('common.signOut')}
                 >
                   <LogOut className="h-4 w-4" />
@@ -381,7 +446,7 @@ export function AppSidebar() {
             <Button
               variant="outline"
               className="w-full justify-start gap-2 sidebar-menu-item"
-              onClick={logout}
+              onClick={() => void logout()}
               aria-label={t('common.signOut')}
              >
               <LogOut className="h-4 w-4" />
@@ -390,6 +455,7 @@ export function AppSidebar() {
           )}
         </div>
       </div>
+      <ChangePasswordDialog open={changePwOpen} onOpenChange={setChangePwOpen} />
     </TooltipProvider>
   )
 }

@@ -14,6 +14,7 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 
 export function LoginForm() {
   const { t, language } = useTranslation()
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const { login, isLoading, error } = useAuth()
   const { authRequired, checkAuthRequired, hasHydrated, isAuthenticated } = useAuthStore()
@@ -127,9 +128,9 @@ export function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (password.trim()) {
+    if (username.trim() && password.trim()) {
       try {
-        await login(password)
+        await login(username.trim(), password)
       } catch (error) {
         console.error('Unhandled error during login:', error)
         // The auth store should handle most errors, but this catches any unhandled ones
@@ -150,7 +151,19 @@ export function LoginForm() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Input
+                type="text"
+                autoComplete="username"
+                placeholder={t('auth.usernamePlaceholder')}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={isLoading}
+                autoFocus
+              />
+            </div>
+            <div>
+              <Input
                 type="password"
+                autoComplete="current-password"
                 placeholder={t('auth.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -168,10 +181,14 @@ export function LoginForm() {
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading || !password.trim()}
+              disabled={isLoading || !username.trim() || !password.trim()}
             >
               {isLoading ? t('auth.signingIn') : t('auth.signIn')}
             </Button>
+
+            <div className="text-xs text-center text-muted-foreground">
+              {t('auth.defaultCredentialsHint')}
+            </div>
 
             {configInfo && (
               <div className="text-xs text-center text-muted-foreground pt-2 border-t">

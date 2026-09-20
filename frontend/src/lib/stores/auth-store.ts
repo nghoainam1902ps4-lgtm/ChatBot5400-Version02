@@ -1,12 +1,13 @@
 import axios from 'axios'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import apiClient from '@/lib/api/client'
 import { getApiUrl } from '@/lib/config'
+import type { LoginResponse, User } from '@/lib/types/auth'
 
 interface AuthState {
   isAuthenticated: boolean
   token: string | null
+  user: User | null
   isLoading: boolean
   error: string | null
   lastAuthCheck: number | null
@@ -15,8 +16,8 @@ interface AuthState {
   authRequired: boolean | null
   setHasHydrated: (state: boolean) => void
   checkAuthRequired: () => Promise<boolean>
-  login: (password: string) => Promise<boolean>
-  logout: () => void
+  login: (username: string, password: string) => Promise<boolean>
+  logout: () => Promise<void>
   checkAuth: () => Promise<boolean>
 }
 
@@ -25,6 +26,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       isAuthenticated: false,
       token: null,
+      user: null,
       isLoading: false,
       error: null,
       lastAuthCheck: null,
@@ -36,187 +38,199 @@ export const useAuthStore = create<AuthState>()(
         set({ hasHydrated: state })
       },
 
+      // Authentication is always required in ChatBot5400. This still probes the
+      // server so a connection error can be surfaced distinctly from "logged
+      // out", which the login screen relies on.
       checkAuthRequired: async () => {
         try {
-          const response = await apiClient.get<{ auth_enabled?: boolean }>('/auth/status', {
+          const apiUrl = await getApiUrl()
+          const response = await fetch(`${apiUrl}/api/auth/status`, {
             headers: { 'Cache-Control': 'no-store' },
           })
-
-          const required = response.data.auth_enabled || false
-          set({ authRequired: required })
-
-          // If auth is not required, mark as authenticated
-          if (!required) {
-            set({ isAuthenticated: true, token: 'not-required' })
+          if (!response.ok) {
+            throw new Error(`auth status ${response.status}`)
           }
-
-          return required
+          set({ authRequired: true })
+          return true
         } catch (error) {
           console.error('Failed to check auth status:', error)
-
-          // If it's a network error, set a more helpful error message
           if (axios.isAxiosError(error) && !error.response) {
             set({
-              error: 'Unable to connect to server. Please check if the API is running.',
-              authRequired: null  // Don't assume auth is required if we can't connect
+              error:
+                'Unable to connect to server. Please check if the API is running.',
+              authRequired: null,
+            })
+          } else if (error instanceof TypeError) {
+            // fetch network failure
+            set({
+              error:
+                'Unable to connect to server. Please check if the API is running.',
+              authRequired: null,
             })
           } else {
-            // For other errors, default to requiring auth to be safe
             set({ authRequired: true })
           }
-
-          // Re-throw the error so the UI can handle it
           throw error
         }
       },
 
-      login: async (password: string) => {
+      login: async (username: string, password: string) => {
         set({ isLoading: true, error: null })
         try {
           const apiUrl = await getApiUrl()
 
-          // Deliberately raw fetch (not apiClient): this probes a candidate
-          // password, so the interceptors must not overwrite the Authorization
-          // header with the stored token or hard-redirect on 401.
-          const response = await fetch(`${apiUrl}/api/notebooks`, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${password}`,
-              'Content-Type': 'application/json'
-            }
+          // Deliberately raw fetch (not apiClient): a failed login returns 401,
+          // and the apiClient response interceptor would clear storage and
+          // hard-redirect on 401 — wrong behaviour while probing credentials.
+          const response = await fetch(`${apiUrl}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
           })
-          
+
           if (response.ok) {
-            set({ 
-              isAuthenticated: true, 
-              token: password, 
+            const data: LoginResponse = await response.json()
+            set({
+              isAuthenticated: true,
+              token: data.access_token,
+              user: data.user,
               isLoading: false,
               lastAuthCheck: Date.now(),
-              error: null
+              error: null,
             })
             return true
-          } else {
-            let errorMessage = 'Authentication failed'
-            if (response.status === 401) {
-              errorMessage = 'Invalid password. Please try again.'
-            } else if (response.status === 403) {
-              errorMessage = 'Access denied. Please check your credentials.'
-            } else if (response.status >= 500) {
-              errorMessage = 'Server error. Please try again later.'
-            } else {
-              errorMessage = `Authentication failed (${response.status})`
-            }
-            
-            set({ 
-              error: errorMessage,
-              isLoading: false,
-              isAuthenticated: false,
-              token: null
-            })
-            return false
           }
-        } catch (error) {
-          console.error('Network error during auth:', error)
+
           let errorMessage = 'Authentication failed'
-          
-          if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-            errorMessage = 'Unable to connect to server. Please check if the API is running.'
-          } else if (error instanceof Error) {
-            errorMessage = `Network error: ${error.message}`
+          if (response.status === 401) {
+            errorMessage = 'Invalid username or password'
+          } else if (response.status >= 500) {
+            errorMessage = 'Server error. Please try again later.'
           } else {
-            errorMessage = 'An unexpected error occurred during authentication'
+            errorMessage = `Authentication failed (${response.status})`
           }
-          
-          set({ 
+          set({
             error: errorMessage,
             isLoading: false,
             isAuthenticated: false,
-            token: null
+            token: null,
+            user: null,
+          })
+          return false
+        } catch (error) {
+          console.error('Network error during auth:', error)
+          let errorMessage = 'Authentication failed'
+          if (
+            error instanceof TypeError &&
+            error.message.includes('Failed to fetch')
+          ) {
+            errorMessage =
+              'Unable to connect to server. Please check if the API is running.'
+          } else if (error instanceof Error) {
+            errorMessage = `Network error: ${error.message}`
+          }
+          set({
+            error: errorMessage,
+            isLoading: false,
+            isAuthenticated: false,
+            token: null,
+            user: null,
           })
           return false
         }
       },
-      
-      logout: () => {
-        set({ 
-          isAuthenticated: false, 
-          token: null, 
-          error: null 
+
+      logout: async () => {
+        const { token } = get()
+        // Best-effort server notification; token is stateless so local clear is
+        // what actually logs the user out.
+        try {
+          if (token) {
+            const apiUrl = await getApiUrl()
+            await fetch(`${apiUrl}/api/auth/logout`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+            })
+          }
+        } catch {
+          // ignore network errors on logout
+        }
+        set({
+          isAuthenticated: false,
+          token: null,
+          user: null,
+          error: null,
+          lastAuthCheck: null,
         })
       },
-      
+
       checkAuth: async () => {
         const state = get()
         const { token, lastAuthCheck, isCheckingAuth, isAuthenticated } = state
 
-        // If already checking, return current auth state
         if (isCheckingAuth) {
           return isAuthenticated
         }
-
-        // If no token, not authenticated
         if (!token) {
           return false
         }
-
-        // If we checked recently (within 30 seconds) and are authenticated, skip
         const now = Date.now()
-        if (isAuthenticated && lastAuthCheck && (now - lastAuthCheck) < 30000) {
+        if (isAuthenticated && lastAuthCheck && now - lastAuthCheck < 30000) {
           return true
         }
 
         set({ isCheckingAuth: true })
-
         try {
           const apiUrl = await getApiUrl()
-
-          // Deliberately raw fetch (not apiClient): a 401 here must update
-          // store state, not trigger the interceptor's storage-clear/redirect.
-          const response = await fetch(`${apiUrl}/api/notebooks`, {
-            method: 'GET',
+          // Raw fetch: a 401 here must update store state, not trigger the
+          // interceptor's storage-clear/redirect.
+          const response = await fetch(`${apiUrl}/api/auth/me`, {
             headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
           })
-          
           if (response.ok) {
-            set({ 
-              isAuthenticated: true, 
+            const user: User = await response.json()
+            set({
+              isAuthenticated: true,
+              user,
               lastAuthCheck: now,
-              isCheckingAuth: false 
+              isCheckingAuth: false,
             })
             return true
-          } else {
-            set({
-              isAuthenticated: false,
-              token: null,
-              lastAuthCheck: null,
-              isCheckingAuth: false
-            })
-            return false
           }
+          set({
+            isAuthenticated: false,
+            token: null,
+            user: null,
+            lastAuthCheck: null,
+            isCheckingAuth: false,
+          })
+          return false
         } catch (error) {
           console.error('checkAuth error:', error)
-          set({ 
-            isAuthenticated: false, 
+          set({
+            isAuthenticated: false,
             token: null,
+            user: null,
             lastAuthCheck: null,
-            isCheckingAuth: false 
+            isCheckingAuth: false,
           })
           return false
         }
-      }
+      },
     }),
     {
       name: 'auth-storage',
       partialize: (state) => ({
         token: state.token,
-        isAuthenticated: state.isAuthenticated
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true)
-      }
+      },
     }
   )
 )

@@ -9,39 +9,36 @@ export function useAuth() {
   const {
     isAuthenticated,
     isLoading,
+    user,
     login,
     logout,
     checkAuth,
     checkAuthRequired,
     error,
     hasHydrated,
-    authRequired
+    authRequired,
   } = useAuthStore()
 
   useEffect(() => {
-    // Only check auth after the store has hydrated from localStorage
     if (hasHydrated) {
-      // First check if auth is required
       if (authRequired === null) {
-        checkAuthRequired().then((required) => {
-          // If auth is required, check if we have valid credentials
-          if (required) {
+        checkAuthRequired()
+          .then(() => {
             checkAuth()
-          }
-        })
-      } else if (authRequired) {
-        // Auth is required, check credentials
+          })
+          .catch(() => {
+            // connection error already recorded in the store
+          })
+      } else {
         checkAuth()
       }
-      // If authRequired === false, we're already authenticated (set in checkAuthRequired)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasHydrated, authRequired])
 
-  const handleLogin = async (password: string) => {
-    const success = await login(password)
+  const handleLogin = async (username: string, password: string) => {
+    const success = await login(username, password)
     if (success) {
-      // Check if there's a stored redirect path
       const redirectPath = sessionStorage.getItem('redirectAfterLogin')
       if (redirectPath) {
         sessionStorage.removeItem('redirectAfterLogin')
@@ -53,16 +50,18 @@ export function useAuth() {
     return success
   }
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     router.push('/login')
   }
 
   return {
     isAuthenticated,
-    isLoading: isLoading || !hasHydrated, // Treat lack of hydration as loading
+    isLoading: isLoading || !hasHydrated,
     error,
+    user,
+    isAdmin: user?.role === 'admin',
     login: handleLogin,
-    logout: handleLogout
+    logout: handleLogout,
   }
 }
