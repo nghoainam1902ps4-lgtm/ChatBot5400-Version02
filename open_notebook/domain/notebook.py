@@ -689,6 +689,10 @@ class Note(ObjectModel):
     title: Optional[str] = None
     note_type: Optional[Literal["human", "ai"]] = None
     content: Optional[str] = None
+    # Owner for per-user data isolation (ChatBot5400). Stored as record<user>
+    # in SurrealDB; kept as the string id here. Optional so notes created
+    # before authentication existed remain valid.
+    user_id: Optional[str] = None
 
     @field_validator("content")
     @classmethod
@@ -696,6 +700,14 @@ class Note(ObjectModel):
         if v is not None and not v.strip():
             raise InvalidInputError("Note content cannot be empty")
         return v
+
+    def _prepare_save_data(self) -> Dict[str, Any]:
+        data = super()._prepare_save_data()
+        # The DB column is typed record<user>, so a bare string id must be
+        # sent as a RecordID or SurrealDB rejects the write.
+        if data.get("user_id"):
+            data["user_id"] = ensure_record_id(data["user_id"])
+        return data
 
     async def save(self) -> Optional[str]:
         """
@@ -756,6 +768,14 @@ class ChatSession(ObjectModel):
     nullable_fields: ClassVar[set[str]] = {"model_override"}
     title: Optional[str] = None
     model_override: Optional[str] = None
+    # Owner for per-user data isolation (ChatBot5400). See Note.user_id.
+    user_id: Optional[str] = None
+
+    def _prepare_save_data(self) -> Dict[str, Any]:
+        data = super()._prepare_save_data()
+        if data.get("user_id"):
+            data["user_id"] = ensure_record_id(data["user_id"])
+        return data
 
     async def relate_to_notebook(self, notebook_id: str) -> Any:
         if not notebook_id:

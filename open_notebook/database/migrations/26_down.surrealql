@@ -1,0 +1,7 @@
+-- Rollback migration 26: remove auth/RBAC/isolation additions.
+REMOVE INDEX IF EXISTS idx_chat_session_user ON TABLE chat_session;
+REMOVE INDEX IF EXISTS idx_note_user ON TABLE note;
+REMOVE FIELD IF EXISTS user_id ON TABLE chat_session;
+REMOVE FIELD IF EXISTS user_id ON TABLE note;
+REMOVE INDEX IF EXISTS idx_user_username ON TABLE user;
+REMOVE TABLE IF EXISTS user;

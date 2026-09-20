@@ -207,6 +207,12 @@ async def lifespan(app: FastAPI):
         # Fail fast - don't start the API with an outdated database schema
         raise RuntimeError(f"Failed to run database migrations: {str(e)}") from e
 
+    # Seed the default admin account (admin/admin) on a fresh database.
+    # Idempotent: does nothing once any user exists.
+    from open_notebook.domain.user import seed_default_admin
+
+    await seed_default_admin()
+
     logger.success("API initialization completed successfully")
 
     # Yield control to the application

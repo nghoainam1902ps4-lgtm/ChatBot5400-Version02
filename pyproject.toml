@@ -46,6 +46,9 @@ dependencies = [
     "numpy>=2.4.1",
     "pycountry>=26.2.16",
     "babel>=2.18.0",
+    # Authentication / RBAC (added for ChatBot5400): password hashing + JWT tokens
+    "bcrypt>=4.2.0",
+    "pyjwt>=2.10.0",
 ]
 
 [tool.setuptools]

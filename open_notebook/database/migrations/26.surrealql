@@ -1,0 +1,20 @@
+-- Migration 26: Authentication, RBAC and per-user data isolation (ChatBot5400)
+-- Adds the `user` table and attaches an owner (`user_id`) to the private
+-- data tables (`note`, `chat_session`). Both owner fields are optional so
+-- pre-existing rows created before auth remain valid.
+
+-- User accounts
+DEFINE TABLE IF NOT EXISTS user SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS username ON TABLE user TYPE string ASSERT string::len($value) > 0;
+DEFINE FIELD IF NOT EXISTS password_hash ON TABLE user TYPE string;
+DEFINE FIELD IF NOT EXISTS role ON TABLE user TYPE string DEFAULT 'user' ASSERT $value IN ['admin', 'user'];
+DEFINE FIELD IF NOT EXISTS name ON TABLE user TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS created ON user DEFAULT time::now() VALUE $before OR time::now();
+DEFINE FIELD IF NOT EXISTS updated ON user DEFAULT time::now() VALUE time::now();
+DEFINE INDEX IF NOT EXISTS idx_user_username ON TABLE user COLUMNS username UNIQUE;
+
+-- Data isolation: owner links on private tables
+DEFINE FIELD IF NOT EXISTS user_id ON TABLE note TYPE option<record<user>>;
+DEFINE FIELD IF NOT EXISTS user_id ON TABLE chat_session TYPE option<record<user>>;
+DEFINE INDEX IF NOT EXISTS idx_note_user ON TABLE note COLUMNS user_id;
+DEFINE INDEX IF NOT EXISTS idx_chat_session_user ON TABLE chat_session COLUMNS user_id;
