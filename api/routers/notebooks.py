@@ -1,8 +1,9 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
+from api.auth import require_admin
 from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
@@ -129,7 +130,11 @@ async def get_notebooks(
         )
 
 
-@router.post("/notebooks", response_model=NotebookResponse)
+@router.post(
+    "/notebooks",
+    response_model=NotebookResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def create_notebook(notebook: NotebookCreate):
     """Create a new notebook."""
     try:
@@ -279,7 +284,11 @@ async def get_notebook(notebook_id: str):
         )
 
 
-@router.put("/notebooks/{notebook_id}", response_model=NotebookResponse)
+@router.put(
+    "/notebooks/{notebook_id}",
+    response_model=NotebookResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
     """Update a notebook."""
     try:
@@ -343,7 +352,10 @@ async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
         )
 
 
-@router.post("/notebooks/{notebook_id}/sources/{source_id}")
+@router.post(
+    "/notebooks/{notebook_id}/sources/{source_id}",
+    dependencies=[Depends(require_admin)],
+)
 async def add_source_to_notebook(notebook_id: str, source_id: str):
     """Add an existing source to a notebook (create the reference)."""
     try:
@@ -386,7 +398,10 @@ async def add_source_to_notebook(notebook_id: str, source_id: str):
         )
 
 
-@router.delete("/notebooks/{notebook_id}/sources/{source_id}")
+@router.delete(
+    "/notebooks/{notebook_id}/sources/{source_id}",
+    dependencies=[Depends(require_admin)],
+)
 async def remove_source_from_notebook(notebook_id: str, source_id: str):
     """Remove a source from a notebook (delete the reference)."""
     try:
@@ -418,7 +433,11 @@ async def remove_source_from_notebook(notebook_id: str, source_id: str):
         )
 
 
-@router.delete("/notebooks/{notebook_id}", response_model=NotebookDeleteResponse)
+@router.delete(
+    "/notebooks/{notebook_id}",
+    response_model=NotebookDeleteResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def delete_notebook(
     notebook_id: str,
     delete_exclusive_sources: bool = Query(

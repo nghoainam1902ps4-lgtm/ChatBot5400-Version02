@@ -1,8 +1,9 @@
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
+from api.auth import TokenUser, get_current_user
 from api.models import NoteCreate, NoteResponse, NoteUpdate
 from open_notebook.domain.notebook import Note
 from open_notebook.exceptions import (
@@ -14,11 +15,24 @@ from open_notebook.exceptions import (
 router = APIRouter()
 
 
+def _owned_note_or_404(note: Note, current: TokenUser) -> Note:
+    """Enforce per-user data isolation on a note.
+
+    A note belongs to exactly one user; nobody else (admins included) may read
+    or mutate it. We 404 rather than 403 so a note's existence is not leaked to
+    non-owners.
+    """
+    if note.user_id != current.id:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
+
+
 @router.get("/notes", response_model=List[NoteResponse])
 async def get_notes(
     notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
+    current: TokenUser = Depends(get_current_user),
 ):
-    """Get all notes with optional notebook filtering."""
+    """Get the current user's notes, with optional notebook filtering."""
     try:
         if notebook_id:
             # Get notes for a specific notebook
@@ -29,6 +43,9 @@ async def get_notes(
         else:
             # Get all notes
             notes = await Note.get_all(order_by="updated desc")
+
+        # Data isolation: only the caller's own notes.
+        notes = [n for n in notes if n.user_id == current.id]
 
         return [
             NoteResponse(
@@ -53,8 +70,11 @@ async def get_notes(
 
 
 @router.post("/notes", response_model=NoteResponse)
-async def create_note(note_data: NoteCreate):
-    """Create a new note."""
+async def create_note(
+    note_data: NoteCreate,
+    current: TokenUser = Depends(get_current_user),
+):
+    """Create a new note owned by the current user."""
     try:
         # Auto-generate title if not provided and it's an AI note
         title = note_data.title
@@ -85,6 +105,7 @@ async def create_note(note_data: NoteCreate):
             title=title,
             content=note_data.content,
             note_type=note_type,
+            user_id=current.id,
         )
         command_id = await new_note.save()
 
@@ -119,10 +140,12 @@ async def create_note(note_data: NoteCreate):
 
 
 @router.get("/notes/{note_id}", response_model=NoteResponse)
-async def get_note(note_id: str):
-    """Get a specific note by ID."""
+async def get_note(
+    note_id: str, current: TokenUser = Depends(get_current_user)
+):
+    """Get a specific note by ID (owner only)."""
     try:
-        note = await Note.get(note_id)
+        note = _owned_note_or_404(await Note.get(note_id), current)
 
         return NoteResponse(
             id=note.id or "",
@@ -144,10 +167,14 @@ async def get_note(note_id: str):
 
 
 @router.put("/notes/{note_id}", response_model=NoteResponse)
-async def update_note(note_id: str, note_update: NoteUpdate):
-    """Update a note."""
+async def update_note(
+    note_id: str,
+    note_update: NoteUpdate,
+    current: TokenUser = Depends(get_current_user),
+):
+    """Update a note (owner only)."""
     try:
-        note = await Note.get(note_id)
+        note = _owned_note_or_404(await Note.get(note_id), current)
 
         # Update only provided fields
         if note_update.title is not None:
@@ -187,10 +214,12 @@ async def update_note(note_id: str, note_update: NoteUpdate):
 
 
 @router.delete("/notes/{note_id}")
-async def delete_note(note_id: str):
-    """Delete a note."""
+async def delete_note(
+    note_id: str, current: TokenUser = Depends(get_current_user)
+):
+    """Delete a note (owner only)."""
     try:
-        note = await Note.get(note_id)
+        note = _owned_note_or_404(await Note.get(note_id), current)
 
         await note.delete()
 

@@ -34,6 +34,12 @@ class AuthenticationError(OpenNotebookError):
     pass
 
 
+class AuthorizationError(OpenNotebookError):
+    """Raised when an authenticated user lacks permission for an action."""
+
+    pass
+
+
 class ConfigurationError(OpenNotebookError):
     """Raised when there's a configuration problem."""
 

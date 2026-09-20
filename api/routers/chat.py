@@ -2,11 +2,12 @@ import asyncio
 import traceback
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from api.auth import TokenUser, get_current_user
 from api.routers._chat_shared import (
     ChatMessage,
     SuccessResponse,
@@ -25,6 +26,18 @@ from open_notebook.utils.context_builder import build_notebook_context
 from open_notebook.utils.graph_utils import get_session_message_count
 
 router = APIRouter()
+
+
+def _owned_session_or_404(session: ChatSession, current: TokenUser) -> ChatSession:
+    """Enforce per-user isolation on a chat session.
+
+    A session (and its message history) is private to its owner — no other
+    user, including an admin, may read or use it. 404 rather than 403 so the
+    session's existence is not leaked to non-owners.
+    """
+    if getattr(session, "user_id", None) != current.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
 
 
 # Request/Response models
@@ -91,8 +104,11 @@ class BuildContextResponse(BaseModel):
 
 
 @router.get("/chat/sessions", response_model=List[ChatSessionResponse])
-async def get_sessions(notebook_id: str = Query(..., description="Notebook ID")):
-    """Get all chat sessions for a notebook."""
+async def get_sessions(
+    notebook_id: str = Query(..., description="Notebook ID"),
+    current: TokenUser = Depends(get_current_user),
+):
+    """Get the current user's chat sessions for a notebook."""
     try:
         # Get notebook to verify it exists
         notebook = await Notebook.get(notebook_id)
@@ -104,6 +120,9 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
 
         results = []
         for session in sessions_list:
+            # Data isolation: only the caller's own sessions.
+            if getattr(session, "user_id", None) != current.id:
+                continue
             session_id = str(session.id)
 
             # Get message count from LangGraph state
@@ -136,8 +155,11 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
 
 
 @router.post("/chat/sessions", response_model=ChatSessionResponse)
-async def create_session(request: CreateSessionRequest):
-    """Create a new chat session."""
+async def create_session(
+    request: CreateSessionRequest,
+    current: TokenUser = Depends(get_current_user),
+):
+    """Create a new chat session owned by the current user."""
     try:
         # Verify notebook exists
         notebook = await Notebook.get(request.notebook_id)
@@ -149,6 +171,7 @@ async def create_session(request: CreateSessionRequest):
             title=request.title
             or f"Chat Session {asyncio.get_event_loop().time():.0f}",
             model_override=request.model_override,
+            user_id=current.id,
         )
         await session.save()
 
@@ -180,11 +203,14 @@ async def create_session(request: CreateSessionRequest):
 @router.get(
     "/chat/sessions/{session_id}", response_model=ChatSessionWithMessagesResponse
 )
-async def get_session(session_id: str):
-    """Get a specific session with its messages."""
+async def get_session(
+    session_id: str, current: TokenUser = Depends(get_current_user)
+):
+    """Get a specific session with its messages (owner only)."""
     try:
         # Get session (normalizes the ID and 404s if missing)
         full_session_id, session = await get_session_or_404(session_id)
+        _owned_session_or_404(session, current)
 
         # Get session state from LangGraph to retrieve messages
         # Use sync get_state() in a thread since SqliteSaver doesn't support async
@@ -234,11 +260,16 @@ async def get_session(session_id: str):
 
 
 @router.put("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
-async def update_session(session_id: str, request: UpdateSessionRequest):
-    """Update session title."""
+async def update_session(
+    session_id: str,
+    request: UpdateSessionRequest,
+    current: TokenUser = Depends(get_current_user),
+):
+    """Update session title (owner only)."""
     try:
         # Get session (normalizes the ID and 404s if missing)
         full_session_id, session = await get_session_or_404(session_id)
+        _owned_session_or_404(session, current)
 
         update_data = request.model_dump(exclude_unset=True)
 
@@ -281,11 +312,14 @@ async def update_session(session_id: str, request: UpdateSessionRequest):
 
 
 @router.delete("/chat/sessions/{session_id}", response_model=SuccessResponse)
-async def delete_session(session_id: str):
-    """Delete a chat session."""
+async def delete_session(
+    session_id: str, current: TokenUser = Depends(get_current_user)
+):
+    """Delete a chat session (owner only)."""
     try:
         # Get session (normalizes the ID and 404s if missing)
         _full_session_id, session = await get_session_or_404(session_id)
+        _owned_session_or_404(session, current)
 
         await session.delete()
 
@@ -302,11 +336,15 @@ async def delete_session(session_id: str):
 
 
 @router.post("/chat/execute", response_model=ExecuteChatResponse)
-async def execute_chat(request: ExecuteChatRequest):
-    """Execute a chat request and get AI response."""
+async def execute_chat(
+    request: ExecuteChatRequest,
+    current: TokenUser = Depends(get_current_user),
+):
+    """Execute a chat request and get AI response (session owner only)."""
     try:
         # Verify session exists (normalizes the ID and 404s if missing)
         full_session_id, session = await get_session_or_404(request.session_id)
+        _owned_session_or_404(session, current)
 
         # Fetch notebook linked to this session
         notebook_query = await repo_query(

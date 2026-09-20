@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.auth import PasswordAuthMiddleware
+from api.auth import JWTAuthMiddleware
 from api.middleware import MaxBodySizeMiddleware, get_max_upload_size_bytes
 from api.routers import (
     auth,
@@ -44,11 +44,13 @@ from api.routers import (
     sources,
     speaker_profiles,
     transformations,
+    users,
 )
 from api.routers import commands as commands_router
 from open_notebook.database.async_migrate import AsyncMigrationManager
 from open_notebook.exceptions import (
     AuthenticationError,
+    AuthorizationError,
     ConfigurationError,
     ExternalServiceError,
     InvalidInputError,
@@ -238,10 +240,11 @@ if CORS_IS_DEFAULT_WILDCARD:
 else:
     logger.info(f"CORS allowed origins: {CORS_ALLOWED_ORIGINS}")
 
-# Add password authentication middleware first
-# Exclude /api/auth/status and /api/config from authentication
+# Add JWT authentication middleware first (app-wide requireAuth).
+# Excluded paths are reachable without a token: login, auth status, public
+# config, and the API root/health/docs.
 app.add_middleware(
-    PasswordAuthMiddleware,
+    JWTAuthMiddleware,
     excluded_paths=[
         "/",
         "/health",
@@ -249,6 +252,7 @@ app.add_middleware(
         "/openapi.json",
         "/redoc",
         "/api/auth/status",
+        "/api/auth/login",
         "/api/config",
     ],
 )
@@ -325,6 +329,15 @@ async def authentication_error_handler(request: Request, exc: AuthenticationErro
     return JSONResponse(
         status_code=401,
         content={"detail": str(exc)},
+        headers={"WWW-Authenticate": "Bearer", **_cors_headers(request)},
+    )
+
+
+@app.exception_handler(AuthorizationError)
+async def authorization_error_handler(request: Request, exc: AuthorizationError):
+    return JSONResponse(
+        status_code=403,
+        content={"detail": str(exc)},
         headers=_cors_headers(request),
     )
 
@@ -387,6 +400,7 @@ async def open_notebook_error_handler(request: Request, exc: OpenNotebookError):
 
 # Include routers
 app.include_router(auth.router, prefix="/api", tags=["auth"])
+app.include_router(users.router, prefix="/api", tags=["users"])
 app.include_router(config.router, prefix="/api", tags=["config"])
 app.include_router(notebooks.router, prefix="/api", tags=["notebooks"])
 app.include_router(search.router, prefix="/api", tags=["search"])

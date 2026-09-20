@@ -18,6 +18,7 @@ from loguru import logger
 from pydantic import ValidationError
 from surreal_commands import execute_command_sync, submit_command
 
+from api.auth import require_admin
 from api.command_service import CommandService
 from api.credentials_service import validate_url
 from api.models import (
@@ -636,7 +637,11 @@ async def _create_source_sync_path(
         raise
 
 
-@router.post("/sources", response_model=SourceResponse)
+@router.post(
+    "/sources",
+    response_model=SourceResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def create_source(
     form_data: tuple[SourceCreate, Optional[UploadFile]] = Depends(
         parse_source_form_data
@@ -705,7 +710,11 @@ async def create_source(
         raise HTTPException(status_code=500, detail="Error creating source")
 
 
-@router.post("/sources/json", response_model=SourceResponse)
+@router.post(
+    "/sources/json",
+    response_model=SourceResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def create_source_json(source_data: SourceCreate):
     """Create a new source using JSON payload (legacy endpoint for backward compatibility)."""
     # Convert to form data format and call main endpoint
@@ -902,7 +911,11 @@ async def get_source_status(source_id: str):
         raise HTTPException(status_code=500, detail="Error fetching source status")
 
 
-@router.put("/sources/{source_id}", response_model=SourceResponse)
+@router.put(
+    "/sources/{source_id}",
+    response_model=SourceResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def update_source(source_id: str, source_update: SourceUpdate):
     """Update a source."""
     try:
@@ -931,7 +944,11 @@ async def update_source(source_id: str, source_update: SourceUpdate):
         raise HTTPException(status_code=500, detail="Error updating source")
 
 
-@router.post("/sources/{source_id}/retry", response_model=SourceResponse)
+@router.post(
+    "/sources/{source_id}/retry",
+    response_model=SourceResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def retry_source_processing(source_id: str):
     """Retry processing for a failed or stuck source."""
     try:
@@ -1052,7 +1069,7 @@ async def retry_source_processing(source_id: str):
         raise HTTPException(status_code=500, detail="Error retrying source processing")
 
 
-@router.delete("/sources/{source_id}")
+@router.delete("/sources/{source_id}", dependencies=[Depends(require_admin)])
 async def delete_source(source_id: str):
     """Delete a source."""
     try:
@@ -1105,6 +1122,7 @@ async def get_source_insights(source_id: str):
     "/sources/{source_id}/insights",
     response_model=InsightCreationResponse,
     status_code=202,
+    dependencies=[Depends(require_admin)],
 )
 async def create_source_insight(source_id: str, request: CreateSourceInsightRequest):
     """

@@ -1,27 +1,100 @@
-"""
-Authentication router for Open Notebook API.
-Provides endpoints to check authentication status.
+"""Authentication router for ChatBot5400.
+
+Login / logout / change-password / current-user, plus a public auth-status
+endpoint. Uses JWT (see api/auth.py) and the User domain model.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from loguru import logger
+from pydantic import BaseModel, Field
 
-from open_notebook.utils.encryption import get_secret_from_env
+from api.auth import TokenUser, create_access_token, get_current_user
+from open_notebook.domain.user import User
+from open_notebook.exceptions import AuthenticationError, InvalidInputError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(..., description="Username")
+    password: str = Field(..., description="Password")
+
+
+class UserInfo(BaseModel):
+    id: str
+    username: str
+    role: str
+    name: str | None = None
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserInfo
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., description="Current password")
+    new_password: str = Field(..., min_length=1, description="New password")
+
+
 @router.get("/status")
 async def get_auth_status():
-    """
-    Check if authentication is enabled.
-    Returns whether a password is required to access the API.
-    Supports Docker secrets via OPEN_NOTEBOOK_PASSWORD_FILE.
-    """
-    auth_enabled = bool(get_secret_from_env("OPEN_NOTEBOOK_PASSWORD"))
-
+    """Public: report that JWT authentication is required."""
     return {
-        "auth_enabled": auth_enabled,
-        "message": "Authentication is required"
-        if auth_enabled
-        else "Authentication is disabled",
+        "auth_enabled": True,
+        "auth_type": "jwt",
+        "message": "Authentication is required",
     }
+
+
+@router.post("/login", response_model=LoginResponse)
+async def login(request: LoginRequest):
+    """Authenticate a user and return a JWT access token."""
+    user = await User.authenticate(request.username, request.password)
+    if user is None or not user.id:
+        raise AuthenticationError("Invalid username or password")
+
+    token = create_access_token(user.id, user.username, user.role)
+    logger.info(f"User '{user.username}' logged in")
+    return LoginResponse(
+        access_token=token,
+        user=UserInfo(
+            id=user.id, username=user.username, role=user.role, name=user.name
+        ),
+    )
+
+
+@router.post("/logout")
+async def logout(current: TokenUser = Depends(get_current_user)):
+    """Log out. Tokens are stateless, so the client discards the token."""
+    logger.info(f"User '{current.username}' logged out")
+    return {"success": True, "message": "Logged out successfully"}
+
+
+@router.get("/me", response_model=UserInfo)
+async def get_me(current: TokenUser = Depends(get_current_user)):
+    """Return the currently authenticated user's profile."""
+    user = await User.get_by_username(current.username)
+    if user is None or not user.id:
+        raise AuthenticationError("User no longer exists")
+    return UserInfo(id=user.id, username=user.username, role=user.role, name=user.name)
+
+
+@router.post("/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    current: TokenUser = Depends(get_current_user),
+):
+    """Change the current user's own password."""
+    user = await User.get_by_username(current.username)
+    if user is None:
+        raise AuthenticationError("User no longer exists")
+    if not user.check_password(request.current_password):
+        raise AuthenticationError("Current password is incorrect")
+    if not request.new_password:
+        raise InvalidInputError("New password cannot be empty")
+
+    await user.set_password(request.new_password)
+    logger.info(f"User '{user.username}' changed their password")
+    return {"success": True, "message": "Password changed successfully"}

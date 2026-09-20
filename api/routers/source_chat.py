@@ -2,13 +2,14 @@ import asyncio
 import json
 from typing import AsyncGenerator, List, Optional
 
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from api.auth import TokenUser, get_current_user
 from api.routers._chat_shared import (
     ChatMessage,
     SuccessResponse,
@@ -26,6 +27,13 @@ from open_notebook.graphs.source_chat import source_chat_graph as source_chat_gr
 from open_notebook.utils.graph_utils import get_session_message_count
 
 router = APIRouter()
+
+
+def _owned_session_or_404(session: ChatSession, current: TokenUser) -> ChatSession:
+    """Enforce per-user isolation on a source chat session (owner only)."""
+    if getattr(session, "user_id", None) != current.id:
+        raise HTTPException(status_code=404, detail="Source or session not found")
+    return session
 
 
 # Request/Response models
@@ -86,8 +94,9 @@ class SendMessageRequest(BaseModel):
 async def create_source_chat_session(
     request: CreateSourceChatSessionRequest,
     source_id: str = Path(..., description="Source ID"),
+    current: TokenUser = Depends(get_current_user),
 ):
-    """Create a new chat session for a source."""
+    """Create a new chat session for a source, owned by the current user."""
     try:
         # Verify source exists (normalizes the ID and 404s if missing)
         full_source_id, _source = await get_source_or_404(source_id)
@@ -96,6 +105,7 @@ async def create_source_chat_session(
         session = ChatSession(
             title=request.title or f"Source Chat {asyncio.get_event_loop().time():.0f}",
             model_override=request.model_override,
+            user_id=current.id,
         )
         await session.save()
 
@@ -127,8 +137,11 @@ async def create_source_chat_session(
 @router.get(
     "/sources/{source_id}/chat/sessions", response_model=List[SourceChatSessionResponse]
 )
-async def get_source_chat_sessions(source_id: str = Path(..., description="Source ID")):
-    """Get all chat sessions for a source."""
+async def get_source_chat_sessions(
+    source_id: str = Path(..., description="Source ID"),
+    current: TokenUser = Depends(get_current_user),
+):
+    """Get the current user's chat sessions for a source."""
     try:
         # Verify source exists (normalizes the ID and 404s if missing)
         full_source_id, _source = await get_source_or_404(source_id)
@@ -150,6 +163,10 @@ async def get_source_chat_sessions(source_id: str = Path(..., description="Sourc
                 )
                 if session_result and len(session_result) > 0:
                     session_data = session_result[0]
+
+                    # Data isolation: only the caller's own sessions.
+                    if session_data.get("user_id") != current.id:
+                        continue
 
                     # Get message count from LangGraph state
                     msg_count = await get_session_message_count(
@@ -191,13 +208,15 @@ async def get_source_chat_sessions(source_id: str = Path(..., description="Sourc
 async def get_source_chat_session(
     source_id: str = Path(..., description="Source ID"),
     session_id: str = Path(..., description="Session ID"),
+    current: TokenUser = Depends(get_current_user),
 ):
-    """Get a specific source chat session with its messages."""
+    """Get a specific source chat session with its messages (owner only)."""
     try:
         # Verify source + session exist and are related (404s otherwise)
         _full_source_id, _source, full_session_id, session = (
             await get_verified_source_session(source_id, session_id)
         )
+        _owned_session_or_404(session, current)
 
         # Get session state from LangGraph to retrieve messages
         # Use sync get_state() in a thread since SqliteSaver doesn't support async
@@ -256,13 +275,15 @@ async def update_source_chat_session(
     request: UpdateSourceChatSessionRequest,
     source_id: str = Path(..., description="Source ID"),
     session_id: str = Path(..., description="Session ID"),
+    current: TokenUser = Depends(get_current_user),
 ):
-    """Update source chat session title and/or model override."""
+    """Update source chat session title and/or model override (owner only)."""
     try:
         # Verify source + session exist and are related (404s otherwise)
         _full_source_id, _source, full_session_id, session = (
             await get_verified_source_session(source_id, session_id)
         )
+        _owned_session_or_404(session, current)
 
         # Update session fields
         if request.title is not None:
@@ -303,13 +324,15 @@ async def update_source_chat_session(
 async def delete_source_chat_session(
     source_id: str = Path(..., description="Source ID"),
     session_id: str = Path(..., description="Session ID"),
+    current: TokenUser = Depends(get_current_user),
 ):
-    """Delete a source chat session."""
+    """Delete a source chat session (owner only)."""
     try:
         # Verify source + session exist and are related (404s otherwise)
         _full_source_id, _source, full_session_id, session = (
             await get_verified_source_session(source_id, session_id)
         )
+        _owned_session_or_404(session, current)
 
         await session.delete()
 
@@ -409,13 +432,15 @@ async def send_message_to_source_chat(
     request: SendMessageRequest,
     source_id: str = Path(..., description="Source ID"),
     session_id: str = Path(..., description="Session ID"),
+    current: TokenUser = Depends(get_current_user),
 ):
-    """Send a message to source chat session with SSE streaming response."""
+    """Send a message to source chat session with SSE streaming (owner only)."""
     try:
         # Verify source + session exist and are related (404s otherwise)
         full_source_id, _source, full_session_id, session = (
             await get_verified_source_session(source_id, session_id)
         )
+        _owned_session_or_404(session, current)
 
         if not request.message:
             raise HTTPException(status_code=400, detail="Message content is required")
