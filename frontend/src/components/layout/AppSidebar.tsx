@@ -91,7 +91,7 @@ function LogoPebbles({ className }: { className?: string }) {
     <span className={cn('flex items-center gap-[3px]', className)} aria-hidden="true">
       <span className="size-[9px] rounded-[3px] bg-fern" />
       <span className="size-[9px] rounded-[3px] bg-gold" />
-      <span className="size-[9px] rounded-[3px] bg-teal" />
+      <span className="size-[9px] rounded-[3px] bg-fern-deep" />
     </span>
   )
 }
