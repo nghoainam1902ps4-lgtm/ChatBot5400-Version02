@@ -54,4 +54,9 @@ const nextConfig: NextConfig = {
   },
 };
 
+// Next.js 16 auto-generates/appends an `AGENTS.md` on build, which clobbers the
+// committed frontend/AGENTS.md rules file. Disable it. (Field is valid at
+// runtime but not yet in the NextConfig type, so set it off the typed literal.)
+;(nextConfig as Record<string, unknown>).agentRules = false;
+
 export default nextConfig;
