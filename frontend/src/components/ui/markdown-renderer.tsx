@@ -74,7 +74,12 @@ export function MarkdownRenderer({ children, components = {}}: { children: React
             h6: ({ children }) => <h6 className="mb-2 mt-3">{children}</h6>,
             li: ({ children }) => <li className="mb-1">{children}</li>,
             ul: ({ children }) => <ul className="mb-4 space-y-1">{children}</ul>,
-            ol: ({ children }) => <ol className="mb-4 space-y-1">{children}</ol>,
+            // Forward `start` so an ordered list that resumes after an
+            // interrupting paragraph (e.g. Khoản 2 after Khoản 1's body) keeps
+            // its real number instead of restarting at 1.
+            ol: ({ children, start }) => (
+              <ol className="mb-4 space-y-1" start={start ?? undefined}>{children}</ol>
+            ),
             table: ({ children }) => (
               <div className="my-4 overflow-x-auto">
                 <table className="min-w-full border-collapse border border-border">{children}</table>
