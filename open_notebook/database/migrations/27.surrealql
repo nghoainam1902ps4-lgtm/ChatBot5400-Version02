@@ -1,0 +1,5 @@
+-- Migration 27: per-user UI preferences (language + theme) for ChatBot5400.
+-- Optional so existing users remain valid; the app falls back to defaults
+-- (language 'vi-VN', theme 'system') when unset.
+DEFINE FIELD IF NOT EXISTS language ON TABLE user TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS theme ON TABLE user TYPE option<string>;

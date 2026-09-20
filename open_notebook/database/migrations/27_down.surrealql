@@ -1,0 +1,3 @@
+-- Rollback migration 27: remove per-user UI preference fields.
+REMOVE FIELD IF EXISTS theme ON TABLE user;
+REMOVE FIELD IF EXISTS language ON TABLE user;

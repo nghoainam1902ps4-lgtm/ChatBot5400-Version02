@@ -27,6 +27,9 @@ class User(ObjectModel):
     password_hash: str
     role: Role = "user"
     name: Optional[str] = None
+    # Per-user UI preferences (ChatBot5400). None means "use the app default".
+    language: Optional[str] = None
+    theme: Optional[str] = None
 
     @field_validator("username")
     @classmethod

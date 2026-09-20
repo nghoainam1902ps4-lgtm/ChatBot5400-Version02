@@ -131,4 +131,43 @@ describe('auth-store', () => {
       expect(state.token).toBeNull()
     })
   })
+
+  describe('updatePreferences', () => {
+    it('optimistically updates the user and persists to the backend', async () => {
+      useAuthStore.setState({
+        isAuthenticated: true,
+        token: 'jwt-token',
+        user: { ...adminUser, language: 'en-US', theme: 'light' },
+      })
+      const fetchMock = mockFetchOnce(200, {
+        ...adminUser,
+        language: 'vi-VN',
+        theme: 'dark',
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      await useAuthStore
+        .getState()
+        .updatePreferences({ language: 'vi-VN', theme: 'dark' })
+
+      // Persisted to /api/auth/preferences
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(String(url)).toMatch(/\/api\/auth\/preferences$/)
+      expect(init.method).toBe('PUT')
+
+      const state = useAuthStore.getState()
+      expect(state.user?.language).toBe('vi-VN')
+      expect(state.user?.theme).toBe('dark')
+    })
+
+    it('no-ops when not authenticated', async () => {
+      const fetchMock = mockFetchOnce(200, {})
+      vi.stubGlobal('fetch', fetchMock)
+
+      await useAuthStore.getState().updatePreferences({ language: 'vi-VN' })
+
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+  })
 })

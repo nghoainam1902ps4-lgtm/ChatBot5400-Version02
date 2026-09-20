@@ -2,7 +2,30 @@ import axios from 'axios'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { getApiUrl } from '@/lib/config'
+import i18n from '@/lib/i18n'
+import { useThemeStore, type Theme } from '@/lib/stores/theme-store'
 import type { LoginResponse, User } from '@/lib/types/auth'
+
+const DEFAULT_LANGUAGE = 'vi-VN'
+
+/**
+ * Apply a user's saved UI preferences (language + theme) after login / auth
+ * check, so settings are restored per-account. Missing values fall back to the
+ * app defaults (Vietnamese; existing theme).
+ */
+function applyUserPreferences(user: User | null): void {
+  try {
+    const lang = user?.language || DEFAULT_LANGUAGE
+    if (i18n.language !== lang) {
+      void i18n.changeLanguage(lang)
+    }
+    if (user?.theme) {
+      useThemeStore.getState().setTheme(user.theme as Theme)
+    }
+  } catch {
+    // preferences are best-effort; never block auth on them
+  }
+}
 
 interface AuthState {
   isAuthenticated: boolean
@@ -19,6 +42,10 @@ interface AuthState {
   login: (username: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
   checkAuth: () => Promise<boolean>
+  updatePreferences: (prefs: {
+    language?: string
+    theme?: string
+  }) => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -98,6 +125,7 @@ export const useAuthStore = create<AuthState>()(
               lastAuthCheck: Date.now(),
               error: null,
             })
+            applyUserPreferences(data.user)
             return true
           }
 
@@ -198,6 +226,7 @@ export const useAuthStore = create<AuthState>()(
               lastAuthCheck: now,
               isCheckingAuth: false,
             })
+            applyUserPreferences(user)
             return true
           }
           set({
@@ -218,6 +247,33 @@ export const useAuthStore = create<AuthState>()(
             isCheckingAuth: false,
           })
           return false
+        }
+      },
+
+      updatePreferences: async (prefs) => {
+        const { token, user } = get()
+        if (!token || !user) {
+          return
+        }
+        // Optimistically update local state so the UI reflects the choice
+        // immediately, then persist to the account.
+        set({ user: { ...user, ...prefs } })
+        try {
+          const apiUrl = await getApiUrl()
+          const response = await fetch(`${apiUrl}/api/auth/preferences`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(prefs),
+          })
+          if (response.ok) {
+            const updated: User = await response.json()
+            set({ user: updated })
+          }
+        } catch {
+          // best-effort; local state already reflects the choice
         }
       },
     }),

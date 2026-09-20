@@ -5,6 +5,8 @@ export interface User {
   username: string
   role: UserRole
   name?: string | null
+  language?: string | null
+  theme?: string | null
   created?: string | null
   updated?: string | null
 }

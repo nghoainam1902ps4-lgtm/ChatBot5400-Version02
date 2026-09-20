@@ -30,6 +30,8 @@ class UserInfo(BaseModel):
     username: str
     role: str
     name: str | None = None
+    language: str | None = None
+    theme: str | None = None
 
 
 class LoginResponse(BaseModel):
@@ -41,6 +43,22 @@ class LoginResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., description="Current password")
     new_password: str = Field(..., min_length=1, description="New password")
+
+
+class PreferencesRequest(BaseModel):
+    language: str | None = Field(None, description="UI language code, e.g. vi-VN")
+    theme: str | None = Field(None, description="UI theme: light | dark | system")
+
+
+def _user_info(user: User) -> "UserInfo":
+    return UserInfo(
+        id=user.id or "",
+        username=user.username,
+        role=user.role,
+        name=user.name,
+        language=user.language,
+        theme=user.theme,
+    )
 
 
 @router.get("/status")
@@ -65,12 +83,7 @@ async def login(request: LoginRequest):
 
     token = create_access_token(user.id, user.username, user.role)
     logger.info(f"User '{user.username}' logged in")
-    return LoginResponse(
-        access_token=token,
-        user=UserInfo(
-            id=user.id, username=user.username, role=user.role, name=user.name
-        ),
-    )
+    return LoginResponse(access_token=token, user=_user_info(user))
 
 
 @router.post("/logout")
@@ -86,7 +99,24 @@ async def get_me(current: TokenUser = Depends(get_current_user)):
     user = await User.get_by_username(current.username)
     if user is None or not user.id:
         raise AuthenticationError("User no longer exists")
-    return UserInfo(id=user.id, username=user.username, role=user.role, name=user.name)
+    return _user_info(user)
+
+
+@router.put("/preferences", response_model=UserInfo)
+async def update_preferences(
+    request: PreferencesRequest,
+    current: TokenUser = Depends(get_current_user),
+):
+    """Persist the current user's UI preferences (language and/or theme)."""
+    user = await User.get_by_username(current.username)
+    if user is None:
+        raise AuthenticationError("User no longer exists")
+    if request.language is not None:
+        user.language = request.language
+    if request.theme is not None:
+        user.theme = request.theme
+    await user.save()
+    return _user_info(user)
 
 
 @router.post("/change-password")

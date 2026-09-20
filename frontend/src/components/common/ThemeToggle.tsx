@@ -1,6 +1,6 @@
 'use client'
 
-import { useTheme } from '@/lib/stores/theme-store'
+import { useTheme, type Theme } from '@/lib/stores/theme-store'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Sun, Moon, Monitor } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuthStore } from '@/lib/stores/auth-store'
 
 interface ThemeToggleProps {
   iconOnly?: boolean
@@ -18,6 +19,13 @@ interface ThemeToggleProps {
 export function ThemeToggle({ iconOnly = false }: ThemeToggleProps) {
   const { theme, setTheme } = useTheme()
   const { t } = useTranslation()
+  const updatePreferences = useAuthStore((s) => s.updatePreferences)
+
+  // Apply immediately, and persist the choice to the user's account.
+  const handleSetTheme = (next: Theme) => {
+    setTheme(next)
+    void updatePreferences({ theme: next })
+  }
 
   return (
     <DropdownMenu>
@@ -37,21 +45,21 @@ export function ThemeToggle({ iconOnly = false }: ThemeToggleProps) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem 
-          onClick={() => setTheme('light')}
+          onClick={() => handleSetTheme('light')}
           className={theme === 'light' ? 'bg-accent' : ''}
         >
           <Sun className="mr-2 h-4 w-4" />
           <span>{t('common.light')}</span>
         </DropdownMenuItem>
         <DropdownMenuItem 
-          onClick={() => setTheme('dark')}
+          onClick={() => handleSetTheme('dark')}
           className={theme === 'dark' ? 'bg-accent' : ''}
         >
           <Moon className="mr-2 h-4 w-4" />
           <span>{t('common.dark')}</span>
         </DropdownMenuItem>
         <DropdownMenuItem 
-          onClick={() => setTheme('system')}
+          onClick={() => handleSetTheme('system')}
           className={theme === 'system' ? 'bg-accent' : ''}
         >
           <Monitor className="mr-2 h-4 w-4" />
