@@ -1,0 +1,5 @@
+-- Migration 28: default the document processing engine to 'docling' so .docx/.pdf
+-- keep their structure (Điều/Khoản, multi-level lists). Only rows still on the
+-- old default ('auto') or unset are changed; an explicit 'simple' choice is kept.
+-- Docling falls back to 'auto' at runtime when its runtime is not installed.
+UPDATE open_notebook:content_settings SET default_content_processing_engine_doc = 'docling' WHERE default_content_processing_engine_doc = NONE OR default_content_processing_engine_doc = 'auto';

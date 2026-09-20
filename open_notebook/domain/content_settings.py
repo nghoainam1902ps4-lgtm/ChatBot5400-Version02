@@ -9,7 +9,15 @@ class ContentSettings(RecordModel):
     record_id: ClassVar[str] = "open_notebook:content_settings"
     default_content_processing_engine_doc: Optional[
         Literal["auto", "docling", "simple"]
-    ] = Field("auto", description="Default Content Processing Engine for Documents")
+    ] = Field(
+        "docling",
+        description=(
+            "Default Content Processing Engine for Documents. 'docling' preserves "
+            "structure (headings, multi-level lists like Điều/Khoản) in .docx/.pdf; "
+            "it falls back to 'auto' automatically when the docling runtime is not "
+            "installed."
+        ),
+    )
     default_content_processing_engine_url: Optional[
         Literal["auto", "firecrawl", "jina", "crawl4ai", "simple"]
     ] = Field("auto", description="Default Content Processing Engine for URLs")

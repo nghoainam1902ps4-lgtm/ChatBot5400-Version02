@@ -37,7 +37,10 @@ dependencies = [
     "tomli>=2.0.2",
     "python-dotenv>=1.2.2",
     "httpx[socks]>=0.27.0",
-    "content-core>=2.0.7,<3",
+    # [docling] pulls the layout-aware parser so .docx/.pdf keep their structure
+    # (headings, multi-level Điều/Khoản lists). It is heavy (Torch + ML models);
+    # the app falls back to the simple extractor automatically if it is absent.
+    "content-core[docling]>=2.0.7,<3",
     "ai-prompter>=0.4,<1",
     "esperanto>=2.25.1,<3",
     "surrealdb>=1.0.4",
@@ -46,6 +49,10 @@ dependencies = [
     "numpy>=2.4.1",
     "pycountry>=26.2.16",
     "babel>=2.18.0",
+    # surreal-commands (worker) imports `typer`; pin it explicitly so the
+    # resolver always installs the module (adding content-core[docling] can
+    # otherwise drop typer-slim, which provides the `typer` module).
+    "typer>=0.15",
     # Authentication / RBAC (added for ChatBot5400): password hashing + JWT tokens
     "bcrypt>=4.2.0",
     "pyjwt>=2.10.0",

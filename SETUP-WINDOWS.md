@@ -61,6 +61,10 @@ Backend (Python):
 ```powershell
 uv sync
 ```
+> ⚠️ **Nặng:** `uv sync` sẽ kéo về **docling** (bộ trích xuất giữ đúng cấu trúc
+> Điều/Khoản cho `.docx`/`.pdf`) kèm PyTorch + model ML — **vài GB**, lần đầu có
+> thể lâu. Lần **trích xuất tài liệu đầu tiên** docling còn tải thêm model layout
+> (cần Internet). Xem mục *"Docling"* bên dưới nếu muốn cài nhẹ hơn.
 Frontend (Node) — mở cửa sổ PowerShell mới:
 ```powershell
 cd F:\projectweb\5400chatbot\frontend
@@ -114,6 +118,32 @@ npx tsc --noEmit    # kiểm tra kiểu TypeScript
 
 - Nhấn `Ctrl + C` ở từng cửa sổ PowerShell đang chạy API/Worker/Frontend/SurrealDB.
 - Nếu dùng Docker cho DB: `docker compose down`.
+
+## Docling — trích xuất tài liệu giữ đúng Điều/Khoản
+
+File Word/PDF (nhất là văn bản pháp lý nhiều cấp: Chương → Điều → Khoản → điểm
+a/b/c) dùng **đánh số tự động của Word**. Bộ trích "thô" (`python-docx`/`pdfplumber`)
+không tính lại được số này → **mất/sai** Điều/Khoản. **Docling** (parser hiểu bố
+cục) giữ đúng cấu trúc.
+
+Từ bản này, docling **đã được bật mặc định**:
+- Đã nằm trong dependencies (`content-core[docling]`) → `uv sync` tự cài.
+- Engine tài liệu mặc định = `docling` (migration tự đặt); nếu docling vắng mặt,
+  app **tự fallback** về bộ thô (vẫn chạy, chỉ mất cấu trúc).
+
+**Bắt buộc:** sau khi cài, phải chạy **cả API lẫn worker** bằng `.venv` đã có
+docling (đúng như bước 6). Nếu bạn từng chạy worker trước khi cài docling, hãy
+**tắt và mở lại worker**.
+
+**Kiểm tra docling đã sẵn sàng:**
+```powershell
+uv run python -c "import importlib.util as u; print('docling:', u.find_spec('docling') is not None)"
+```
+Phải in `docling: True`.
+
+**Nếu muốn cài NHẸ (không docling, chấp nhận mất cấu trúc Điều/Khoản):**
+- Trong `pyproject.toml` đổi `content-core[docling]>=2.0.7,<3` → `content-core>=2.0.7,<3` rồi `uv sync`, **và**
+- Đặt engine tài liệu = `simple` (Cài đặt → xử lý nội dung), hoặc tài liệu sẽ tự fallback.
 
 ## Xử lý sự cố thường gặp
 
