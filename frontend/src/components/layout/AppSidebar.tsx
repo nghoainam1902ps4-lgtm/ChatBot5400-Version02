@@ -243,26 +243,30 @@ export function AppSidebar() {
                 side={isCollapsed ? 'right' : 'bottom'}
                 className="w-48"
               >
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    handleCreateSelection('source')
-                  }}
-                  className="gap-2"
-                >
-                   <FileText className="h-4 w-4" />
-                  {t('common.source')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    handleCreateSelection('notebook')
-                  }}
-                  className="gap-2"
-                >
-                   <Book className="h-4 w-4" />
-                  {t('common.notebook')}
-                </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      handleCreateSelection('source')
+                    }}
+                    className="gap-2"
+                  >
+                     <FileText className="h-4 w-4" />
+                    {t('common.source')}
+                  </DropdownMenuItem>
+                )}
+                {isAdmin && (
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      handleCreateSelection('notebook')
+                    }}
+                    className="gap-2"
+                  >
+                     <Book className="h-4 w-4" />
+                    {t('common.notebook')}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   onSelect={(event) => {
                     event.preventDefault()

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { useSourceStatus } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuth } from '@/lib/hooks/use-auth'
 import type { TFunction } from 'i18next'
 import { cn } from '@/lib/utils'
 import { ContextToggle } from '@/components/common/ContextToggle'
@@ -121,6 +122,7 @@ function SourceCardImpl({
   onContextModeChange
 }: SourceCardProps) {
   const { t } = useTranslation()
+  const { isAdmin } = useAuth()
   const statusConfigMap = getStatusConfig(t)
   
   // Only fetch status for sources that might have async processing
@@ -307,7 +309,8 @@ function SourceCardImpl({
               />
             )}
 
-            {/* Actions dropdown — ⋮ pinned to the card's top-right */}
+            {/* Actions dropdown — ⋮ pinned to the card's top-right (admin only) */}
+            {isAdmin && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -380,11 +383,12 @@ function SourceCardImpl({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+            )}
           </div>
         </div>
         {/* Prominent retry action surfaced directly on failed cards so it's
             discoverable without opening the dropdown menu (#726). */}
-        {isFailed ? (
+        {isFailed && isAdmin ? (
           <div className="flex gap-2 pt-2 border-t">
             <Button
               variant="default"

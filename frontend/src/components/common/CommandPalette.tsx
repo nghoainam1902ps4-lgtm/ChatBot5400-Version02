@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useId } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
+import { useAuth } from '@/lib/hooks/use-auth'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useTheme } from '@/lib/stores/theme-store'
 import {
@@ -57,9 +58,14 @@ const getThemeItems = (t: TFunction) => [
 
 export function CommandPalette() {
   const { t } = useTranslation()
+  const { isAdmin } = useAuth()
   const commandInputId = useId()
   const navigationItems = useMemo(() => getNavigationItems(t), [t])
-  const createItems = useMemo(() => getCreateItems(t), [t])
+  const createItems = useMemo(() => {
+    const items = getCreateItems(t)
+    // Source & Notebook creation is admin-only (RBAC).
+    return isAdmin ? items : items.filter((item) => item.action === 'podcast')
+  }, [t, isAdmin])
   const themeItems = useMemo(() => getThemeItems(t), [t])
   
   const [open, setOpen] = useState(false)

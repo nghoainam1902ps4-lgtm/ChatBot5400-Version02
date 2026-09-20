@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useAddSourcesToNotebook, useRemoveSourceFromNotebook } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuth } from '@/lib/hooks/use-auth'
 
 interface NotebookAssociationsProps {
   sourceId: string
@@ -21,6 +22,7 @@ export function NotebookAssociations({
   onSave,
 }: NotebookAssociationsProps) {
   const { t } = useTranslation()
+  const { isAdmin } = useAuth()
   const [selectedNotebookIds, setSelectedNotebookIds] = useState<string[]>(currentNotebookIds)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -101,6 +103,11 @@ export function NotebookAssociations({
 
   const handleCancel = () => {
     setSelectedNotebookIds(currentNotebookIds)
+  }
+
+  // Managing a source's notebook associations is admin-only (RBAC).
+  if (!isAdmin) {
+    return null
   }
 
   if (isLoading) {

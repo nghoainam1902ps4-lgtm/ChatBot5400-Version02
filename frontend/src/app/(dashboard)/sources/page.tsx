@@ -17,9 +17,11 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
+import { useAuth } from '@/lib/hooks/use-auth'
 
 export default function SourcesPage() {
   const { t, language } = useTranslation()
+  const { isAdmin } = useAuth()
   const [sourceDialogOpen, setSourceDialogOpen] = useState(false)
   const failedToLoadMessage = t('sources.failedToLoad')
   const [sources, setSources] = useState<SourceListResponse[]>([])
@@ -306,10 +308,12 @@ export default function SourcesPage() {
           title={t('sources.noSourcesYet')}
           description={t('sources.allSourcesDescShort')}
           action={
-            <Button onClick={() => setSourceDialogOpen(true)} variant="outline" className="mt-4">
-              <Plus className="h-4 w-4 mr-2" />
-              {t('sources.newSource')}
-            </Button>
+            isAdmin ? (
+              <Button onClick={() => setSourceDialogOpen(true)} variant="outline" className="mt-4">
+                <Plus className="h-4 w-4 mr-2" />
+                {t('sources.newSource')}
+              </Button>
+            ) : undefined
           }
         />
       )
@@ -428,14 +432,16 @@ export default function SourcesPage() {
                     </span>
                   </td>
                   <td className="h-12 px-4 text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => handleDeleteClick(e, source)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => handleDeleteClick(e, source)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}

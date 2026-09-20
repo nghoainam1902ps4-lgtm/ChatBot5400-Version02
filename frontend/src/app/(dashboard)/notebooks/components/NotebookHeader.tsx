@@ -11,6 +11,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { InlineEdit } from '@/components/common/InlineEdit'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuth } from '@/lib/hooks/use-auth'
 
 interface NotebookHeaderProps {
   notebook: NotebookResponse
@@ -18,6 +19,7 @@ interface NotebookHeaderProps {
 
 export function NotebookHeader({ notebook }: NotebookHeaderProps) {
   const { t, language } = useTranslation()
+  const { isAdmin } = useAuth()
   const dfLocale = getDateLocale(language)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   
@@ -54,63 +56,79 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 flex-1">
-              <InlineEdit
-                id="notebook-name"
-                name="notebook-name"
-                value={notebook.name}
-                onSave={handleUpdateName}
-                className="font-display text-2xl font-bold tracking-tight"
-                inputClassName="font-display text-2xl font-bold tracking-tight"
-                placeholder={t('notebooks.namePlaceholder')}
-              />
+              {isAdmin ? (
+                <InlineEdit
+                  id="notebook-name"
+                  name="notebook-name"
+                  value={notebook.name}
+                  onSave={handleUpdateName}
+                  className="font-display text-2xl font-bold tracking-tight"
+                  inputClassName="font-display text-2xl font-bold tracking-tight"
+                  placeholder={t('notebooks.namePlaceholder')}
+                />
+              ) : (
+                <h1 className="font-display text-2xl font-bold tracking-tight">
+                  {notebook.name}
+                </h1>
+              )}
               {notebook.archived && (
                 <Badge variant="secondary">{t('notebooks.archived')}</Badge>
               )}
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleArchiveToggle}
-              >
-                {notebook.archived ? (
-                  <>
-                    <ArchiveRestore className="h-4 w-4 mr-2" />
-                    {t('notebooks.unarchive')}
-                  </>
-                ) : (
-                  <>
-                    <Archive className="h-4 w-4 mr-2" />
-                    {t('notebooks.archive')}
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowDeleteDialog(true)}
-                className="text-destructive hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                {t('common.delete')}
-              </Button>
-            </div>
+            {isAdmin && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleArchiveToggle}
+                >
+                  {notebook.archived ? (
+                    <>
+                      <ArchiveRestore className="h-4 w-4 mr-2" />
+                      {t('notebooks.unarchive')}
+                    </>
+                  ) : (
+                    <>
+                      <Archive className="h-4 w-4 mr-2" />
+                      {t('notebooks.archive')}
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {t('common.delete')}
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Signature: one short flat fern underline — one hue, no show */}
           <div aria-hidden className="h-[3px] w-14 rounded-[1px] bg-fern" />
 
-          <InlineEdit
-            id="notebook-description"
-            name="notebook-description"
-            value={notebook.description || ''}
-            onSave={handleUpdateDescription}
-            className="text-muted-foreground"
-            inputClassName="text-muted-foreground"
-            placeholder={t('notebooks.addDescription')}
-            multiline
-            emptyText={t('notebooks.addDescription')}
-          />
+          {isAdmin ? (
+            <InlineEdit
+              id="notebook-description"
+              name="notebook-description"
+              value={notebook.description || ''}
+              onSave={handleUpdateDescription}
+              className="text-muted-foreground"
+              inputClassName="text-muted-foreground"
+              placeholder={t('notebooks.addDescription')}
+              multiline
+              emptyText={t('notebooks.addDescription')}
+            />
+          ) : (
+            notebook.description && (
+              <p className="text-muted-foreground whitespace-pre-wrap">
+                {notebook.description}
+              </p>
+            )
+          )}
           
           <div className="text-xs text-muted-foreground">
             {t('common.created', { time: formatDistanceToNow(new Date(notebook.created), { addSuffix: true, locale: dfLocale }) })} • 

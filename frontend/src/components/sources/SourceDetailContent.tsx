@@ -65,6 +65,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuth } from '@/lib/hooks/use-auth'
 import { SourceInsightDialog } from '@/components/sources/SourceInsightDialog'
 import { NotebookAssociations } from '@/components/sources/NotebookAssociations'
 
@@ -101,6 +102,7 @@ function SourceDetailContentInner({
   onClose
 }: SourceDetailContentProps) {
   const { t, language } = useTranslation()
+  const { isAdmin } = useAuth()
   const queryClient = useQueryClient()
   const [insights, setInsights] = useState<SourceInsightResponse[]>([])
   const [transformations, setTransformations] = useState<Transformation[]>([])
@@ -413,14 +415,20 @@ function SourceDetailContentInner({
       <div className="pb-5 pr-10">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <InlineEdit
-              value={source.title || ''}
-              onSave={handleUpdateTitle}
-              className="text-2xl font-bold"
-              inputClassName="text-2xl font-bold"
-              placeholder={t('sources.titlePlaceholder')}
-              emptyText={t('sources.untitledSource')}
-            />
+            {isAdmin ? (
+              <InlineEdit
+                value={source.title || ''}
+                onSave={handleUpdateTitle}
+                className="text-2xl font-bold"
+                inputClassName="text-2xl font-bold"
+                placeholder={t('sources.titlePlaceholder')}
+                emptyText={t('sources.untitledSource')}
+              />
+            ) : (
+              <h1 className="text-2xl font-bold">
+                {source.title || t('sources.untitledSource')}
+              </h1>
+            )}
             <p className="mt-1 font-mono text-xs text-muted-foreground">
               {t('sources.id')}: {source.id}
             </p>
@@ -462,21 +470,27 @@ function SourceDetailContentInner({
                     <DropdownMenuSeparator />
                   </>
                 )}
-                <DropdownMenuItem
-                  onClick={handleEmbedContent}
-                  disabled={isEmbedding || source.embedded}
-                >
-                  <Database className="mr-2 h-4 w-4" />
-                  {isEmbedding ? t('sources.embedding') : source.embedded ? t('sources.alreadyEmbedded') : t('sources.embedContent')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={handleDelete}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {t('sources.deleteSource')}
-                </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem
+                    onClick={handleEmbedContent}
+                    disabled={isEmbedding || source.embedded}
+                  >
+                    <Database className="mr-2 h-4 w-4" />
+                    {isEmbedding ? t('sources.embedding') : source.embedded ? t('sources.alreadyEmbedded') : t('sources.embedContent')}
+                  </DropdownMenuItem>
+                )}
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={handleDelete}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      {t('sources.deleteSource')}
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -555,6 +569,7 @@ function SourceDetailContentInner({
               </p>
 
               {/* Create New Insight */}
+              {isAdmin && (
               <div className="mt-5 border-b border-border pb-5">
                 <Label
                   htmlFor="transformation-select"
@@ -600,6 +615,7 @@ function SourceDetailContentInner({
                   </Button>
                 </div>
               </div>
+              )}
 
               {/* Insights List */}
               {loadingInsights ? (
@@ -629,14 +645,16 @@ function SourceDetailContentInner({
                         <Button size="sm" variant="outline" onClick={() => setSelectedInsight(insight)}>
                           {t('sources.viewInsight')}
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setInsightToDelete(insight.id)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isAdmin && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setInsightToDelete(insight.id)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
