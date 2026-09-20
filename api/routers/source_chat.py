@@ -9,7 +9,7 @@ from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from api.auth import TokenUser, get_current_user
+from api.auth import TokenUser, auth_disabled, get_current_user
 from api.routers._chat_shared import (
     ChatMessage,
     SuccessResponse,
@@ -30,7 +30,12 @@ router = APIRouter()
 
 
 def _owned_session_or_404(session: ChatSession, current: TokenUser) -> ChatSession:
-    """Enforce per-user isolation on a source chat session (owner only)."""
+    """Enforce per-user isolation on a source chat session (owner only).
+
+    Skipped in single-user mode when auth enforcement is disabled.
+    """
+    if auth_disabled():
+        return session
     if getattr(session, "user_id", None) != current.id:
         raise HTTPException(status_code=404, detail="Source or session not found")
     return session
@@ -164,8 +169,9 @@ async def get_source_chat_sessions(
                 if session_result and len(session_result) > 0:
                     session_data = session_result[0]
 
-                    # Data isolation: only the caller's own sessions.
-                    if session_data.get("user_id") != current.id:
+                    # Data isolation: only the caller's own sessions (skipped in
+                    # single-user mode when auth enforcement is disabled).
+                    if not auth_disabled() and session_data.get("user_id") != current.id:
                         continue
 
                     # Get message count from LangGraph state

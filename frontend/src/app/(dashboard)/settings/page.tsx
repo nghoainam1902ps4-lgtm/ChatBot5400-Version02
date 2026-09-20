@@ -6,10 +6,16 @@ import { useSettings } from '@/lib/hooks/use-settings'
 import { Button } from '@/components/ui/button'
 import { RefreshCw } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAdminGuard } from '@/lib/hooks/use-admin-guard'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
+  const { isAdmin, isLoading: authLoading } = useAdminGuard()
   const { refetch } = useSettings()
+
+  if (authLoading || !isAdmin) {
+    return null
+  }
 
   return (
     <AppShell>

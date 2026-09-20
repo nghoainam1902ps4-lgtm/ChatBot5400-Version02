@@ -215,6 +215,15 @@ async def lifespan(app: FastAPI):
 
     await seed_default_admin()
 
+    from api.auth import auth_disabled
+
+    if auth_disabled():
+        logger.warning(
+            "OPEN_NOTEBOOK_DISABLE_AUTH is set — authentication is DISABLED. "
+            "All requests run as an admin. Only use this in a trusted, "
+            "single-user environment."
+        )
+
     logger.success("API initialization completed successfully")
 
     # Yield control to the application

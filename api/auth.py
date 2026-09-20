@@ -54,6 +54,27 @@ def _jwt_secret() -> str:
     return "chatbot5400-insecure-dev-secret"
 
 
+def auth_disabled() -> bool:
+    """Whether authentication enforcement is turned off.
+
+    Defaults to False (auth is mandatory). An operator can explicitly opt out
+    for a trusted single-user/self-hosted deployment by setting
+    OPEN_NOTEBOOK_DISABLE_AUTH to a truthy value; the test suite also uses this.
+    When disabled, requests run as a synthetic admin.
+    """
+    return os.getenv("OPEN_NOTEBOOK_DISABLE_AUTH", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _dev_user() -> "TokenUser":
+    """Synthetic admin identity used when auth enforcement is disabled."""
+    return TokenUser(id="user:dev", username="dev", role="admin")
+
+
 def _expire_minutes() -> int:
     raw = os.getenv("OPEN_NOTEBOOK_JWT_EXPIRE_MINUTES")
     if raw:
@@ -145,6 +166,11 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS" or path in self.excluded_paths:
             return await call_next(request)
 
+        # Explicit opt-out for trusted single-user deployments / tests.
+        if auth_disabled():
+            request.state.user = _dev_user()
+            return await call_next(request)
+
         token = _extract_bearer(request)
         if not token:
             return JSONResponse(
@@ -179,6 +205,8 @@ def get_current_user(request: Request) -> TokenUser:
         return user
     token = _extract_bearer(request)
     if not token:
+        if auth_disabled():
+            return _dev_user()
         raise AuthenticationError("Not authenticated")
     return decode_token(token)
 

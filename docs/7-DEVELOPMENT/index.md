@@ -34,6 +34,7 @@ Start with **[Contributing Guide](contributing.md)** for the workflow, then chec
 - Design patterns we use
 
 For deeper dives into specific subsystems:
+- **[Authentication, RBAC & Data Isolation](authentication.md)** - Accounts, roles, JWT, per-user chats/notes
 - **[Credentials](credentials.md)** - Provider credential storage, encryption, provisioning
 - **[Content Processing](content-processing.md)** - Chunking, embedding, context building, encryption
 - **[Podcasts](podcasts.md)** - Profile system, model registry, job lifecycle

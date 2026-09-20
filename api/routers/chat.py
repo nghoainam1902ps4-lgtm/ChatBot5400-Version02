@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from api.auth import TokenUser, get_current_user
+from api.auth import TokenUser, auth_disabled, get_current_user
 from api.routers._chat_shared import (
     ChatMessage,
     SuccessResponse,
@@ -33,8 +33,11 @@ def _owned_session_or_404(session: ChatSession, current: TokenUser) -> ChatSessi
 
     A session (and its message history) is private to its owner — no other
     user, including an admin, may read or use it. 404 rather than 403 so the
-    session's existence is not leaked to non-owners.
+    session's existence is not leaked to non-owners. Skipped in single-user mode
+    when auth enforcement is disabled.
     """
+    if auth_disabled():
+        return session
     if getattr(session, "user_id", None) != current.id:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
@@ -120,8 +123,9 @@ async def get_sessions(
 
         results = []
         for session in sessions_list:
-            # Data isolation: only the caller's own sessions.
-            if getattr(session, "user_id", None) != current.id:
+            # Data isolation: only the caller's own sessions (skipped in
+            # single-user mode when auth enforcement is disabled).
+            if not auth_disabled() and getattr(session, "user_id", None) != current.id:
                 continue
             session_id = str(session.id)
 

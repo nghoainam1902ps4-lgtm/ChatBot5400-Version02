@@ -11,9 +11,11 @@ import { useTransformations } from '@/lib/hooks/use-transformations'
 import { Transformation } from '@/lib/types/transformations'
 import { Wand2, Play, RefreshCw } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAdminGuard } from '@/lib/hooks/use-admin-guard'
 
 export default function TransformationsPage() {
   const { t } = useTranslation()
+  const { isAdmin, isLoading: authLoading } = useAdminGuard()
   const [activeTab, setActiveTab] = useState('transformations')
   const [selectedTransformation, setSelectedTransformation] = useState<Transformation | undefined>()
   const { data: transformations, isLoading, refetch } = useTransformations()
@@ -21,6 +23,10 @@ export default function TransformationsPage() {
   const handlePlayground = (transformation: Transformation) => {
     setSelectedTransformation(transformation)
     setActiveTab('playground')
+  }
+
+  if (authLoading || !isAdmin) {
+    return null
   }
 
   return (

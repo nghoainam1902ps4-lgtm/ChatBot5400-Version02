@@ -3,7 +3,7 @@ from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
-from api.auth import TokenUser, get_current_user
+from api.auth import TokenUser, auth_disabled, get_current_user
 from api.models import NoteCreate, NoteResponse, NoteUpdate
 from open_notebook.domain.notebook import Note
 from open_notebook.exceptions import (
@@ -20,8 +20,11 @@ def _owned_note_or_404(note: Note, current: TokenUser) -> Note:
 
     A note belongs to exactly one user; nobody else (admins included) may read
     or mutate it. We 404 rather than 403 so a note's existence is not leaked to
-    non-owners.
+    non-owners. When auth enforcement is disabled (single-user mode) ownership
+    is not applied.
     """
+    if auth_disabled():
+        return note
     if note.user_id != current.id:
         raise HTTPException(status_code=404, detail="Note not found")
     return note
@@ -44,8 +47,10 @@ async def get_notes(
             # Get all notes
             notes = await Note.get_all(order_by="updated desc")
 
-        # Data isolation: only the caller's own notes.
-        notes = [n for n in notes if n.user_id == current.id]
+        # Data isolation: only the caller's own notes (skipped in single-user
+        # mode when auth enforcement is disabled).
+        if not auth_disabled():
+            notes = [n for n in notes if n.user_id == current.id]
 
         return [
             NoteResponse(

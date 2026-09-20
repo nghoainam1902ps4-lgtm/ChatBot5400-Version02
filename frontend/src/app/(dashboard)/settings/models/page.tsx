@@ -6,6 +6,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Key, ShieldAlert, AlertCircle } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAdminGuard } from '@/lib/hooks/use-admin-guard'
 import { useModels, useModelDefaults } from '@/lib/hooks/use-models'
 import {
   useCredentials,
@@ -22,6 +23,7 @@ import {
 
 export default function ApiKeysPage() {
   const { t } = useTranslation()
+  const { isAdmin, isLoading: authLoading } = useAdminGuard()
 
   // Data
   const { data: credentials, isLoading: credentialsLoading } = useCredentials()
@@ -83,6 +85,10 @@ export default function ApiKeysPage() {
         </div>
       </AppShell>
     )
+  }
+
+  if (authLoading || !isAdmin) {
+    return null
   }
 
   return (

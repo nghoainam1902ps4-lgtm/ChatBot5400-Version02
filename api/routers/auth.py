@@ -8,7 +8,12 @@ from fastapi import APIRouter, Depends
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from api.auth import TokenUser, create_access_token, get_current_user
+from api.auth import (
+    TokenUser,
+    auth_disabled,
+    create_access_token,
+    get_current_user,
+)
 from open_notebook.domain.user import User
 from open_notebook.exceptions import AuthenticationError, InvalidInputError
 
@@ -40,11 +45,14 @@ class ChangePasswordRequest(BaseModel):
 
 @router.get("/status")
 async def get_auth_status():
-    """Public: report that JWT authentication is required."""
+    """Public: report whether authentication is enforced."""
+    enabled = not auth_disabled()
     return {
-        "auth_enabled": True,
+        "auth_enabled": enabled,
         "auth_type": "jwt",
-        "message": "Authentication is required",
+        "message": "Authentication is required"
+        if enabled
+        else "Authentication is disabled",
     }
 
 

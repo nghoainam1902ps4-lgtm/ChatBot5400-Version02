@@ -14,6 +14,11 @@ from pathlib import Path
 # Set to empty string instead of deleting to prevent it from being reloaded
 os.environ["OPEN_NOTEBOOK_PASSWORD"] = ""
 
+# Disable JWT auth enforcement for the test suite so endpoint tests can call
+# protected routes without minting a token. Dedicated auth tests
+# (test_auth.py) toggle this off explicitly to verify real enforcement.
+os.environ["OPEN_NOTEBOOK_DISABLE_AUTH"] = "true"
+
 # Load environment variables from .env file
 # This must be done BEFORE any imports that depend on environment variables
 from dotenv import load_dotenv

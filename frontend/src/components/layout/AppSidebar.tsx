@@ -43,7 +43,16 @@ import {
   Users,
   KeyRound,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { ChangePasswordDialog } from '@/components/auth/ChangePasswordDialog'
+
+type NavItem = {
+  name: string
+  href: string
+  icon: LucideIcon
+  iconClass?: string
+}
+type NavSection = { title: string; items: NavItem[] }
 
 const getNavigation = (t: TFunction) => [
   {
@@ -97,26 +106,31 @@ export function AppSidebar() {
   const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
   const [changePwOpen, setChangePwOpen] = useState(false)
 
-  // Admins get a "User Management" entry appended to the Manage section.
-  const baseNavigation = getNavigation(t)
-  const navigation = isAdmin
-    ? baseNavigation.map((section) =>
-        section.title === t('navigation.manage')
-          ? {
-              ...section,
-              items: [
-                ...section.items,
-                {
-                  name: t('users.title'),
-                  href: '/settings/users',
-                  icon: Users,
-                  iconClass: undefined,
-                },
-              ],
-            }
-          : section
-      )
-    : baseNavigation
+  // The "Manage" section (models, transformations, settings, advanced, user
+  // management) is admin-only. Regular users don't see it at all; admins get a
+  // "User Management" entry appended to it.
+  const manageTitle = t('navigation.manage')
+  const navigation = getNavigation(t).flatMap((section): NavSection[] => {
+    if (section.title !== manageTitle) {
+      return [{ title: section.title, items: [...section.items] }]
+    }
+    if (!isAdmin) {
+      return []
+    }
+    return [
+      {
+        title: section.title,
+        items: [
+          ...section.items,
+          {
+            name: t('users.title'),
+            href: '/settings/users',
+            icon: Users,
+          },
+        ],
+      },
+    ]
+  })
 
   // The active item is the longest href that prefixes the current path.
   // Longest-wins keeps `/settings` from also highlighting on `/settings/models`
