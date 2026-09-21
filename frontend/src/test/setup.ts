@@ -1,6 +1,18 @@
 import '@testing-library/jest-dom'
 import { vi } from 'vitest'
 
+// jsdom lacks ResizeObserver / scrollIntoView, which cmdk (CommandPalette) uses.
+if (!('ResizeObserver' in globalThis)) {
+  ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
+
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
   useRouter: () => ({

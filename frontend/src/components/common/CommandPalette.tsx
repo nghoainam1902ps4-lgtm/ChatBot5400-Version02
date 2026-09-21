@@ -33,15 +33,18 @@ import {
 import { useTranslation } from '@/lib/hooks/use-translation'
 import type { TFunction } from 'i18next'
 
+// `adminOnly` mirrors the sidebar's admin-gated "Manage" section: Models,
+// Transformations, Settings and Advanced are system-administration routes that
+// regular users must not see or navigate to from the command palette either.
 const getNavigationItems = (t: TFunction) => [
-  { name: t('navigation.sources'), href: '/sources', icon: FileText, keywords: ['files', 'documents', 'upload'] },
-  { name: t('navigation.notebooks'), href: '/notebooks', icon: Book, keywords: ['notes', 'research', 'projects'] },
-  { name: t('navigation.askAndSearch'), href: '/search', icon: Search, keywords: ['find', 'query'] },
-  { name: t('navigation.podcasts'), href: '/podcasts', icon: Mic, keywords: ['audio', 'episodes', 'generate'] },
-  { name: t('navigation.models'), href: '/settings/models', icon: Bot, keywords: ['ai', 'llm', 'providers', 'openai', 'anthropic'] },
-  { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle, keywords: ['prompts', 'templates', 'actions'] },
-  { name: t('navigation.settings'), href: '/settings', icon: Settings, keywords: ['preferences', 'config', 'options'] },
-  { name: t('navigation.advanced'), href: '/advanced', icon: Wrench, keywords: ['debug', 'system', 'tools'] },
+  { name: t('navigation.sources'), href: '/sources', icon: FileText, keywords: ['files', 'documents', 'upload'], adminOnly: false },
+  { name: t('navigation.notebooks'), href: '/notebooks', icon: Book, keywords: ['notes', 'research', 'projects'], adminOnly: false },
+  { name: t('navigation.askAndSearch'), href: '/search', icon: Search, keywords: ['find', 'query'], adminOnly: false },
+  { name: t('navigation.podcasts'), href: '/podcasts', icon: Mic, keywords: ['audio', 'episodes', 'generate'], adminOnly: false },
+  { name: t('navigation.models'), href: '/settings/models', icon: Bot, keywords: ['ai', 'llm', 'providers', 'openai', 'anthropic'], adminOnly: true },
+  { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle, keywords: ['prompts', 'templates', 'actions'], adminOnly: true },
+  { name: t('navigation.settings'), href: '/settings', icon: Settings, keywords: ['preferences', 'config', 'options'], adminOnly: true },
+  { name: t('navigation.advanced'), href: '/advanced', icon: Wrench, keywords: ['debug', 'system', 'tools'], adminOnly: true },
 ]
 
 const getCreateItems = (t: TFunction) => [
@@ -60,7 +63,12 @@ export function CommandPalette() {
   const { t } = useTranslation()
   const { isAdmin } = useAuth()
   const commandInputId = useId()
-  const navigationItems = useMemo(() => getNavigationItems(t), [t])
+  const navigationItems = useMemo(() => {
+    const items = getNavigationItems(t)
+    // Hide admin-only destinations (Models, Transformations, Settings,
+    // Advanced) from non-admin users — matches the sidebar RBAC.
+    return isAdmin ? items : items.filter((item) => !item.adminOnly)
+  }, [t, isAdmin])
   const createItems = useMemo(() => {
     const items = getCreateItems(t)
     // Source & Notebook creation is admin-only (RBAC).
