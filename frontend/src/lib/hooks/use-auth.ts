@@ -1,11 +1,14 @@
 'use client'
 
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/lib/stores/auth-store'
+import { clearSessionData } from '@/lib/session-cleanup'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
 export function useAuth() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const {
     isAuthenticated,
     isLoading,
@@ -39,6 +42,9 @@ export function useAuth() {
   const handleLogin = async (username: string, password: string) => {
     const success = await login(username, password)
     if (success) {
+      // Start the new session from a clean cache so nothing from a previous
+      // account (e.g. switching users without a full reload) can flash in.
+      clearSessionData(queryClient)
       const redirectPath = sessionStorage.getItem('redirectAfterLogin')
       if (redirectPath) {
         sessionStorage.removeItem('redirectAfterLogin')
@@ -52,7 +58,10 @@ export function useAuth() {
 
   const handleLogout = async () => {
     await logout()
-    router.push('/login')
+    // Drop the previous user's cached notebooks/notes/chats/sources and
+    // navigation context before leaving the authenticated area.
+    clearSessionData(queryClient)
+    router.replace('/login')
   }
 
   return {

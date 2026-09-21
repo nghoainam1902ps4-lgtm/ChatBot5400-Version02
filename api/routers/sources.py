@@ -18,7 +18,7 @@ from loguru import logger
 from pydantic import ValidationError
 from surreal_commands import execute_command_sync, submit_command
 
-from api.auth import require_admin
+from api.auth import TokenUser, get_current_user, require_admin
 from api.command_service import CommandService
 from api.credentials_service import validate_url
 from api.models import (
@@ -32,6 +32,7 @@ from api.models import (
     SourceStatusResponse,
     SourceUpdate,
 )
+from api.recently_viewed import stamp_view
 from commands.source_commands import SourceProcessingInput
 from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.database.repository import ensure_record_id, repo_query
@@ -101,18 +102,6 @@ SOURCE_TYPE_EXPRESSION = (
     "IF asset.file_path != NONE THEN 'file' "
     "ELSE IF asset.url != NONE THEN 'link' ELSE 'text' END"
 )
-
-
-async def _stamp_source_view(source_id: str) -> None:
-    # Best-effort write-on-read: recording the view timestamp must never turn a
-    # successful read into a 500. Log and move on if the stamp update fails.
-    try:
-        await repo_query(
-            "UPDATE $source_id SET last_viewed_at = time::now();",
-            {"source_id": ensure_record_id(source_id)},
-        )
-    except Exception as e:
-        logger.warning(f"Failed to stamp last_viewed_at for source {source_id}: {e}")
 
 
 def generate_unique_filename(original_filename: str, upload_folder: str) -> str:
@@ -762,14 +751,17 @@ def _is_source_file_available(source: Source) -> Optional[bool]:
 
 
 @router.get("/sources/{source_id}", response_model=SourceResponse)
-async def get_source(source_id: str):
+async def get_source(
+    source_id: str,
+    current_user: TokenUser = Depends(get_current_user),
+):
     """Get a specific source by ID."""
     try:
         source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
-        await _stamp_source_view(source.id or source_id)
+        await stamp_view(current_user.id, source.id or source_id, "source")
 
         # Get status information if command exists
         status = None

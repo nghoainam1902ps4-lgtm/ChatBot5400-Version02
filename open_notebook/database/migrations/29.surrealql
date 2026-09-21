@@ -1,0 +1,11 @@
+-- Per-user "recently viewed" tracking.
+-- Notebooks and sources are shared, admin-managed resources, so a single
+-- last_viewed_at field on them leaked each user's history to everyone. This
+-- table records one row per (user, item) pair, keyed by a deterministic
+-- composite id (recently_viewed:[user, item]) so repeat views upsert in place.
+DEFINE TABLE IF NOT EXISTS recently_viewed SCHEMALESS;
+DEFINE FIELD IF NOT EXISTS user ON recently_viewed TYPE record<user>;
+DEFINE FIELD IF NOT EXISTS item ON recently_viewed TYPE record;
+DEFINE FIELD IF NOT EXISTS item_type ON recently_viewed TYPE string;
+DEFINE FIELD IF NOT EXISTS last_viewed_at ON recently_viewed TYPE datetime;
+DEFINE INDEX IF NOT EXISTS recently_viewed_user_idx ON recently_viewed FIELDS user;

@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
-from api.auth import require_admin
+from api.auth import TokenUser, get_current_user, require_admin
 from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
@@ -12,6 +12,7 @@ from api.models import (
     NotebookUpdate,
     RecentlyViewedResponse,
 )
+from api.recently_viewed import stamp_view
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import (
@@ -23,38 +24,21 @@ from open_notebook.exceptions import (
 router = APIRouter()
 
 
-def _last_viewed_sort_key(item: RecentlyViewedResponse) -> str:
-    return item.last_viewed_at
-
-
-async def _stamp_notebook_view(notebook_id: str) -> None:
-    # Best-effort write-on-read: recording the view timestamp must never turn a
-    # successful read into a 500. Log and move on if the stamp update fails.
-    try:
-        await repo_query(
-            "UPDATE $notebook_id SET last_viewed_at = time::now();",
-            {"notebook_id": ensure_record_id(notebook_id)},
-        )
-    except Exception as e:
-        logger.warning(
-            f"Failed to stamp last_viewed_at for notebook {notebook_id}: {e}"
-        )
-
-
-def _recently_viewed_notebook(row: dict) -> RecentlyViewedResponse:
+def _recently_viewed_row(row: dict) -> Optional[RecentlyViewedResponse]:
+    """Map a FETCH-ed recently_viewed row to a response, or None if the target
+    notebook/source has since been deleted (dangling record link)."""
+    item = row.get("item")
+    if not isinstance(item, dict):
+        # Link no longer resolves (item deleted) -> drop it from the list.
+        return None
+    item_type = row.get("item_type")
+    if item_type not in ("notebook", "source"):
+        return None
+    title = item.get("name") or item.get("title") or "Untitled"
     return RecentlyViewedResponse(
-        type="notebook",
-        id=str(row.get("id", "")),
-        title=row.get("title") or row.get("name") or "Untitled notebook",
-        last_viewed_at=str(row.get("last_viewed_at", "")),
-    )
-
-
-def _recently_viewed_source(row: dict) -> RecentlyViewedResponse:
-    return RecentlyViewedResponse(
-        type="source",
-        id=str(row.get("id", "")),
-        title=row.get("title") or "Untitled source",
+        type=item_type,
+        id=str(item.get("id", "")),
+        title=title,
         last_viewed_at=str(row.get("last_viewed_at", "")),
     )
 
@@ -170,35 +154,29 @@ async def create_notebook(notebook: NotebookCreate):
 @router.get("/recently-viewed", response_model=List[RecentlyViewedResponse])
 async def get_recently_viewed(
     limit: int = Query(12, ge=1, le=50, description="Number of items to return"),
+    current_user: TokenUser = Depends(get_current_user),
 ):
-    """Get recently viewed notebooks and sources, newest first."""
+    """Get the CURRENT user's recently viewed notebooks and sources, newest
+    first. View history is per-user (see api/recently_viewed.py), so one user
+    never sees another's history."""
     try:
-        notebooks = await repo_query(
+        rows = await repo_query(
             """
-            SELECT id, name AS title, last_viewed_at
-            FROM notebook
-            WHERE last_viewed_at != NONE AND last_viewed_at != NULL
+            SELECT item, item_type, last_viewed_at
+            FROM recently_viewed
+            WHERE user = $user
             ORDER BY last_viewed_at DESC
             LIMIT $limit
+            FETCH item
             """,
-            {"limit": limit},
-        )
-        sources = await repo_query(
-            """
-            SELECT id, title, last_viewed_at
-            FROM source
-            WHERE last_viewed_at != NONE AND last_viewed_at != NULL
-            ORDER BY last_viewed_at DESC
-            LIMIT $limit
-            """,
-            {"limit": limit},
+            {"user": ensure_record_id(current_user.id), "limit": limit},
         )
 
         items = [
-            *[_recently_viewed_notebook(nb) for nb in notebooks],
-            *[_recently_viewed_source(src) for src in sources],
+            mapped
+            for row in rows
+            if (mapped := _recently_viewed_row(row)) is not None
         ]
-        items.sort(key=_last_viewed_sort_key, reverse=True)
         return items[:limit]
     except HTTPException:
         raise
@@ -245,7 +223,10 @@ async def get_notebook_delete_preview(notebook_id: str):
 
 
 @router.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
-async def get_notebook(notebook_id: str):
+async def get_notebook(
+    notebook_id: str,
+    current_user: TokenUser = Depends(get_current_user),
+):
     """Get a specific notebook by ID."""
     try:
         # Query with counts for single notebook
@@ -260,7 +241,7 @@ async def get_notebook(notebook_id: str):
         if not result:
             raise HTTPException(status_code=404, detail="Notebook not found")
 
-        await _stamp_notebook_view(notebook_id)
+        await stamp_view(current_user.id, notebook_id, "notebook")
 
         nb = result[0]
         return NotebookResponse(
