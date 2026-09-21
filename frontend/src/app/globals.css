@@ -465,3 +465,15 @@
 .source-prose :where(li) > p:first-child {
   text-indent: 0;
 }
+/* Docling emits "Điều n." and điểm "a)/b)/c)" as bullet-list items, so the
+   Markdown renderer shows a • before them that the original document never had.
+   Hide the bullet and un-indent the top level so headings sit flush-left like
+   the source; keep a small indent for nested points, and keep ORDERED lists
+   (Khoản 1./2./3.) with their numbers. */
+.source-prose :where(ul) {
+  list-style: none;
+  padding-left: 0;
+}
+.source-prose :where(ul) :where(ul) {
+  padding-left: 1.5em;
+}
