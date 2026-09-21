@@ -41,9 +41,10 @@ vi.mock('../lib/hooks/use-translation', () => {
 // Mock @/lib/hooks/use-auth
 vi.mock('@/lib/hooks/use-auth', () => ({
   useAuth: vi.fn(() => ({
-    user: { id: '1', email: 'test@example.com' },
+    user: { id: '1', email: 'test@example.com', username: 'admin', role: 'admin' },
     logout: vi.fn(),
     isLoading: false,
+    isAdmin: true,
   })),
 }))
 

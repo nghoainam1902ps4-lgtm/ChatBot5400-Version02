@@ -85,13 +85,24 @@ const getNavigation = (t: TFunction) => [
   },
 ] as const
 
-// The tri-hue mark recomposed in the owned palette: fern / gold / teal.
-function LogoPebbles({ className }: { className?: string }) {
+// Agribank text wordmark (replaces the previous tri-dot mark). Bordeaux, bold.
+// Collapsed rail shows just the initial "A" to fit the 4rem-wide column.
+function AgribankWordmark({
+  collapsed,
+  className,
+}: {
+  collapsed?: boolean
+  className?: string
+}) {
   return (
-    <span className={cn('flex items-center gap-[3px]', className)} aria-hidden="true">
-      <span className="size-[9px] rounded-[3px] bg-fern" />
-      <span className="size-[9px] rounded-[3px] bg-gold" />
-      <span className="size-[9px] rounded-[3px] bg-fern-deep" />
+    <span
+      className={cn(
+        'font-display text-lg font-bold tracking-tight text-primary',
+        className
+      )}
+      aria-label="Agribank"
+    >
+      {collapsed ? 'A' : 'Agribank'}
     </span>
   )
 }
@@ -177,7 +188,7 @@ export function AppSidebar() {
         >
           {isCollapsed ? (
             <div className="relative flex items-center justify-center w-full">
-              <LogoPebbles className="flex-col gap-[3px] transition-opacity group-hover:opacity-0" />
+              <AgribankWordmark collapsed className="transition-opacity group-hover:opacity-0" />
               <Button
                 variant="ghost"
                 size="sm"
@@ -190,10 +201,7 @@ export function AppSidebar() {
           ) : (
             <>
               <div className="flex items-center gap-2.5">
-                <LogoPebbles />
-                <span className="font-display text-[15px] font-bold tracking-tight text-sidebar-foreground">
-                  {t('common.appName')}
-                </span>
+                <AgribankWordmark />
               </div>
               <Button
                 variant="ghost"

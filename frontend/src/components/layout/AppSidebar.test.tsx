@@ -13,6 +13,12 @@ vi.mock('@/components/ui/tooltip', () => ({
   TooltipContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
+// AppSidebar renders <ChangePasswordDialog>, which calls useChangePassword()
+// (a TanStack useMutation). Mock it so the test needs no QueryClientProvider.
+vi.mock('@/lib/hooks/use-users', () => ({
+  useChangePassword: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+
 describe('AppSidebar', () => {
   afterEach(() => {
     vi.mocked(usePathname).mockReturnValue('')
@@ -34,8 +40,8 @@ describe('AppSidebar', () => {
   it('renders correctly when expanded', () => {
     render(<AppSidebar />)
 
-    // With mocked t() returning keys, check for translation key strings
-    expect(screen.getByText('common.appName')).toBeDefined()
+    // Brand wordmark (literal, not a translation key) is shown when expanded.
+    expect(screen.getByText('Agribank')).toBeDefined()
     expect(screen.getByText('navigation.sources')).toBeDefined()
     expect(screen.getByText('navigation.notebooks')).toBeDefined()
   })
@@ -79,7 +85,8 @@ describe('AppSidebar', () => {
 
     render(<AppSidebar />)
 
-    // In collapsed mode, app name shouldn't be visible (as text)
-    expect(screen.queryByText('common.appName')).toBeNull()
+    // In collapsed mode, the full brand wordmark collapses to the "A" initial.
+    expect(screen.queryByText('Agribank')).toBeNull()
+    expect(screen.getByText('A')).toBeDefined()
   })
 })

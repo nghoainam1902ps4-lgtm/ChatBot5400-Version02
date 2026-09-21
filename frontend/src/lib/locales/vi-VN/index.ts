@@ -28,7 +28,6 @@ export const viVN = {
     podcast: "Podcast",
     quickActions: "Thao tác nhanh",
     quickActionsDesc: "Điều hướng, tìm kiếm, hỏi, giao diện",
-    appName: "Open Notebook",
     add: "Thêm",
     remove: "Gỡ bỏ",
     confirm: "Xác nhận",

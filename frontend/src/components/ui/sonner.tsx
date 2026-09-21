@@ -11,15 +11,18 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       theme={effectiveTheme as ToasterProps["theme"]}
+      richColors
       className="toaster group"
       style={
         {
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
-          "--success-bg": "var(--popover)",
-          "--success-text": "var(--popover-foreground)",
-          "--success-border": "var(--border)",
+          // Success/status toasts use the Agribank bordeaux with high-contrast
+          // white text (richColors makes Sonner read these per-type vars).
+          "--success-bg": "#8B1538",
+          "--success-text": "#ffffff",
+          "--success-border": "#6f1029",
         } as React.CSSProperties
       }
       {...props}
