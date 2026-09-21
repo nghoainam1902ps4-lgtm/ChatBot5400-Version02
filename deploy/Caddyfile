@@ -1,0 +1,25 @@
+# Caddy reverse proxy for ChatBot5400.
+# Caddy obtains and renews Let's Encrypt certificates automatically for both
+# domains (ports 80/443 must be open on the VPS firewall and the DNS A records
+# for both names must already point at this server — they do).
+#
+# If certificate issuance fails, change the two site addresses to their
+# ":80" form temporarily to serve over HTTP while you debug DNS/firewall.
+
+5491sotay.io.vn {
+	encode zstd gzip
+	reverse_proxy open_notebook:8502
+}
+
+api.5491sotay.io.vn {
+	encode zstd gzip
+
+	# The API accepts uploads up to 100 MB (OPEN_NOTEBOOK_MAX_UPLOAD_SIZE_MB);
+	# allow a little headroom so large .docx/.pdf sources are not rejected by
+	# the proxy before reaching the app.
+	request_body {
+		max_size 110MB
+	}
+
+	reverse_proxy open_notebook:5055
+}

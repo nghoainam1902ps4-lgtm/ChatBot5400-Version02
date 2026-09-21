@@ -1,0 +1,76 @@
+# Production deployment for ChatBot5400 (Open Notebook + Auth/RBAC + i18n + Agribank UI).
+#
+# Builds the app FROM SOURCE (this branch) — the published image
+# lfnovo/open_notebook:v1-latest does NOT contain our custom code
+# (authentication, per-user data isolation, Vietnamese i18n, docling default,
+# the Agribank redesign). Docling is a hard dependency now, so the built image
+# is multi-GB and the first build is slow.
+#
+# Topology:
+#   Caddy (:80/:443, automatic HTTPS)
+#     ├── 5491sotay.io.vn      -> open_notebook:8502  (Next.js frontend)
+#     └── api.5491sotay.io.vn  -> open_notebook:5055  (FastAPI)
+#   open_notebook  -> surrealdb:8000  (internal compose network only)
+#
+# Run from this directory:  docker compose -f docker-compose.prod.yml up -d --build
+# See DEPLOY-VPS.md for the full step-by-step runbook.
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v2
+    # exec form: keeps a password with spaces as one argument.
+    command: ["start", "--log", "info", "--user", "${SURREAL_USER}", "--pass", "${SURREAL_PASSWORD}", "rocksdb:/mydata/mydatabase.db"]
+    user: root  # required for bind mounts on Linux
+    volumes:
+      - ./surreal_data:/mydata
+    environment:
+      - SURREAL_EXPERIMENTAL_GRAPHQL=true
+    # No host port published: only the open_notebook service reaches SurrealDB,
+    # over the internal compose network. Do NOT expose 8000 on 0.0.0.0.
+    restart: always
+
+  open_notebook:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      # REQUIRED — encrypts stored provider API keys. Never commit the real value.
+      - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY}
+      # Signs login JWTs. Set it so sessions survive restarts (else ephemeral).
+      - OPEN_NOTEBOOK_JWT_SECRET=${OPEN_NOTEBOOK_JWT_SECRET}
+      # Auth is ENFORCED in production. Do not set OPEN_NOTEBOOK_DISABLE_AUTH here.
+
+      # Database (internal network).
+      - SURREAL_URL=ws://surrealdb:8000/rpc
+      - SURREAL_USER=${SURREAL_USER}
+      - SURREAL_PASSWORD=${SURREAL_PASSWORD}
+      - SURREAL_NAMESPACE=open_notebook
+      - SURREAL_DATABASE=open_notebook
+
+      # Public API origin the BROWSER should call (served by Caddy over HTTPS).
+      - API_URL=${PUBLIC_API_URL}
+      # Lock CORS to the frontend origin only (enables credentialed CORS).
+      - CORS_ORIGINS=${PUBLIC_FRONTEND_URL}
+    volumes:
+      # Persists uploads, chat checkpoints, and cached docling/HF models.
+      - ./notebook_data:/app/data
+    expose:
+      - "8502"  # frontend  (internal only — Caddy publishes it)
+      - "5055"  # API       (internal only — Caddy publishes it)
+    depends_on:
+      - surrealdb
+    restart: always
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy_data:/data       # Let's Encrypt certs (persist across restarts)
+      - ./caddy_config:/config
+    depends_on:
+      - open_notebook
+    restart: always
