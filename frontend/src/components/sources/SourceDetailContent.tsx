@@ -87,6 +87,37 @@ const safeExternalHref = (url: string | null | undefined): string | null => {
   }
 }
 
+// Leading plain-text of a rendered node tree (used to classify list items by
+// their prefix: "Điều n." vs điểm "a)/b)/c)").
+function leadingText(node: React.ReactNode): string {
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return String(node)
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const t = leadingText(child)
+      if (t) return t
+    }
+  }
+  return ''
+}
+
+// Legal-document renderer overrides for the source content: bold the whole
+// "Điều n." heading line and indent điểm (a)/b)/c)) one level. Chương/Mục
+// centering, Khoản indentation, justify, indent and bullet removal are handled
+// by the `.source-prose` CSS in globals.css.
+const legalContentComponents = {
+  li: ({ children }: { children?: React.ReactNode }) => {
+    const lead = leadingText(children).trimStart()
+    if (/^Điều\s+\d+/.test(lead)) {
+      return <li className="mb-1 mt-3 font-bold">{children}</li>
+    }
+    if (/^[a-zđ]\)/i.test(lead)) {
+      return <li className="mb-1 pl-6">{children}</li>
+    }
+    return <li className="mb-1">{children}</li>
+  },
+}
+
 export function SourceDetailContent(props: SourceDetailContentProps) {
   // Remount per source so all per-source UI state (active tab, transient
   // flags, insight selection…) resets on navigation, without parents needing
@@ -554,7 +585,7 @@ function SourceDetailContentInner({
                   documents (Điều/Khoản/điểm) read closer to the original.
                   Scoped to source content only — chat/notes are unaffected. */}
               <div className="source-prose">
-                <MarkdownRenderer>
+                <MarkdownRenderer components={legalContentComponents}>
                   {source.full_text || t('sources.noContent')}
                 </MarkdownRenderer>
               </div>

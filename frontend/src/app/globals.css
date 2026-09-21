@@ -458,6 +458,9 @@
 .source-prose :where(p, li) {
   text-align: justify;
   text-justify: inter-word;
+  /* Roomier, official-document ("công văn") reading rhythm. */
+  font-size: 1.0625rem; /* ~17px */
+  line-height: 1.85;
 }
 .source-prose :where(p) {
   text-indent: 2em;
@@ -476,4 +479,15 @@
 }
 .source-prose :where(ul) :where(ul) {
   padding-left: 1.5em;
+}
+/* Khoản (ordered lists) indented one level under their Điều. */
+.source-prose :where(ol) {
+  padding-left: 2em;
+}
+/* Chương / Mục section titles centered like the original document. Never
+   justified or first-line-indented. */
+.source-prose :where(h1, h2, h3) {
+  text-align: center;
+  text-indent: 0;
+  text-transform: none;
 }
