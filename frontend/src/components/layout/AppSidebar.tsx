@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -85,25 +86,19 @@ const getNavigation = (t: TFunction) => [
   },
 ] as const
 
-// Agribank text wordmark (replaces the previous tri-dot mark). Bordeaux, bold.
-// Collapsed rail shows just the initial "A" to fit the 4rem-wide column.
-function AgribankWordmark({
-  collapsed,
-  className,
-}: {
-  collapsed?: boolean
-  className?: string
-}) {
+// Agribank logo mark, served from /public so it can be swapped for the official
+// asset without touching code (replace frontend/public/agribank-logo.svg).
+function AgribankLogo({ className }: { className?: string }) {
   return (
-    <span
-      className={cn(
-        'font-display text-lg font-bold tracking-tight text-primary',
-        className
-      )}
-      aria-label="Agribank"
-    >
-      {collapsed ? 'A' : 'Agribank'}
-    </span>
+    <Image
+      src="/agribank-logo.svg"
+      alt="Agribank Lâm Đồng"
+      width={32}
+      height={32}
+      className={cn('object-contain', className)}
+      unoptimized
+      priority
+    />
   )
 }
 
@@ -188,7 +183,7 @@ export function AppSidebar() {
         >
           {isCollapsed ? (
             <div className="relative flex items-center justify-center w-full">
-              <AgribankWordmark collapsed className="transition-opacity group-hover:opacity-0" />
+              <AgribankLogo className="h-8 w-8 transition-opacity group-hover:opacity-0" />
               <Button
                 variant="ghost"
                 size="sm"
@@ -201,7 +196,10 @@ export function AppSidebar() {
           ) : (
             <>
               <div className="flex items-center gap-2.5">
-                <AgribankWordmark />
+                <AgribankLogo className="h-8 w-8 shrink-0" />
+                <span className="font-display text-[15px] font-bold tracking-tight text-primary leading-tight">
+                  Agribank Lâm Đồng
+                </span>
               </div>
               <Button
                 variant="ghost"

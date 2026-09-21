@@ -31,8 +31,8 @@ const splineSansMono = Spline_Sans_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Open Notebook",
-  description: "Privacy-focused research and knowledge management",
+  title: "ChatBot 5400 - Agribank Chi Nhánh Lâm Đồng",
+  description: "Trợ lý tra cứu tài liệu nội bộ - Agribank Chi nhánh Lâm Đồng",
 };
 
 export default function RootLayout({

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="Agribank Lâm Đồng">
+  <!-- PLACEHOLDER logo mark (original, not the official Agribank trademark).
+       Replace this file with the real Agribank logo (same path) to update the
+       sidebar and favicon. -->
+  <rect width="40" height="40" rx="9" fill="#8B1538"/>
+  <path d="M20 8 L31 30 H26.3 L24.5 25.7 H15.5 L13.7 30 H9 L20 8 Z M17 21.7 H23 L20 14.4 Z" fill="#FFFFFF"/>
+  <rect x="12" y="32.2" width="16" height="2.4" rx="1.2" fill="#E8B923"/>
+</svg>

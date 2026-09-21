@@ -40,8 +40,9 @@ describe('AppSidebar', () => {
   it('renders correctly when expanded', () => {
     render(<AppSidebar />)
 
-    // Brand wordmark (literal, not a translation key) is shown when expanded.
-    expect(screen.getByText('Agribank')).toBeDefined()
+    // Brand: logo mark + "Agribank Lâm Đồng" wordmark shown when expanded.
+    expect(screen.getByText('Agribank Lâm Đồng')).toBeDefined()
+    expect(screen.getByAltText('Agribank Lâm Đồng')).toBeDefined()
     expect(screen.getByText('navigation.sources')).toBeDefined()
     expect(screen.getByText('navigation.notebooks')).toBeDefined()
   })
@@ -85,8 +86,8 @@ describe('AppSidebar', () => {
 
     render(<AppSidebar />)
 
-    // In collapsed mode, the full brand wordmark collapses to the "A" initial.
-    expect(screen.queryByText('Agribank')).toBeNull()
-    expect(screen.getByText('A')).toBeDefined()
+    // In collapsed mode the wordmark text is hidden; only the logo mark shows.
+    expect(screen.queryByText('Agribank Lâm Đồng')).toBeNull()
+    expect(screen.getByAltText('Agribank Lâm Đồng')).toBeDefined()
   })
 })
