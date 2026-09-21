@@ -57,14 +57,17 @@ surreal start --user root --pass root --bind 127.0.0.1:8000 rocksdb:surreal_data
 
 ## 5. Cài đặt phụ thuộc
 
-Backend (Python):
+Backend (Python) — bản đầy đủ **có docling** (giữ đúng Điều/Khoản cho `.docx`/`.pdf`):
 ```powershell
-uv sync
+uv sync --extra docling
 ```
-> ⚠️ **Nặng:** `uv sync` sẽ kéo về **docling** (bộ trích xuất giữ đúng cấu trúc
-> Điều/Khoản cho `.docx`/`.pdf`) kèm PyTorch + model ML — **vài GB**, lần đầu có
-> thể lâu. Lần **trích xuất tài liệu đầu tiên** docling còn tải thêm model layout
-> (cần Internet). Xem mục *"Docling"* bên dưới nếu muốn cài nhẹ hơn.
+> ⚠️ **Nặng:** `--extra docling` kéo về **PyTorch + model ML vài GB**, lần đầu có
+> thể lâu; lần **trích xuất tài liệu đầu tiên** docling còn tải thêm model layout
+> (cần Internet).
+>
+> Muốn cài **nhẹ** (không docling, chấp nhận mất cấu trúc Điều/Khoản) thì chạy
+> `uv sync` (không có `--extra docling`) — app tự fallback về bộ trích thô. Xem
+> mục *"Docling"* bên dưới.
 Frontend (Node) — mở cửa sổ PowerShell mới:
 ```powershell
 cd F:\projectweb\5400chatbot\frontend
@@ -126,10 +129,14 @@ a/b/c) dùng **đánh số tự động của Word**. Bộ trích "thô" (`pytho
 không tính lại được số này → **mất/sai** Điều/Khoản. **Docling** (parser hiểu bố
 cục) giữ đúng cấu trúc.
 
-Từ bản này, docling **đã được bật mặc định**:
-- Đã nằm trong dependencies (`content-core[docling]`) → `uv sync` tự cài.
-- Engine tài liệu mặc định = `docling` (migration tự đặt); nếu docling vắng mặt,
-  app **tự fallback** về bộ thô (vẫn chạy, chỉ mất cấu trúc).
+Cấu hình dự án:
+- **Engine tài liệu mặc định = `docling`** (migration tự đặt); nếu docling vắng
+  mặt, app **tự fallback** về bộ thô (vẫn chạy, chỉ mất cấu trúc).
+- Docling nằm trong **extra `docling`** (không cài mặc định để `uv sync` nhẹ). Cài
+  bằng:
+  ```powershell
+  uv sync --extra docling
+  ```
 
 **Bắt buộc:** sau khi cài, phải chạy **cả API lẫn worker** bằng `.venv` đã có
 docling (đúng như bước 6). Nếu bạn từng chạy worker trước khi cài docling, hãy
@@ -142,8 +149,8 @@ uv run python -c "import importlib.util as u; print('docling:', u.find_spec('doc
 Phải in `docling: True`.
 
 **Nếu muốn cài NHẸ (không docling, chấp nhận mất cấu trúc Điều/Khoản):**
-- Trong `pyproject.toml` đổi `content-core[docling]>=2.0.7,<3` → `content-core>=2.0.7,<3` rồi `uv sync`, **và**
-- Đặt engine tài liệu = `simple` (Cài đặt → xử lý nội dung), hoặc tài liệu sẽ tự fallback.
+- Chỉ chạy `uv sync` (bỏ `--extra docling`) — tài liệu sẽ **tự fallback** về bộ
+  trích thô, hoặc đặt engine tài liệu = `simple` trong Cài đặt → xử lý nội dung.
 
 ## Xử lý sự cố thường gặp
 

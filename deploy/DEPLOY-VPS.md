@@ -13,13 +13,23 @@ Ubuntu/Debian, chạy sau Caddy với HTTPS tự động.
 > ⚠️ **Vì sao phải build từ mã nguồn:** image công bố `lfnovo/open_notebook:v1-latest`
 > **không** chứa code tùy biến của dự án (đăng nhập/RBAC, cô lập dữ liệu theo
 > người dùng, tiếng Việt, docling mặc định, giao diện Agribank). Bắt buộc build
-> từ nhánh này. Docling là phụ thuộc cứng nên **image nặng vài GB**, lần build đầu
-> chậm.
+> từ nhánh này.
+>
+> ℹ️ **Về docling (giữ đúng Điều/Khoản):** để image **nhẹ, build được trên VPS
+> nhỏ**, docling **không nhúng vào image** mà **tự cài ở lần khởi động đầu tiên**
+> vào volume dữ liệu (`OPEN_NOTEBOOK_ENABLE_DOCLING=true`, đã bật sẵn trong file
+> compose, dùng PyTorch bản CPU cho nhẹ). Vì vậy **lần `up` đầu tiên chạy lâu**
+> (tải PyTorch + model, vài trăm MB → vài GB, cần Internet), nhưng được **lưu vào
+> `notebook_data`** nên các lần sau và khi rebuild **không tải lại**. Engine tài
+> liệu mặc định vẫn là `docling`; nếu vì lý do gì docling chưa cài xong, app **tự
+> fallback** về bộ trích thô (vẫn chạy).
 
 ## 0. Yêu cầu VPS
 
-- **RAM:** ≥ 4 GB (build có PyTorch; 2 GB dễ bị OOM — nếu chỉ 2 GB xem mục *Bí quyết* cuối bài).
-- **Ổ đĩa trống:** ≥ 15 GB (image + model docling + dữ liệu).
+- **RAM:** ≥ 2 GB để build; **≥ 4 GB khuyến nghị** để chạy docling (suy luận model
+  cần RAM). Nếu RAM thấp, thêm swap (xem *Xử lý sự cố*).
+- **Ổ đĩa trống:** ≥ 12 GB (image gọn + PyTorch/model docling trên volume + dữ liệu).
+  VPS 28 GB của bạn **đủ dùng**.
 - **Mở cổng 80 và 443** trên tường lửa/nhà cung cấp (Caddy cần để cấp chứng chỉ Let's Encrypt).
 - DNS: `5491sotay.io.vn` và `api.5491sotay.io.vn` đã trỏ (A record) về IP VPS — **đã xong**.
 
@@ -73,14 +83,18 @@ rm -f .env.tmp     # xóa file tạm sau khi đã dán
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Lần đầu build lâu (kéo PyTorch + model docling). Theo dõi log:
+Theo dõi log:
 
 ```bash
 docker compose -f docker-compose.prod.yml logs -f open_notebook
 ```
 
-Chờ tới khi thấy migration chạy xong và API sẵn sàng ở cổng 5055. Caddy sẽ tự xin
-chứng chỉ HTTPS cho cả hai domain (log của Caddy: `... logs -f caddy`).
+- Build image **nhanh** (không có PyTorch).
+- **Lần khởi động đầu tiên**: bạn sẽ thấy dòng `[entrypoint] Installing Docling...`
+  — đây là bước cài docling + PyTorch (CPU) vào volume, **có thể mất vài phút**.
+  Sau đó mới tới migration DB và API lên ở cổng 5055. Các lần khởi động sau bỏ qua
+  bước này (đã cache trên `notebook_data`).
+- Caddy tự xin chứng chỉ HTTPS cho cả hai domain (log riêng: `... logs -f caddy`).
 
 ## 6. Kiểm tra
 
@@ -122,20 +136,31 @@ docker compose -f docker-compose.prod.yml down        # dừng (giữ dữ liệ
 
 - **Caddy không cấp được HTTPS:** kiểm tra cổng 80/443 đã mở và DNS đã trỏ đúng
   (`dig 5491sotay.io.vn +short`). Xem `logs -f caddy`.
-- **Build bị "no space left on device":** dọn Docker cũ `docker system prune -af`,
-  hoặc nâng dung lượng ổ đĩa.
-- **Build bị kill khi cài PyTorch (thiếu RAM):** tạm thêm swap:
+- **`no space left on device`:** dọn Docker cũ `docker system prune -af && docker builder prune -af`,
+  kiểm tra `df -h /`. Image gọn nên hiếm khi gặp lúc build; nếu hết đĩa lúc chạy,
+  thường do PyTorch/model docling — cần thêm dung lượng.
+- **Lần đầu chạy rất lâu / có vẻ "treo":** đó là bước cài docling ở boot đầu tiên.
+  Xem `logs -f open_notebook`, chờ dòng `[entrypoint] Docling installed`. Nếu cài
+  docling **thất bại** (mất mạng...), app vẫn chạy nhưng dùng bộ trích thô; sửa
+  mạng rồi `restart` để cài lại.
+- **Cài docling bị kill (thiếu RAM):** tạm thêm swap rồi `restart`:
   ```bash
   fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
   ```
 - **Đăng nhập bị đăng xuất sau mỗi lần restart:** chưa đặt `OPEN_NOTEBOOK_JWT_SECRET`
   trong `.env` — đặt rồi `up -d`.
 - **Chat báo lỗi cấu hình mô hình:** chưa nhập API key nhà cung cấp (bước 6).
-- **Docling (giữ đúng Điều/Khoản):** đã bật sẵn (nằm trong image). Nếu tài liệu vẫn
-  mất cấu trúc, xem `logs -f open_notebook` khi upload để biết engine nào được dùng.
+- **Tài liệu vẫn mất Điều/Khoản:** docling chưa cài xong hoặc đang fallback. Kiểm
+  tra trong container:
+  ```bash
+  docker compose -f docker-compose.prod.yml exec open_notebook \
+    /app/.venv/bin/python -c "import importlib.util as u; print('docling:', u.find_spec('docling') is not None)"
+  ```
+  Phải in `docling: True`. Nếu `False`, xem log boot và `restart`.
 
 ## Bí quyết cho VPS yếu (build tại nơi khác)
 
-Nếu VPS quá yếu để build, có thể build image ở máy mạnh rồi đẩy lên:
+Nếu muốn build image ở máy mạnh rồi đẩy lên:
 `docker build -t <registry>/chatbot5400:latest ..` → `docker push` → trên VPS đổi
 service `open_notebook` từ `build:` sang `image: <registry>/chatbot5400:latest`.
+Docling vẫn tự cài ở boot đầu (nhờ `OPEN_NOTEBOOK_ENABLE_DOCLING=true`).

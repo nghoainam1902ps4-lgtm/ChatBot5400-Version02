@@ -37,10 +37,17 @@ dependencies = [
     "tomli>=2.0.2",
     "python-dotenv>=1.2.2",
     "httpx[socks]>=0.27.0",
-    # [docling] pulls the layout-aware parser so .docx/.pdf keep their structure
-    # (headings, multi-level Điều/Khoản lists). It is heavy (Torch + ML models);
-    # the app falls back to the simple extractor automatically if it is absent.
-    "content-core[docling]>=2.0.7,<3",
+    # content-core provides document/URL extraction. The layout-aware Docling
+    # parser (which keeps .docx/.pdf structure — headings, multi-level
+    # Điều/Khoản lists) is heavy (Torch + ML models, ~several GB), so it is NOT
+    # baked into the base install: it lives in the optional `docling` extra
+    # below. The app falls back to the simple extractor automatically when
+    # Docling is absent. Enable it either at install time (`uv sync --extra
+    # docling`, e.g. local Windows) or at container runtime
+    # (OPEN_NOTEBOOK_ENABLE_DOCLING=true installs it onto the persistent data
+    # volume on first boot — see the production compose file). This keeps the
+    # base Docker image small enough to build on a modest VPS.
+    "content-core>=2.0.7,<3",
     "ai-prompter>=0.4,<1",
     "esperanto>=2.25.1,<3",
     "surrealdb>=1.0.4",
@@ -57,6 +64,15 @@ dependencies = [
     "bcrypt>=4.2.0",
     "pyjwt>=2.10.0",
 ]
+
+[project.optional-dependencies]
+# Layout-aware document extraction (keeps .docx/.pdf structure: headings and
+# multi-level Điều/Khoản lists). Heavy (Torch + ML models). Install with
+# `uv sync --extra docling`, or let the Docker entrypoint install it at runtime
+# via OPEN_NOTEBOOK_ENABLE_DOCLING=true. The default document engine is already
+# 'docling' (migration 28); the app falls back to the simple extractor when the
+# package is absent.
+docling = ["content-core[docling]>=2.0.7,<3"]
 
 [tool.setuptools]
 package-dir = {"open_notebook" = "open_notebook"}

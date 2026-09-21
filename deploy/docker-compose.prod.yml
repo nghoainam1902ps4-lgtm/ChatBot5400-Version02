@@ -52,8 +52,20 @@ services:
       - API_URL=${PUBLIC_API_URL}
       # Lock CORS to the frontend origin only (enables credentialed CORS).
       - CORS_ORIGINS=${PUBLIC_FRONTEND_URL}
+
+      # Docling (layout-aware .docx/.pdf extraction — keeps Điều/Khoản numbering)
+      # is NOT baked into the image (it would make the image multi-GB and
+      # un-buildable on a small VPS). Instead it is installed on FIRST boot onto
+      # the ./notebook_data volume below, so it survives restarts and rebuilds.
+      # The first startup is therefore slower (downloads the ML stack once).
+      - OPEN_NOTEBOOK_ENABLE_DOCLING=true
+      # Install the CPU-only PyTorch build (this VPS has no GPU): a few hundred MB
+      # instead of the ~5-6 GB CUDA stack. Falls back to the default build if the
+      # uv version doesn't support this flag.
+      - UV_TORCH_BACKEND=cpu
     volumes:
-      # Persists uploads, chat checkpoints, and cached docling/HF models.
+      # Persists uploads, chat checkpoints, and the runtime-installed Docling /
+      # PyTorch packages + ML models (under /app/data/.cache) across restarts.
       - ./notebook_data:/app/data
     expose:
       - "8502"  # frontend  (internal only — Caddy publishes it)
