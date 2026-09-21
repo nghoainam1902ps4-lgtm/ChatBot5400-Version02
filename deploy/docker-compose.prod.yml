@@ -19,7 +19,11 @@ services:
   surrealdb:
     image: surrealdb/surrealdb:v2
     # exec form: keeps a password with spaces as one argument.
-    command: ["start", "--log", "info", "--user", "${SURREAL_USER}", "--pass", "${SURREAL_PASSWORD}", "rocksdb:/mydata/mydatabase.db"]
+    # `:?` makes `docker compose up` FAIL LOUDLY if SURREAL_PASSWORD is empty or
+    # unset, instead of silently initialising the datastore with an empty root
+    # password (which then mismatches the app's default and causes
+    # "problem with authentication").
+    command: ["start", "--log", "info", "--user", "${SURREAL_USER:?set SURREAL_USER in .env}", "--pass", "${SURREAL_PASSWORD:?set SURREAL_PASSWORD in .env}", "rocksdb:/mydata/mydatabase.db"]
     user: root  # required for bind mounts on Linux
     volumes:
       - ./surreal_data:/mydata
@@ -43,8 +47,8 @@ services:
 
       # Database (internal network).
       - SURREAL_URL=ws://surrealdb:8000/rpc
-      - SURREAL_USER=${SURREAL_USER}
-      - SURREAL_PASSWORD=${SURREAL_PASSWORD}
+      - SURREAL_USER=${SURREAL_USER:?set SURREAL_USER in .env}
+      - SURREAL_PASSWORD=${SURREAL_PASSWORD:?set SURREAL_PASSWORD in .env}
       - SURREAL_NAMESPACE=open_notebook
       - SURREAL_DATABASE=open_notebook
 

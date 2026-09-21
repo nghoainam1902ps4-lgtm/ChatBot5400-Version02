@@ -147,6 +147,17 @@ docker compose -f docker-compose.prod.yml down        # dừng (giữ dữ liệ
   ```bash
   fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
   ```
+- **`There was a problem with authentication` (API/worker không nối được DB):**
+  `SURREAL_PASSWORD` trong `.env` bị trống hoặc đã đổi so với lúc khởi tạo DB. Đặt
+  mật khẩu, **xóa DB cũ** rồi chạy lại (an toàn khi chưa có dữ liệu):
+  ```bash
+  docker compose -f docker-compose.prod.yml down
+  sed -i "s|^SURREAL_PASSWORD=.*|SURREAL_PASSWORD=$(openssl rand -hex 16)|" .env
+  rm -rf surreal_data
+  docker compose -f docker-compose.prod.yml up -d
+  ```
+  (Từ bản mới, compose sẽ **báo lỗi ngay** nếu `SURREAL_PASSWORD` trống thay vì
+  khởi tạo DB với mật khẩu rỗng.)
 - **Đăng nhập bị đăng xuất sau mỗi lần restart:** chưa đặt `OPEN_NOTEBOOK_JWT_SECRET`
   trong `.env` — đặt rồi `up -d`.
 - **Chat báo lỗi cấu hình mô hình:** chưa nhập API key nhà cung cấp (bước 6).
