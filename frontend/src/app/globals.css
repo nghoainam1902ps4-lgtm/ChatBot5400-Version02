@@ -448,3 +448,20 @@
     list-style-type: decimal;
   }
 }
+
+/* Document-like reading layout for source content (Vietnamese legal documents:
+   Chương / Điều / Khoản / điểm). Scoped to `.source-prose` (source detail view
+   only) so chat messages and notes keep their default left-aligned layout.
+   - Body text is justified (canh đều hai bên).
+   - Each paragraph's first line is indented (thụt đầu dòng), like the original
+     Word/PDF. List-item marker lines keep their marker alignment. */
+.source-prose :where(p, li) {
+  text-align: justify;
+  text-justify: inter-word;
+}
+.source-prose :where(p) {
+  text-indent: 2em;
+}
+.source-prose :where(li) > p:first-child {
+  text-indent: 0;
+}

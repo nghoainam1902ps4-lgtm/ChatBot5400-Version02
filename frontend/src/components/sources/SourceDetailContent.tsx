@@ -549,9 +549,15 @@ function SourceDetailContentInner({
                   )}
                 </div>
               )}
-              <MarkdownRenderer>
-                {source.full_text || t('sources.noContent')}
-              </MarkdownRenderer>
+              {/* `source-prose` applies a document-like reading layout
+                  (justified text + first-line indent) so Vietnamese legal
+                  documents (Điều/Khoản/điểm) read closer to the original.
+                  Scoped to source content only — chat/notes are unaffected. */}
+              <div className="source-prose">
+                <MarkdownRenderer>
+                  {source.full_text || t('sources.noContent')}
+                </MarkdownRenderer>
+              </div>
             </section>
           </TabsContent>
 
