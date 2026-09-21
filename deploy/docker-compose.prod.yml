@@ -67,6 +67,10 @@ services:
       # instead of the ~5-6 GB CUDA stack. Falls back to the default build if the
       # uv version doesn't support this flag.
       - UV_TORCH_BACKEND=cpu
+      # Process one background job at a time. Docling (especially with OCR) is
+      # very memory-hungry; running several in parallel OOM-kills the worker
+      # (exit 137) on a small VPS and leaves sources stuck on "Processing...".
+      - OPEN_NOTEBOOK_WORKER_MAX_TASKS=1
     volumes:
       # Persists uploads, chat checkpoints, and the runtime-installed Docling /
       # PyTorch packages + ML models (under /app/data/.cache) across restarts.

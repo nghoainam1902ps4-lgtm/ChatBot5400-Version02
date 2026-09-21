@@ -143,10 +143,20 @@ docker compose -f docker-compose.prod.yml down        # dừng (giữ dữ liệ
   Xem `logs -f open_notebook`, chờ dòng `[entrypoint] Docling installed`. Nếu cài
   docling **thất bại** (mất mạng...), app vẫn chạy nhưng dùng bộ trích thô; sửa
   mạng rồi `restart` để cài lại.
-- **Cài docling bị kill (thiếu RAM):** tạm thêm swap rồi `restart`:
+- **Cài docling bị kill (thiếu RAM):** thêm swap rồi `restart`:
   ```bash
   fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
   ```
+- **Source (nhất là PDF) kẹt mãi ở "Processing...", log có `worker (exit status 137)`:**
+  worker bị **OOM-kill** khi docling chạy **OCR** (RapidOCR + PyTorch rất tốn RAM).
+  Xử lý:
+  1. **Thêm swap** (lệnh ngay trên) — bắt buộc nếu cần OCR cho PDF scan/ảnh.
+  2. Đã đặt sẵn `OPEN_NOTEBOOK_WORKER_MAX_TASKS=1` để không chạy song song nhiều
+     job nặng.
+  3. **Nếu PDF là văn bản chữ** (không phải ảnh scan): **tắt OCR** trong *Cài đặt →
+     Xử lý nội dung* → docling vẫn giữ đúng Điều/Khoản mà nhẹ hơn nhiều.
+  4. Xóa source đang kẹt rồi upload lại sau khi làm các bước trên.
 - **`There was a problem with authentication` (API/worker không nối được DB):**
   `SURREAL_PASSWORD` trong `.env` bị trống hoặc đã đổi so với lúc khởi tạo DB. Đặt
   mật khẩu, **xóa DB cũ** rồi chạy lại (an toàn khi chưa có dữ liệu):
