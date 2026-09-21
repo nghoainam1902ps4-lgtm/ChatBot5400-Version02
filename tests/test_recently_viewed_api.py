@@ -133,6 +133,9 @@ class TestRecentlyViewedApi:
         stamp_sql = mock_stamp_query.await_args.args[0]
         assert "recently_viewed" in stamp_sql
         assert "type::thing('recently_viewed'" in stamp_sql
+        # Must UPSERT: UPDATE on a not-yet-existing composite id is a no-op on
+        # SurrealDB 2.x, so the first view would never be recorded.
+        assert "UPSERT" in stamp_sql
         stamp_params = mock_stamp_query.await_args.args[1]
         assert stamp_params["item_type"] == "notebook"
 

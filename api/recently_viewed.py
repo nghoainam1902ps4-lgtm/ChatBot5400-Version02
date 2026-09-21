@@ -27,9 +27,13 @@ async def stamp_view(user_id: str, item_id: str, item_type: ItemType) -> None:
     if not user_id or not item_id:
         return
     try:
+        # UPSERT (not UPDATE): on SurrealDB 2.x, UPDATE on a record id that does
+        # not exist yet is a no-op and creates nothing, so the very first view of
+        # any (user, item) pair would never be recorded. UPSERT creates the row
+        # if missing and overwrites it on repeat views.
         await repo_query(
             """
-            UPDATE type::thing('recently_viewed', [$uid, $iid]) SET
+            UPSERT type::thing('recently_viewed', [$uid, $iid]) SET
                 user = $user,
                 item = $item,
                 item_type = $item_type,
