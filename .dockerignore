@@ -40,6 +40,22 @@ docker.env
 .env
 docker-compose*
 
+# Deploy runtime data — the production compose (deploy/) stores the SurrealDB
+# data, the runtime-installed Docling/PyTorch cache + ML models, and Caddy's
+# TLS certs under deploy/. These are multi-GB and must NEVER be sent as build
+# context or baked into the image by `COPY . /app`. Root-level patterns above
+# don't match nested paths, so list them explicitly (+ globs for safety).
+deploy/surreal_data
+deploy/notebook_data
+deploy/caddy_data
+deploy/caddy_config
+deploy/.env
+**/surreal_data
+**/notebook_data
+**/caddy_data
+**/caddy_config
+**/.cache
+
 # Documentation & CI (not needed in image)
 docs
 .github
