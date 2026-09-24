@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
-from api.auth import TokenUser, get_current_user, require_admin
+from api.auth import TokenUser, auth_disabled, get_current_user, require_admin
 from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
@@ -22,6 +22,32 @@ from open_notebook.exceptions import (
 )
 
 router = APIRouter()
+
+
+def _note_count_scope(current_user: TokenUser) -> tuple[str, dict]:
+    """Build the SurrealQL note-count expression scoped to the caller.
+
+    Notes are per-user data (each user only ever sees their own notes), so the
+    Notebook Card's note count must be scoped to the current user - otherwise
+    it shows the sum of *every* user's notes. The count walks the artifact edge
+    to the note node and filters on ``note.user_id``:
+    ``count(<-artifact<-note[WHERE user_id = $user])``.
+
+    Source counts stay global (``count(<-reference.in)``) because sources are
+    shared data added by admins - every user sees the same source count.
+
+    In single-user mode (auth enforcement disabled) there is no owner to scope
+    by, so all notes are counted, matching the behaviour in ``notes.py``.
+
+    Returns the count expression and the query params it needs (empty when
+    unscoped).
+    """
+    if auth_disabled():
+        return "count(<-artifact.in)", {}
+    return (
+        "count(<-artifact<-note[WHERE user_id = $user])",
+        {"user": ensure_record_id(current_user.id)},
+    )
 
 
 def _recently_viewed_row(row: dict) -> Optional[RecentlyViewedResponse]:
@@ -47,6 +73,7 @@ def _recently_viewed_row(row: dict) -> Optional[RecentlyViewedResponse]:
 async def get_notebooks(
     archived: Optional[bool] = Query(None, description="Filter by archived status"),
     order_by: str = Query("updated desc", description="Order by field and direction"),
+    current_user: TokenUser = Depends(get_current_user),
 ):
     """Get all notebooks with optional filtering and ordering."""
     try:
@@ -75,16 +102,18 @@ async def get_notebooks(
                 detail=f"Invalid order_by format: '{order_by}'. Expected 'field' or 'field direction'",
             )
 
-        # Build the query with counts
+        # Build the query with counts. Note count is scoped to the current user
+        # (per-user data); source count stays global (shared data).
+        note_count_expr, count_params = _note_count_scope(current_user)
         query = f"""
             SELECT *,
             count(<-reference.in) as source_count,
-            count(<-artifact.in) as note_count
+            {note_count_expr} as note_count
             FROM notebook
             ORDER BY {validated_order_by}
         """
 
-        result = await repo_query(query)
+        result = await repo_query(query, count_params)
 
         # Filter by archived status if specified
         if archived is not None:
@@ -229,14 +258,19 @@ async def get_notebook(
 ):
     """Get a specific notebook by ID."""
     try:
-        # Query with counts for single notebook
-        query = """
+        # Query with counts for single notebook. Note count is scoped to the
+        # current user (per-user data); source count stays global (shared data).
+        note_count_expr, count_params = _note_count_scope(current_user)
+        query = f"""
             SELECT *,
             count(<-reference.in) as source_count,
-            count(<-artifact.in) as note_count
+            {note_count_expr} as note_count
             FROM $notebook_id
         """
-        result = await repo_query(query, {"notebook_id": ensure_record_id(notebook_id)})
+        result = await repo_query(
+            query,
+            {"notebook_id": ensure_record_id(notebook_id), **count_params},
+        )
 
         if not result:
             raise HTTPException(status_code=404, detail="Notebook not found")
@@ -270,7 +304,11 @@ async def get_notebook(
     response_model=NotebookResponse,
     dependencies=[Depends(require_admin)],
 )
-async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
+async def update_notebook(
+    notebook_id: str,
+    notebook_update: NotebookUpdate,
+    current_user: TokenUser = Depends(get_current_user),
+):
     """Update a notebook."""
     try:
         notebook = await Notebook.get(notebook_id)
@@ -285,14 +323,19 @@ async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
 
         await notebook.save()
 
-        # Query with counts after update
-        query = """
+        # Query with counts after update. Note count is scoped to the current
+        # user (per-user data); source count stays global (shared data).
+        note_count_expr, count_params = _note_count_scope(current_user)
+        query = f"""
             SELECT *,
             count(<-reference.in) as source_count,
-            count(<-artifact.in) as note_count
+            {note_count_expr} as note_count
             FROM $notebook_id
         """
-        result = await repo_query(query, {"notebook_id": ensure_record_id(notebook_id)})
+        result = await repo_query(
+            query,
+            {"notebook_id": ensure_record_id(notebook_id), **count_params},
+        )
 
         if result:
             nb = result[0]
