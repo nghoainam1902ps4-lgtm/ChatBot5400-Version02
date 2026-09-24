@@ -745,3 +745,20 @@ class TestBuildSourceContext:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestCompareAppVersions:
+    """Tests for compare_app_versions (versions like 1.0.0-Agribank)."""
+
+    def test_suffix_is_ignored(self):
+        from open_notebook.utils.version_utils import compare_app_versions
+
+        assert compare_app_versions("1.0.0-Agribank", "1.0.0-Agribank") == 0
+        assert compare_app_versions("1.0.0-Agribank", "1.0.0") == 0
+
+    def test_numeric_core_is_compared(self):
+        from open_notebook.utils.version_utils import compare_app_versions
+
+        assert compare_app_versions("1.0.0-Agribank", "1.0.1-Agribank") == -1
+        assert compare_app_versions("1.10.0-Agribank", "1.9.0-Agribank") == 1
+        assert compare_app_versions("v2.0.0", "1.0.0-Agribank") == 1

@@ -3,6 +3,7 @@ Version utilities for Open Notebook.
 Handles version comparison, GitHub version fetching, and package version management.
 """
 
+import re
 from importlib.metadata import PackageNotFoundError, version
 from urllib.parse import urlparse
 
@@ -33,7 +34,9 @@ async def get_version_from_github_async(repo_url: str, branch: str = "main") -> 
     owner, repo = path_parts[0], path_parts[1]
 
     # Construct raw content URL for pyproject.toml
-    raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/pyproject.toml"
+    raw_url = (
+        f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/pyproject.toml"
+    )
 
     # Fetch the file with timeout using httpx
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -55,6 +58,53 @@ async def get_version_from_github_async(repo_url: str, branch: str = "main") -> 
             raise KeyError("Version not found in pyproject.toml")
 
     return version_str
+
+
+async def get_package_json_version_from_github_async(
+    repo_url: str, ref: str = "HEAD", path: str = "frontend/package.json"
+) -> str:
+    """
+    Fetch the "version" field of a package.json file in a public GitHub repository.
+
+    ``ref`` defaults to ``HEAD``, which raw.githubusercontent.com resolves to the
+    repository's default branch.
+    """
+    import httpx
+
+    parsed_url = urlparse(repo_url)
+    if "github.com" not in parsed_url.netloc:
+        raise ValueError("Not a GitHub URL")
+
+    path_parts = parsed_url.path.strip("/").split("/")
+    if len(path_parts) < 2:
+        raise ValueError("Invalid GitHub repository URL")
+
+    owner, repo = path_parts[0], path_parts[1].removesuffix(".git")
+    raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}"
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(raw_url)
+        response.raise_for_status()
+
+    version_str = response.json().get("version")
+    if not version_str:
+        raise KeyError(f"Version not found in {path}")
+    return version_str
+
+
+def compare_app_versions(version1: str, version2: str) -> int:
+    """
+    Compare two app versions such as ``1.0.0-Agribank``.
+
+    Only the numeric core (before the first ``-`` or ``+``) is compared; the
+    suffix is treated as a label, so ``1.0.0-Agribank`` == ``1.0.0``.
+
+    Returns -1, 0 or 1 like ``compare_versions``.
+    """
+    core1 = re.split(r"[-+]", version1.strip().lstrip("vV"), maxsplit=1)[0]
+    core2 = re.split(r"[-+]", version2.strip().lstrip("vV"), maxsplit=1)[0]
+    return compare_versions(core1, core2)
+
 
 def get_version_from_github(repo_url: str, branch: str = "main") -> str:
     """

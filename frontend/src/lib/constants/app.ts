@@ -1,6 +1,9 @@
+import packageJson from '../../../package.json'
+
 /**
  * Internal branding and version configuration.
- * Keep APP_VERSION in sync with the "version" field in frontend/package.json.
+ * The version is defined once, in frontend/package.json.
  */
 export const APP_NAME = 'AGRIBANK CHI NHÁNH LÂM ĐỒNG'
-export const APP_VERSION = '1.0.0-Agribank'
+export const APP_VERSION: string = packageJson.version
+export const APP_REPO_URL = 'https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02'
