@@ -2,6 +2,30 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [0.0.2] - 2026-09-24
+
+Bản vá tập trung vào cô lập dữ liệu theo người dùng, trải nghiệm xem tài liệu và
+triển khai.
+
+### Sửa lỗi cô lập dữ liệu theo người dùng
+- **Chat theo từng Nguồn (Chat with Source)**: lọc theo `user_id` ở tầng CSDL và
+  chuẩn hóa kiểm tra chủ sở hữu — user không còn nhìn thấy lịch sử chat của nhau.
+  Query key React Query kèm `userId`, xóa cache khi đăng xuất.
+- **Số lượng Ghi chú trên thẻ Notebook (Notes count)**: chỉ đếm ghi chú của user
+  đang đăng nhập (trước đây cộng gộp ghi chú của mọi user). Số lượng Nguồn giữ
+  nguyên là dữ liệu chung. Áp dụng cho danh sách và chi tiết notebook.
+
+### Giao diện & trải nghiệm
+- **Modal xem Nguồn (Source preview)** khi mở từ trong Notebook: phóng lớn
+  (rộng/cao hơn), ghim tiêu đề, chỉ cuộn phần nội dung.
+- **Hướng dẫn kết nối nhà cung cấp AI**: thay liên kết trỏ ra GitHub bằng modal
+  hiển thị ngay trong ứng dụng (bản dịch tiếng Việt của `ai-providers.md`), tiêu
+  đề/liên kết màu đỏ bordeaux; sửa lỗi modal kẹt ở trạng thái "Đang tải…".
+
+### Triển khai
+- Sửa lỗi Docker build "no space left on device": loại dữ liệu runtime trong
+  `deploy/` (CSDL, model docling/torch, chứng chỉ) khỏi build context.
+
 ## [0.0.1] - 2026-09-22
 
 Bản phát hành đầu tiên — nền tảng Open Notebook được tùy biến cho Agribank Chi
