@@ -442,8 +442,8 @@ function SourceDetailContentInner({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="pb-5 pr-10">
+      {/* Header — pinned; never scrolls or shrinks (only the body below does). */}
+      <div className="pb-5 pr-10 shrink-0">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             {isAdmin ? (
@@ -528,8 +528,9 @@ function SourceDetailContentInner({
         </div>
       </div>
 
-      {/* Tabs Content */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Tabs Content — the only scroll region (min-h-0 lets it shrink and
+          scroll inside the flex column instead of overflowing the modal). */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <Tabs defaultValue="content" className="w-full">
           <TabsList className="w-full sticky top-0 z-10 bg-card">
             <TabsTrigger value="content">{t('sources.content')}</TabsTrigger>
