@@ -5,12 +5,19 @@ import { APP_VERSION } from '@/lib/constants/app'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { compareVersions, fetchLatestVersion } from '@/lib/utils/version'
 
-/** sessionStorage flag: the update toast was already shown in this tab session. */
-export const UPDATE_NOTIFIED_KEY = 'update_notified'
+// Module-level flag: lives for one app load. Client-side navigation keeps it
+// (no repeat toast when switching pages); opening or reloading the app resets
+// it, so the toast shows again on every new visit until the app is updated.
+let checkedThisLoad = false
+
+/** Test helper: reset the once-per-load guard. */
+export function resetVersionCheck() {
+  checkedThisLoad = false
+}
 
 /**
- * Background update check: once per browser session, fetch the latest GitHub
- * release and show a bottom-right toast if it is newer than APP_VERSION.
+ * Background update check: once per app load, fetch the latest GitHub release
+ * and show a bottom-right toast if it is newer than APP_VERSION.
  * Mounted in the dashboard layout; pass `enabled = false` to skip the check.
  */
 export function useVersionCheck(enabled = true) {
@@ -18,33 +25,27 @@ export function useVersionCheck(enabled = true) {
   const router = useRouter()
 
   useEffect(() => {
-    if (!enabled) return
-    if (sessionStorage.getItem(UPDATE_NOTIFIED_KEY)) return
-
-    let cancelled = false
+    if (!enabled || checkedThisLoad) return
+    checkedThisLoad = true
 
     fetchLatestVersion()
       .then((latestVersion) => {
-        if (cancelled || sessionStorage.getItem(UPDATE_NOTIFIED_KEY)) return
         if (compareVersions(latestVersion, APP_VERSION) <= 0) return
 
-        toast.info(t('advanced.updateToast', { version: latestVersion }), {
+        toast.info(t('advanced.updateToastTitle', { version: latestVersion }), {
+          description: t('advanced.updateToastDesc'),
           position: 'bottom-right',
           duration: 15000,
-          closeButton: true,
           action: {
             label: t('navigation.advanced'),
             onClick: () => router.push('/advanced'),
           },
+          actionButtonStyle: { background: '#ffffff', color: '#8B1538' },
         })
-        sessionStorage.setItem(UPDATE_NOTIFIED_KEY, 'true')
       })
       .catch(() => {
         // Silently ignore: the update check is non-critical (offline, rate limit...)
+        // Allow a retry on the next app load only.
       })
-
-    return () => {
-      cancelled = true
-    }
   }, [enabled, t, router])
 }
