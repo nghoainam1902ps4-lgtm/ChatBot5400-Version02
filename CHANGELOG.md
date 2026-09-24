@@ -2,6 +2,21 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [0.0.3] - 2026-09-24
+
+Bản cập nhật nhận diện thương hiệu và hiển thị phiên bản.
+
+### Giao diện & nhận diện thương hiệu
+- **Trang đăng nhập**: tiêu đề đổi thành "AGRIBANK CHI NHÁNH LÂM ĐỒNG"; bỏ dòng
+  gợi ý tài khoản mặc định (admin / admin) và dòng hiển thị địa chỉ API.
+- **Phiên bản** hiển thị ở trang đăng nhập và *Công cụ nâng cao → Thông tin hệ
+  thống* được đọc tự động từ `frontend/package.json` (không còn viết cứng).
+
+### Kiểm tra phiên bản
+- Bỏ cơ chế kiểm tra bản cập nhật từ repository gốc (open-notebook trên GitHub):
+  backend không còn gọi ra GitHub, bỏ thông báo nổi "có bản mới".
+- *Thông tin hệ thống* ẩn dòng "Phiên bản mới nhất"; trạng thái luôn "Đã cập nhật".
+
 ## [0.0.2] - 2026-09-24
 
 Bản vá tập trung vào cô lập dữ liệu theo người dùng, trải nghiệm xem tài liệu và
