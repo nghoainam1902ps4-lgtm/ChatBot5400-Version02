@@ -971,6 +971,8 @@ export const viVN = {
     migrationErrors: "{{count}} khóa di chuyển thất bại",
     migrationNothingToMigrate: "Tất cả các khóa đã có trong cơ sở dữ liệu",
     learnMore: "Tìm hiểu cách kết nối các nhà cung cấp AI →",
+    guideTitle: "Hướng dẫn kết nối nhà cung cấp AI",
+    guideError: "Không tải được hướng dẫn. Vui lòng thử lại.",
     testConnection: "Kiểm tra kết nối",
     testSuccess: "Kết nối thành công",
     testFailed: "Kiểm tra kết nối thất bại",

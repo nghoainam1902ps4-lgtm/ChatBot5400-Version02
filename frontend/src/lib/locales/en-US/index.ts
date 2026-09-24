@@ -968,6 +968,8 @@ export const enUS = {
     migrationErrors: "{{count}} key(s) failed to migrate",
     migrationNothingToMigrate: "All keys are already in the database",
     learnMore: "Learn how to connect AI providers →",
+    guideTitle: "How to connect AI providers",
+    guideError: "Could not load the guide. Please try again.",
     testConnection: "Test Connection",
     testSuccess: "Connection successful",
     testFailed: "Connection test failed",
