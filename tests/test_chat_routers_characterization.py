@@ -330,3 +330,55 @@ async def test_get_source_chat_session_happy_path_shapes(
         "insights": [],
         "notes": [],
     }
+
+
+# --- source_chat.py: per-user data isolation (owner-only session list) ---------
+
+
+@pytest.mark.asyncio
+@patch("api.routers.source_chat.get_session_message_count", new_callable=AsyncMock)
+@patch("api.routers.source_chat.repo_query", new_callable=AsyncMock)
+@patch("api.routers.source_chat.auth_disabled", return_value=False)
+@patch("api.routers._chat_shared.Source.get", new_callable=AsyncMock)
+async def test_list_source_chat_sessions_only_returns_owner_sessions(
+    mock_source_get, _mock_auth_disabled, mock_repo, mock_msg_count, client
+):
+    """With auth enforced, the session list must be filtered to the caller's own
+    sessions at the DB level (WHERE user_id = $user), so another user's session
+    (which the owner-filtered query returns empty for) never appears."""
+    mock_source_get.return_value = _source()
+    mock_msg_count.return_value = 0
+
+    # 1) refers_to relations -> two sessions point at this source.
+    # 2) owner-filtered SELECT for the caller's own session -> a row.
+    # 3) owner-filtered SELECT for the OTHER user's session -> empty (DB filter).
+    mock_repo.side_effect = [
+        [{"in": "chat_session:mine"}, {"in": "chat_session:other"}],
+        [
+            {
+                "id": "chat_session:mine",
+                "title": "Mine",
+                "model_override": None,
+                "created": "2026-01-01T00:00:00",
+                "updated": "2026-01-02T00:00:00",
+                "user_id": "user:dev",
+            }
+        ],
+        [],
+    ]
+
+    resp = client.get("/api/sources/source:xyz/chat/sessions")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # Only the caller's own session is returned; the other user's is excluded.
+    assert [s["id"] for s in body] == ["chat_session:mine"]
+
+    # Every per-session fetch is owner-scoped: SELECT ... WHERE user_id = $user
+    # with a "user" parameter (not a bare SELECT of any session).
+    per_session_calls = mock_repo.await_args_list[1:]
+    assert len(per_session_calls) == 2
+    for call in per_session_calls:
+        sql, params = call.args
+        assert "WHERE user_id = $user" in sql
+        assert "user" in params

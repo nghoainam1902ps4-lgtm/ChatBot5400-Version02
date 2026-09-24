@@ -36,7 +36,11 @@ def _owned_session_or_404(session: ChatSession, current: TokenUser) -> ChatSessi
     """
     if auth_disabled():
         return session
-    if getattr(session, "user_id", None) != current.id:
+    # Normalize to string: user_id may come back as a RecordID; current.id is a
+    # string. An orphan/legacy session (user_id None) never matches, so it is
+    # not accessible to anyone while auth is enforced.
+    owner = getattr(session, "user_id", None)
+    if owner is None or str(owner) != str(current.id):
         raise HTTPException(status_code=404, detail="Source or session not found")
     return session
 
@@ -157,22 +161,31 @@ async def get_source_chat_sessions(
             {"source_id": ensure_record_id(full_source_id)},
         )
 
+        # Data isolation: filter to the caller's own sessions at the DB level
+        # (record-link equality), instead of comparing the raw user_id — which
+        # SurrealDB returns as a RecordID, not a string, making a Python `!=`
+        # against current.id (a string) unreliable. In single-user mode
+        # (auth disabled) no owner filter is applied.
+        enforce_owner = not auth_disabled()
+        owner_rid = ensure_record_id(current.id) if enforce_owner else None
+
         sessions = []
         for relation in relations:
             session_id_raw = relation.get("in")
             if session_id_raw:
                 session_id = str(session_id_raw)
 
-                session_result = await repo_query(
-                    "SELECT * FROM $id", {"id": ensure_record_id(session_id)}
-                )
+                if enforce_owner:
+                    session_result = await repo_query(
+                        "SELECT * FROM $id WHERE user_id = $user",
+                        {"id": ensure_record_id(session_id), "user": owner_rid},
+                    )
+                else:
+                    session_result = await repo_query(
+                        "SELECT * FROM $id", {"id": ensure_record_id(session_id)}
+                    )
                 if session_result and len(session_result) > 0:
                     session_data = session_result[0]
-
-                    # Data isolation: only the caller's own sessions (skipped in
-                    # single-user mode when auth enforcement is disabled).
-                    if not auth_disabled() and session_data.get("user_id") != current.id:
-                        continue
 
                     # Get message count from LangGraph state
                     msg_count = await get_session_message_count(

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuth } from '@/lib/hooks/use-auth'
 import { sourceChatApi } from '@/lib/api/source-chat'
 import {
   SourceChatSession,
@@ -16,6 +17,11 @@ import {
 
 export function useSourceChat(sourceId: string) {
   const { t } = useTranslation()
+  const { user } = useAuth()
+  // Scope the cache per user so one account's source-chat history can never be
+  // served to another from React Query's cache (defense in depth on top of the
+  // per-user backend filter and the logout/login cache clear).
+  const userId = user?.id ?? 'anon'
   const queryClient = useQueryClient()
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<SourceChatMessage[]>([])
@@ -25,14 +31,14 @@ export function useSourceChat(sourceId: string) {
 
   // Fetch sessions
   const { data: sessions = [], isLoading: loadingSessions, refetch: refetchSessions } = useQuery<SourceChatSession[]>({
-    queryKey: ['sourceChatSessions', sourceId],
+    queryKey: ['sourceChatSessions', sourceId, userId],
     queryFn: () => sourceChatApi.listSessions(sourceId),
     enabled: !!sourceId
   })
 
   // Fetch current session with messages
   const { data: currentSession, refetch: refetchCurrentSession } = useQuery({
-    queryKey: ['sourceChatSession', sourceId, currentSessionId],
+    queryKey: ['sourceChatSession', sourceId, currentSessionId, userId],
     queryFn: () => sourceChatApi.getSession(sourceId, currentSessionId!),
     enabled: !!sourceId && !!currentSessionId
   })
