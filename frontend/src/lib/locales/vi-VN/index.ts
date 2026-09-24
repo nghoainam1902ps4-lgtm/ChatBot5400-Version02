@@ -822,6 +822,11 @@ export const viVN = {
     currentVersion: "Phiên bản hiện tại",
     status: "Trạng thái",
     upToDate: "Đã cập nhật",
+    latestVersion: "Phiên bản mới nhất",
+    updateAvailable: "Có bản cập nhật mới",
+    checkingVersion: "Đang kiểm tra...",
+    cannotCheckVersion: "Không thể kiểm tra",
+    connectionError: "Lỗi kết nối",
     rebuild: {
       mode: "Chế độ xây dựng lại",
       existing: "Hiện có",

@@ -819,6 +819,11 @@ export const enUS = {
     currentVersion: "Current Version",
     status: "Status",
     upToDate: "Up to Date",
+    latestVersion: "Latest Version",
+    updateAvailable: "Update available",
+    checkingVersion: "Checking...",
+    cannotCheckVersion: "Unable to check",
+    connectionError: "Connection error",
     rebuild: {
       mode: "Rebuild Mode",
       existing: "Existing",
