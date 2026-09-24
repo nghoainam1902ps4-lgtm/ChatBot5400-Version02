@@ -36,6 +36,7 @@
  *   --mode=chat|backend         chế độ           (mặc định chat)
  *   --timeout=<ms>              timeout/request   (mặc định 120000)
  *   --cooldown=<ms>             nghỉ giữa các mức (mặc định 3000)
+ *   --keep-users                GIỮ lại user test sau khi chạy (mặc định: tự xoá)
  *   --help                      in trợ giúp
  * (Vẫn hỗ trợ biến môi trường cũ: BASE_URL, ADMIN_PASSWORD, TOTAL_USERS, ...)
  *
@@ -79,6 +80,8 @@ const CFG = {
   mode: String(pick('mode', 'MODE', 'chat')),
   timeoutMs: Number(pick('timeout', 'REQUEST_TIMEOUT_MS', 120000)),
   cooldownMs: Number(pick('cooldown', 'COOLDOWN_MS', 3000)),
+  // Mặc định: tự xoá user test sau khi chạy. --keep-users hoặc KEEP_USERS=1 để giữ.
+  keepUsers: pick('keep-users', 'KEEP_USERS', false) === true || String(pick('keep-users', 'KEEP_USERS', '')) === '1' || String(pick('keep-users', 'KEEP_USERS', '')).toLowerCase() === 'true',
 }
 
 // Danh sách mức tải: --ramp="5,10,20" ghi đè --users/TOTAL_USERS.
@@ -134,6 +137,13 @@ async function login(username, password) {
   return r.ok && r.data?.access_token ? r.data.access_token : null
 }
 
+/** Đăng nhập và trả về cả token lẫn id user (id dùng để xoá user sau khi test). */
+async function loginFull(username, password) {
+  const r = await apiFetch('/api/auth/login', { method: 'POST', body: { username, password } })
+  if (r.ok && r.data?.access_token) return { token: r.data.access_token, userId: r.data.user?.id || null }
+  return null
+}
+
 function percentile(sortedAsc, p) {
   if (sortedAsc.length === 0) return 0
   const idx = Math.min(sortedAsc.length - 1, Math.ceil((p / 100) * sortedAsc.length) - 1)
@@ -185,8 +195,8 @@ async function ensureUsersAndLogin(adminToken, n) {
   const users = []
   for (let i = 1; i <= n; i++) {
     const username = `test${i}`
-    let token = await login(username, CFG.testPassword)
-    if (!token) {
+    let auth = await loginFull(username, CFG.testPassword)
+    if (!auth) {
       const created = await apiFetch('/api/users', {
         method: 'POST',
         token: adminToken,
@@ -195,18 +205,51 @@ async function ensureUsersAndLogin(adminToken, n) {
       if (!created.ok && created.status !== 409) {
         log(`        ! Tạo ${username} lỗi (status ${created.status}) — vẫn thử đăng nhập.`)
       }
-      token = await login(username, CFG.testPassword)
+      auth = await loginFull(username, CFG.testPassword)
     }
-    if (!token) {
+    if (!auth) {
       throw new Error(
         `Không lấy được token cho ${username}. Nếu user đã tồn tại với mật khẩu khác, ` +
           `dùng --test-password cho đúng hoặc xoá user cũ.`,
       )
     }
-    users.push({ username, token })
+    users.push({ username, token: auth.token, userId: auth.userId })
   }
   log(`        -> Đã có ${users.length} token.`)
   return users
+}
+
+/** Xoá các user test (chạy cuối, kể cả khi test lỗi giữa chừng). */
+async function cleanupUsers(adminToken, users) {
+  if (!adminToken || !users || users.length === 0) return
+  if (CFG.keepUsers) {
+    log(`\n[Cleanup] Bỏ qua xoá user (--keep-users). Giữ lại ${users.length} tài khoản test.`)
+    return
+  }
+  log(`\n[Cleanup] Xoá ${users.length} user test ...`)
+  let ok = 0
+  let fail = 0
+  for (const u of users) {
+    // Cần id để xoá; nếu login lúc trước không trả id thì tra lại từ danh sách.
+    let id = u.userId
+    if (!id) {
+      const list = await apiFetch('/api/users', { token: adminToken })
+      if (list.ok && Array.isArray(list.data)) {
+        id = list.data.find((x) => x.username === u.username)?.id || null
+      }
+    }
+    if (!id) {
+      fail++
+      continue
+    }
+    const r = await apiFetch(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE', token: adminToken })
+    if (r.ok) ok++
+    else {
+      fail++
+      log(`        ! Xoá ${u.username} lỗi (status ${r.status}: ${shortErr(r.data)})`)
+    }
+  }
+  log(`        -> Đã xoá ${ok}/${users.length} user${fail ? `, còn ${fail} chưa xoá được` : ''}.`)
 }
 
 async function resolveNotebooks(adminToken) {
@@ -360,34 +403,48 @@ async function main() {
   log('ChatBot 5400 — Load Test')
   log(`Chế độ: ${CFG.mode} | Các mức tải: ${LEVELS.join(', ')} | ${CFG.mode === 'chat' ? `câu hỏi="${CFG.question}"` : ''}`)
 
-  const adminToken = await loginAdmin()
-  const users = await ensureUsersAndLogin(adminToken, MAX_USERS)
-  const notebooks = await resolveNotebooks(adminToken)
-  const contextCache = new Map()
-
+  let adminToken = null
+  let users = []
+  let hadError = false
   const summaries = []
-  for (let i = 0; i < LEVELS.length; i++) {
-    const level = LEVELS[i]
-    log(`\n>>> Đang chạy mức ${level} user đồng thời (${i + 1}/${LEVELS.length}) ...`)
-    const s = await runLevel(users, level, notebooks, contextCache)
-    summaries.push(s)
-    // Ở chế độ 1 mức: in chi tiết đầy đủ. Ở ramp: in tóm tắt 1 dòng cho gọn.
-    if (LEVELS.length === 1) {
-      printLevelDetail(s)
-    } else {
-      log(
-        `    -> OK ${s.ok}/${s.sent}, lỗi ${s.fail}, avg ${s.avg}ms, p95 ${s.p95}ms, ${s.rps.toFixed(2)} req/s`,
-      )
-      if (i < LEVELS.length - 1 && CFG.cooldownMs > 0) {
-        log(`    (nghỉ ${CFG.cooldownMs}ms cho server hạ nhiệt trước mức tiếp theo)`)
-        await sleep(CFG.cooldownMs)
+
+  try {
+    adminToken = await loginAdmin()
+    users = await ensureUsersAndLogin(adminToken, MAX_USERS)
+    const notebooks = await resolveNotebooks(adminToken)
+    const contextCache = new Map()
+
+    for (let i = 0; i < LEVELS.length; i++) {
+      const level = LEVELS[i]
+      log(`\n>>> Đang chạy mức ${level} user đồng thời (${i + 1}/${LEVELS.length}) ...`)
+      const s = await runLevel(users, level, notebooks, contextCache)
+      summaries.push(s)
+      // Ở chế độ 1 mức: in chi tiết đầy đủ. Ở ramp: in tóm tắt 1 dòng cho gọn.
+      if (LEVELS.length === 1) {
+        printLevelDetail(s)
+      } else {
+        log(`    -> OK ${s.ok}/${s.sent}, lỗi ${s.fail}, avg ${s.avg}ms, p95 ${s.p95}ms, ${s.rps.toFixed(2)} req/s`)
+        if (i < LEVELS.length - 1 && CFG.cooldownMs > 0) {
+          log(`    (nghỉ ${CFG.cooldownMs}ms cho server hạ nhiệt trước mức tiếp theo)`)
+          await sleep(CFG.cooldownMs)
+        }
       }
+    }
+
+    if (LEVELS.length > 1) printComparison(summaries)
+  } catch (err) {
+    hadError = true
+    console.error('\n[LỖI]', err?.message || err)
+  } finally {
+    // Luôn dọn dẹp user test — kể cả khi test lỗi giữa chừng.
+    try {
+      await cleanupUsers(adminToken, users)
+    } catch (e) {
+      console.error('[Cleanup] Lỗi khi xoá user:', e?.message || e)
     }
   }
 
-  if (LEVELS.length > 1) printComparison(summaries)
-
-  const anyFail = summaries.some((s) => s.fail > 0)
+  const anyFail = hadError || summaries.some((s) => s.fail > 0)
   process.exit(anyFail ? 1 : 0)
 }
 
