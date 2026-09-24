@@ -11,12 +11,12 @@ from starlette.types import Receive, Scope, Send
 from api.auth import (
     JWTAuthMiddleware,
     TokenUser,
-    _jwt_secret,
     auth_disabled,
     create_access_token,
     decode_token,
     get_current_user,
     require_admin,
+    _jwt_secret,
 )
 from open_notebook.exceptions import AuthenticationError, AuthorizationError
 
