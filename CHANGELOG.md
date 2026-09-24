@@ -2,6 +2,19 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [0.0.4] - 2026-09-24
+
+Khôi phục tính năng tự động kiểm tra phiên bản mới.
+
+### Kiểm tra phiên bản
+- *Công cụ nâng cao → Thông tin hệ thống* hiển thị lại dòng "Phiên bản mới nhất",
+  lấy từ bản Release mới nhất trên GitHub của dự án
+  (`nghoainam1902ps4-lgtm/ChatBot5400-Version02`).
+- So sánh phiên bản theo chuẩn SemVer (so từng phần dạng số, `0.0.10` > `0.0.9`;
+  bản thử nghiệm `-rc` thấp hơn bản chính thức).
+- Ba trạng thái: **Có bản cập nhật mới** (màu cam, biểu tượng chuông),
+  **Đã cập nhật** (đỏ bordeaux), **Lỗi kết nối** khi không gọi được GitHub.
+
 ## [0.0.3] - 2026-09-24
 
 Bản cập nhật nhận diện thương hiệu và hiển thị phiên bản.
