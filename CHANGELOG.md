@@ -2,6 +2,18 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [0.0.5] - 2026-09-24
+
+Khôi phục thông báo bản cập nhật mới khi mở ứng dụng.
+
+### Thông báo cập nhật
+- Khi quản trị viên mở ứng dụng, hệ thống kiểm tra ngầm bản Release mới nhất trên
+  GitHub; nếu có bản mới hơn, hiện thông báo ở **góc dưới bên phải**: "Có bản cập
+  nhật mới (vX.Y.Z). Vui lòng kiểm tra trong Công cụ nâng cao." kèm nút mở nhanh
+  trang *Công cụ nâng cao*.
+- Chỉ hiện **một lần mỗi phiên** (lưu cờ `update_notified` trong `sessionStorage`),
+  không hiện lại khi chuyển trang. Lỗi mạng được bỏ qua, không làm phiền người dùng.
+
 ## [0.0.4] - 2026-09-24
 
 Khôi phục tính năng tự động kiểm tra phiên bản mới.
