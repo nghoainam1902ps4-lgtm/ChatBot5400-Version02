@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
+import { AiProvidersGuideModal } from '@/components/settings/AiProvidersGuideModal'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Key, ShieldAlert, AlertCircle } from 'lucide-react'
@@ -24,6 +25,7 @@ import {
 export default function ApiKeysPage() {
   const { t } = useTranslation()
   const { isAdmin, isLoading: authLoading } = useAdminGuard()
+  const [guideOpen, setGuideOpen] = useState(false)
 
   // Data
   const { data: credentials, isLoading: credentialsLoading } = useCredentials()
@@ -148,19 +150,20 @@ export default function ApiKeysPage() {
             </div>
           )}
 
-          {/* Help link */}
+          {/* Help link — opens the in-app guide modal instead of GitHub */}
           <div className="border-t pt-4">
-            <a
-              href="https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/ai-providers.md"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => setGuideOpen(true)}
               className="text-sm text-primary hover:underline"
             >
               {t('apiKeys.learnMore')}
-            </a>
+            </button>
           </div>
         </div>
       </div>
+
+      <AiProvidersGuideModal open={guideOpen} onOpenChange={setGuideOpen} />
     </AppShell>
   )
 }
