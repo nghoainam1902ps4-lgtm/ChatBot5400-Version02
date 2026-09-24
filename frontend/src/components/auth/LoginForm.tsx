@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlertCircle } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { APP_NAME, APP_VERSION } from '@/lib/constants/app'
 
 export function LoginForm() {
   const { t, language } = useTranslation()
@@ -19,7 +20,7 @@ export function LoginForm() {
   const { login, isLoading, error } = useAuth()
   const { authRequired, checkAuthRequired, hasHydrated, isAuthenticated } = useAuthStore()
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  const [configInfo, setConfigInfo] = useState<{ apiUrl: string; version: string; buildTime: string } | null>(null)
+  const [configInfo, setConfigInfo] = useState<{ apiUrl: string; buildTime: string } | null>(null)
   const router = useRouter()
 
   // Load config info for debugging
@@ -27,7 +28,6 @@ export function LoginForm() {
     getConfig().then(cfg => {
       setConfigInfo({
         apiUrl: cfg.apiUrl,
-        version: cfg.version,
         buildTime: cfg.buildTime,
       })
     }).catch(err => {
@@ -102,7 +102,7 @@ export function LoginForm() {
                 <div className="space-y-2 text-xs text-muted-foreground border-t pt-3">
                   <div className="font-medium">{t('common.diagnosticInfo')}:</div>
                   <div className="space-y-1 font-mono">
-                    <div>{t('common.version')}: {configInfo.version}</div>
+                    <div>{t('common.version')}: {APP_VERSION}</div>
                     <div>{t('common.built')}: {new Date(configInfo.buildTime).toLocaleString(language === 'zh-CN' ? 'zh-CN' : language === 'zh-TW' ? 'zh-TW' : 'en-US')}</div>
                     <div className="break-all">{t('common.apiUrl')}: {configInfo.apiUrl}</div>
                     <div className="break-all">{t('common.frontendUrl')}: {typeof window !== 'undefined' ? window.location.href : 'N/A'}</div>
@@ -142,7 +142,7 @@ export function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle>{t('auth.loginTitle')}</CardTitle>
+          <CardTitle>{APP_NAME}</CardTitle>
           <CardDescription>
             {t('auth.loginDesc')}
           </CardDescription>
@@ -186,16 +186,9 @@ export function LoginForm() {
               {isLoading ? t('auth.signingIn') : t('auth.signIn')}
             </Button>
 
-            <div className="text-xs text-center text-muted-foreground">
-              {t('auth.defaultCredentialsHint')}
+            <div className="text-xs text-center text-muted-foreground pt-2 border-t">
+              {t('common.version')} {APP_VERSION}
             </div>
-
-            {configInfo && (
-              <div className="text-xs text-center text-muted-foreground pt-2 border-t">
-                <div>{t('common.version')} {configInfo.version}</div>
-                <div className="font-mono text-[10px]">{configInfo.apiUrl}</div>
-              </div>
-            )}
           </form>
         </CardContent>
       </Card>
