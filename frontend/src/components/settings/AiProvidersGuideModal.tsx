@@ -64,28 +64,30 @@ export function AiProvidersGuideModal({
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
 
   // Fetch the guide the first time the modal is opened; cache it afterwards.
+  // Use an AbortController (not a `cancelled` flag) so React 18 Strict Mode's
+  // double-invoke in dev works: the first run's cleanup aborts its fetch, and
+  // the second run — content still null — issues a fresh one that resolves.
+  // (A `cancelled` flag would discard the resolved response and leave the modal
+  // stuck on the loading spinner.)
   useEffect(() => {
-    if (!open || content !== null || status === 'loading') return
-    let cancelled = false
+    if (!open || content !== null) return
+    const controller = new AbortController()
     setStatus('loading')
-    fetch(GUIDE_URL)
+    fetch(GUIDE_URL, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.text()
       })
       .then((text) => {
-        if (cancelled) return
         setContent(text)
         setStatus('idle')
       })
-      .catch(() => {
-        if (cancelled) return
+      .catch((err) => {
+        if (err?.name === 'AbortError') return
         setStatus('error')
       })
-    return () => {
-      cancelled = true
-    }
-  }, [open, content, status])
+    return () => controller.abort()
+  }, [open, content])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
