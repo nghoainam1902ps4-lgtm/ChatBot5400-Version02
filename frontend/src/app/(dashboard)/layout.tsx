@@ -1,6 +1,7 @@
 'use client'
 
 import { useAuth } from '@/lib/hooks/use-auth'
+import { useVersionCheck } from '@/lib/hooks/use-version-check'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
@@ -14,9 +15,13 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, isAdmin } = useAuth()
   const router = useRouter()
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false)
+
+  // Background update check (once per session). Admin only: regular users
+  // cannot open Advanced, where the update details are shown.
+  useVersionCheck(isAuthenticated && isAdmin)
 
   useEffect(() => {
     // Mark that we've completed the initial auth check
