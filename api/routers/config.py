@@ -1,101 +1,35 @@
 import asyncio
-import time
+import json
 import tomllib
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Request
 from loguru import logger
 
 from open_notebook.database.repository import repo_query
-from open_notebook.utils.version_utils import (
-    compare_versions,
-    get_version_from_github_async,
-)
 
 router = APIRouter()
 
-# In-memory cache for version check results
-_version_cache: dict = {
-    "latest_version": None,
-    "has_update": False,
-    "timestamp": 0,
-    "check_failed": False,
-}
-
-# Cache TTL in seconds (24 hours)
-VERSION_CACHE_TTL = 24 * 60 * 60
+_REPO_ROOT = Path(__file__).parent.parent.parent
 
 
 def get_version() -> str:
-    """Read version from pyproject.toml"""
+    """Read the app version from frontend/package.json (fallback: pyproject.toml)"""
     try:
-        pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
-        with open(pyproject_path, "rb") as f:
+        with open(_REPO_ROOT / "frontend" / "package.json", encoding="utf-8") as f:
+            version = json.load(f).get("version")
+            if version:
+                return version
+    except Exception as e:
+        logger.warning(f"Could not read version from frontend/package.json: {e}")
+
+    try:
+        with open(_REPO_ROOT / "pyproject.toml", "rb") as f:
             pyproject = tomllib.load(f)
             return pyproject.get("project", {}).get("version", "unknown")
     except Exception as e:
         logger.warning(f"Could not read version from pyproject.toml: {e}")
         return "unknown"
-
-
-async def get_latest_version_cached(current_version: str) -> tuple[Optional[str], bool]:
-    """
-    Check for the latest version from GitHub with caching.
-
-    Returns:
-        tuple: (latest_version, has_update)
-        - latest_version: str or None if check failed
-        - has_update: bool indicating if update is available
-    """
-    global _version_cache
-
-    # Check if cache is still valid (within TTL)
-    cache_age = time.time() - _version_cache["timestamp"]
-    if _version_cache["timestamp"] > 0 and cache_age < VERSION_CACHE_TTL:
-        logger.debug(f"Using cached version check result (age: {cache_age:.0f}s)")
-        return _version_cache["latest_version"], _version_cache["has_update"]
-
-    # Cache expired or not yet set
-    if _version_cache["timestamp"] > 0:
-        logger.info(f"Version cache expired (age: {cache_age:.0f}s), refreshing...")
-
-    # Perform version check with strict error handling
-    try:
-        logger.info("Checking for latest version from GitHub...")
-
-        # Fetch latest version from GitHub with 10-second timeout
-        latest_version = await get_version_from_github_async(
-            "https://github.com/lfnovo/open-notebook", "main"
-        )
-
-        logger.info(
-            f"Latest version from GitHub: {latest_version}, Current version: {current_version}"
-        )
-
-        # Compare versions
-        has_update = compare_versions(current_version, latest_version) < 0
-
-        # Cache the result
-        _version_cache["latest_version"] = latest_version
-        _version_cache["has_update"] = has_update
-        _version_cache["timestamp"] = time.time()
-        _version_cache["check_failed"] = False
-
-        logger.info(f"Version check complete. Update available: {has_update}")
-
-        return latest_version, has_update
-
-    except Exception as e:
-        logger.warning(f"Version check failed: {e}")
-
-        # Cache the failure to avoid repeated attempts
-        _version_cache["latest_version"] = None
-        _version_cache["has_update"] = False
-        _version_cache["timestamp"] = time.time()
-        _version_cache["check_failed"] = True
-
-        return None, False
 
 
 async def check_database_health() -> dict:
@@ -128,21 +62,9 @@ async def get_config(request: Request):
     Note: The frontend determines the API URL via its own runtime-config endpoint,
     so this endpoint no longer returns apiUrl.
 
-    Also checks for version updates from GitHub (with caching and error handling).
+    There is no external update check: latestVersion mirrors the current version.
     """
-    # Get current version
     current_version = get_version()
-
-    # Check for updates (with caching and error handling)
-    # This MUST NOT break the endpoint - wrapped in try-except as extra safety
-    latest_version = None
-    has_update = False
-
-    try:
-        latest_version, has_update = await get_latest_version_cached(current_version)
-    except Exception as e:
-        # Extra safety: ensure version check never breaks the config endpoint
-        logger.error(f"Unexpected error during version check: {e}")
 
     # Check database health
     db_health = await check_database_health()
@@ -153,7 +75,7 @@ async def get_config(request: Request):
 
     return {
         "version": current_version,
-        "latestVersion": latest_version,
-        "hasUpdate": has_update,
+        "latestVersion": current_version,
+        "hasUpdate": False,
         "dbStatus": db_status,
     }
