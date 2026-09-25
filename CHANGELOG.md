@@ -2,6 +2,17 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [0.0.6] - 2026-09-25
+
+Sửa thông báo bản cập nhật mới.
+
+### Thông báo cập nhật
+- Thông báo hiện lại **mỗi lần mở/tải lại ứng dụng** cho tới khi hệ thống được
+  cập nhật (trước đây chỉ hiện một lần do cờ `sessionStorage` bị trình duyệt giữ
+  lại); vẫn không hiện lại khi chuyển trang trong ứng dụng.
+- Giao diện đồng bộ với các thông báo khác: nền đỏ bordeaux Agribank, bố cục tiêu
+  đề + mô tả, nút "Nâng cao" nền trắng.
+
 ## [0.0.5] - 2026-09-24
 
 Khôi phục thông báo bản cập nhật mới khi mở ứng dụng.
