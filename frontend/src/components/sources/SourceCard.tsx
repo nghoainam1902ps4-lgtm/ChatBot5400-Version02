@@ -44,12 +44,22 @@ interface SourceCardProps {
   showRemoveFromNotebook?: boolean
   contextMode?: ContextMode
   onContextModeChange?: (mode: ContextMode) => void
+  /** `card` (default) keeps the bordered card; `row` is the compact list row
+   * used by the desktop context panel (type dot, one-line title, one-line meta). */
+  variant?: 'card' | 'row'
 }
 
 const SOURCE_TYPE_ICONS = {
   link: ExternalLink,
   upload: Upload,
   text: FileText,
+} as const
+
+// Type dot colours for the row variant (existing content-type tokens).
+const SOURCE_TYPE_DOTS = {
+  link: 'bg-type-web',
+  upload: 'bg-type-pdf',
+  text: 'bg-type-note',
 } as const
 
 const getStatusConfig = (t: TFunction) => ({
@@ -119,7 +129,8 @@ function SourceCardImpl({
   className,
   showRemoveFromNotebook = false,
   contextMode,
-  onContextModeChange
+  onContextModeChange,
+  variant = 'card'
 }: SourceCardProps) {
   const { t } = useTranslation()
   const { isAdmin } = useAuth()
@@ -221,6 +232,193 @@ function SourceCardImpl({
   const isFailed: boolean = currentStatus === 'failed'
   const isCompleted: boolean = currentStatus === 'completed'
 
+  const actionsMenu = isAdmin ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            'h-7 w-7 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity',
+            variant === 'card' ? 'absolute top-1.5 right-1.5' : 'focus-visible:opacity-100'
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+    <DropdownMenuContent align="end" className="w-48">
+      {showRemoveFromNotebook && (
+        <>
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation()
+              handleRemoveFromNotebook()
+            }}
+            disabled={!onRemoveFromNotebook}
+          >
+            <Unlink className="h-4 w-4 mr-2" />
+            {t('sources.removeFromNotebook')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+        </>
+      )}
+
+      {isFailed && (
+        <>
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation()
+              handleRetry()
+            }}
+            disabled={!onRetry}
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            {t('sources.retryProcessing')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+        </>
+      )}
+
+      {sourceType === 'link' && isCompleted && onRefreshContent && (
+        <>
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation()
+              handleRefreshContent()
+            }}
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            {t('sources.refreshContent')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+        </>
+      )}
+
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation()
+          handleDelete()
+        }}
+        disabled={!onDelete}
+        className="text-destructive focus:text-destructive"
+      >
+        <Trash2 className="h-4 w-4 mr-2" />
+        {t('sources.deleteSource')}
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>
+  ) : null
+
+  const footerBlocks = (
+    <>
+      {/* Prominent retry action surfaced directly on failed cards so it's
+          discoverable without opening the dropdown menu (#726). */}
+      {isFailed && isAdmin ? (
+        <div className="flex gap-2 pt-2 border-t">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleRetry()
+            }}
+            disabled={!onRetry}
+            className="h-7 text-xs"
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            {t('sources.retryProcessing')}
+          </Button>
+        </div>
+      ) : null}
+
+      {/* Processing progress indicator */}
+      {isProcessing && typeof statusData?.processing_info?.progress === 'number' && (
+        <div className="mt-3 pt-2 border-t">
+          <div className="flex justify-between items-center mb-1">
+          <span className="text-xs text-muted-foreground">{t('common.progress')}</span>
+            <span className="text-xs text-muted-foreground">
+              {Math.round(statusData.processing_info.progress as number)}%
+            </span>
+          </div>
+          <div className="w-full bg-muted rounded-full h-1.5">
+            <div
+              className="bg-teal h-1.5 rounded-full transition-all duration-300"
+              style={{ width: `${statusData.processing_info.progress as number}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </>
+  )
+
+  if (variant === 'row') {
+    return (
+      <div
+        className={cn(
+          'group relative flex items-start gap-2.5 rounded-md px-2 py-2 cursor-pointer transition-colors duration-150 hover:bg-accent/60',
+          className
+        )}
+        onClick={handleCardClick}
+      >
+        <span
+          aria-hidden
+          className={cn('mt-[7px] size-2 flex-shrink-0 rounded-full', SOURCE_TYPE_DOTS[sourceType])}
+        />
+        <div className="flex-1 min-w-0">
+          <h4 className="truncate text-sm font-medium leading-snug" title={title}>
+            {title}
+          </h4>
+          <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
+            {!isCompleted && (
+              <>
+                <span className={cn('inline-flex flex-shrink-0 items-center gap-1 font-medium', statusConfig.color)}>
+                  <StatusIcon className={cn('h-3 w-3', isProcessing && 'animate-spin')} />
+                  {statusLoading && shouldFetchStatus ? t('sources.checking') : statusConfig.label}
+                </span>
+                <span aria-hidden>·</span>
+              </>
+            )}
+            <span className="flex-shrink-0">
+              {sourceType === 'link' ? t('sources.addUrl') : sourceType === 'upload' ? t('sources.uploadFile') : t('sources.enterText')}
+            </span>
+            {isCompleted && source.insights_count > 0 && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="flex-shrink-0">{t('sources.insightsCount', { count: source.insights_count })}</span>
+              </>
+            )}
+            {source.topics && source.topics.length > 0 && isCompleted && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="truncate">
+                  {source.topics.slice(0, 2).join(', ')}
+                  {source.topics.length > 2 && ` +${source.topics.length - 2}`}
+                </span>
+              </>
+            )}
+          </div>
+          {statusData?.message && (isProcessing || isFailed) && (
+            <p className="mt-1 text-xs text-muted-foreground italic">
+              {statusData.message}
+            </p>
+          )}
+          {footerBlocks}
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-0.5">
+          {onContextModeChange && contextMode && (
+            <ContextToggle
+              mode={contextMode}
+              hasInsights={source.insights_count > 0}
+              onChange={onContextModeChange}
+            />
+          )}
+          {actionsMenu}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <Card
       className={cn(
@@ -310,119 +508,10 @@ function SourceCardImpl({
             )}
 
             {/* Actions dropdown — ⋮ pinned to the card's top-right (admin only) */}
-            {isAdmin && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="absolute top-1.5 right-1.5 h-7 w-7 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              {showRemoveFromNotebook && (
-                <>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleRemoveFromNotebook()
-                    }}
-                    disabled={!onRemoveFromNotebook}
-                  >
-                    <Unlink className="h-4 w-4 mr-2" />
-                    {t('sources.removeFromNotebook')}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-
-              {isFailed && (
-                <>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleRetry()
-                    }}
-                    disabled={!onRetry}
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    {t('sources.retryProcessing')}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-
-              {sourceType === 'link' && isCompleted && onRefreshContent && (
-                <>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleRefreshContent()
-                    }}
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    {t('sources.refreshContent')}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDelete()
-                }}
-                disabled={!onDelete}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                {t('sources.deleteSource')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-            )}
+            {actionsMenu}
           </div>
         </div>
-        {/* Prominent retry action surfaced directly on failed cards so it's
-            discoverable without opening the dropdown menu (#726). */}
-        {isFailed && isAdmin ? (
-          <div className="flex gap-2 pt-2 border-t">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleRetry()
-              }}
-              disabled={!onRetry}
-              className="h-7 text-xs"
-            >
-              <RefreshCw className="h-3 w-3 mr-1" />
-              {t('sources.retryProcessing')}
-            </Button>
-          </div>
-        ) : null}
-
-        {/* Processing progress indicator */}
-        {isProcessing && typeof statusData?.processing_info?.progress === 'number' && (
-          <div className="mt-3 pt-2 border-t">
-            <div className="flex justify-between items-center mb-1">
-            <span className="text-xs text-muted-foreground">{t('common.progress')}</span>
-              <span className="text-xs text-muted-foreground">
-                {Math.round(statusData.processing_info.progress as number)}%
-              </span>
-            </div>
-            <div className="w-full bg-muted rounded-full h-1.5">
-              <div
-                className="bg-teal h-1.5 rounded-full transition-all duration-300"
-                style={{ width: `${statusData.processing_info.progress as number}%` }}
-              />
-            </div>
-          </div>
-        )}
+        {footerBlocks}
       </CardContent>
     </Card>
   )
@@ -464,7 +553,8 @@ function areEqual(prev: SourceCardProps, next: SourceCardProps): boolean {
     topicsEqual(p.topics, n.topics) &&
     prev.contextMode === next.contextMode &&
     prev.showRemoveFromNotebook === next.showRemoveFromNotebook &&
-    prev.className === next.className
+    prev.className === next.className &&
+    prev.variant === next.variant
   )
 }
 

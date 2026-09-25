@@ -10,7 +10,9 @@ interface SidebarState {
 export const useSidebarStore = create<SidebarState>()(
   persist(
     (set) => ({
-      isCollapsed: false,
+      // Design B: the 64px icon rail is the default; the expanded (icon +
+      // label) sidebar stays one click away and the choice is persisted.
+      isCollapsed: true,
       toggleCollapse: () => set((state) => ({ isCollapsed: !state.isCollapsed })),
       setCollapsed: (collapsed) => set({ isCollapsed: collapsed }),
     }),

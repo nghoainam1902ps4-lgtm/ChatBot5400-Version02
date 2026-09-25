@@ -1,5 +1,7 @@
 export const enUS = {
   common: {
+    expandSidebar: "Expand sidebar",
+    collapseSidebar: "Collapse sidebar",
     search: "Search...",
     create: "New",
     new: "New",
@@ -246,6 +248,7 @@ export const enUS = {
     ask: "Ask",
   },
   notebooks: {
+    contextPanel: "Context",
     title: "Notebooks",
     newNotebook: "New Notebook",
     searchPlaceholder: "Search notebooks...",
@@ -456,6 +459,9 @@ export const enUS = {
     maxFilesAllowed: "Maximum {{count}} files allowed per batch",
   },
   chat: {
+    copy: "Copy",
+    citationsTitle: "Sources cited",
+    answeredFromCount: "Answered from {{count}} sources",
     sessions: "Sessions",
     sessionTitlePlaceholder: "Type a title here...",
     noSessions: "No chat sessions yet",

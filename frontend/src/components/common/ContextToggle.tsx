@@ -75,7 +75,7 @@ export function ContextToggle<TMode extends ContextMode = ContextMode>({
             variant="ghost"
             size="sm"
             className={cn(
-              'h-8 w-8 p-0 transition-colors',
+              'h-7 w-7 p-0 transition-colors',
               config.bgColor,
               className
             )}

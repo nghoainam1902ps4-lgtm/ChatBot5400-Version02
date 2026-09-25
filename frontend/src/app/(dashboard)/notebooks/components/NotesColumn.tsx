@@ -33,6 +33,9 @@ interface NotesColumnProps {
   contextSelections?: Record<string, NoteContextMode>
   onContextModeChange?: (noteId: string, mode: NoteContextMode) => void
   onBulkContextModeChange?: (action: NoteContextDefault) => void
+  /** Render as a tab body inside the desktop ContextPanel: no Card shell, no
+   * per-column collapse (the panel owns collapse), compact list rows. */
+  embedded?: boolean
 }
 
 export function NotesColumn({
@@ -41,7 +44,8 @@ export function NotesColumn({
   notebookId,
   contextSelections,
   onContextModeChange,
-  onBulkContextModeChange
+  onBulkContextModeChange,
+  embedded = false
 }: NotesColumnProps) {
   const { t, language } = useTranslation()
   const [editorOpen, setEditorOpen] = useState(false)
@@ -81,144 +85,128 @@ export function NotesColumn({
     }
   }
 
-  return (
+  const headerActions = (
     <>
-      <CollapsibleColumn
-        isCollapsed={notesCollapsed}
-        onToggle={toggleNotes}
-        collapsedIcon={StickyNote}
-        collapsedLabel={notesLabel}
-      >
-        <Card className="h-full flex flex-col flex-1 overflow-hidden">
-          <CardHeader className="pb-3 flex-shrink-0">
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">
-                <span aria-hidden className="h-3.5 w-[3px] rounded-full bg-gold" />
-                {notesLabel}
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                {onBulkContextModeChange && notes && notes.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-muted-foreground" title={t('sources.bulkContext')}>
-                        <ListChecks className="h-4 w-4" />
-                        <ChevronDown className="h-4 w-4 ml-1" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onBulkContextModeChange('include')}>
-                        {t('sources.includeAllInContext')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onBulkContextModeChange('exclude')}>
-                        {t('sources.excludeAllFromContext')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                <Button size="sm" onClick={() => handleOpenEditor()}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  {t('common.writeNote')}
-                </Button>
-                {collapseButton}
-              </div>
+      {onBulkContextModeChange && notes && notes.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="text-muted-foreground" title={t('sources.bulkContext')}>
+              <ListChecks className="h-4 w-4" />
+              <ChevronDown className="h-4 w-4 ml-1" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onBulkContextModeChange('include')}>
+              {t('sources.includeAllInContext')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onBulkContextModeChange('exclude')}>
+              {t('sources.excludeAllFromContext')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+      <Button size="sm" onClick={() => handleOpenEditor()}>
+        <Plus className="h-4 w-4 mr-2" />
+        {t('common.writeNote')}
+      </Button>
+    </>
+  )
+
+  const listBody = isLoading ? (
+    <div className="flex items-center justify-center py-8">
+      <LoadingSpinner />
+    </div>
+  ) : !notes || notes.length === 0 ? (
+    <EmptyState
+      icon={StickyNote}
+      title={t('notebooks.noNotesYet')}
+      description={t('sources.createFirstNote')}
+    />
+  ) : (
+    <div className={embedded ? 'space-y-0.5' : 'space-y-2'}>
+      {notes.map((note) => (
+        <div
+          key={note.id}
+          className={embedded
+            ? 'px-2 py-2 rounded-md group relative cursor-pointer transition-colors duration-150 hover:bg-accent/60'
+            : 'p-3 border rounded-md bg-card shadow-none card-hover group relative cursor-pointer'}
+          onClick={() => handleOpenEditor(note)}
+        >
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex items-center gap-2">
+              {note.note_type === 'ai' ? (
+                <Bot className="h-4 w-4 text-teal" />
+              ) : (
+                <User className="h-4 w-4 text-muted-foreground" />
+              )}
+              <Badge variant="secondary" className="text-xs">
+                {note.note_type === 'ai' ? t('common.aiGenerated') : t('common.human')}
+              </Badge>
             </div>
-          </CardHeader>
 
-          <CardContent className="flex-1 overflow-y-auto min-h-0">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <LoadingSpinner />
-              </div>
-            ) : !notes || notes.length === 0 ? (
-              <EmptyState
-                icon={StickyNote}
-                title={t('notebooks.noNotesYet')}
-                description={t('sources.createFirstNote')}
-              />
-            ) : (
-              <div className="space-y-2">
-                {notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="p-3 border rounded-md bg-card shadow-none card-hover group relative cursor-pointer"
-                    onClick={() => handleOpenEditor(note)}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {formatDistanceToNow(new Date(note.updated), { 
+                  addSuffix: true,
+                  locale: getDateLocale(language)
+                })}
+              </span>
+
+              {/* Context toggle - only show if handler provided */}
+              {onContextModeChange && contextSelections?.[note.id] && (
+                <div onClick={(event) => event.stopPropagation()}>
+                  <ContextToggle
+                    mode={contextSelections[note.id]}
+                    hasInsights={false}
+                    onChange={(mode) => onContextModeChange(note.id, mode)}
+                  />
+                </div>
+              )}
+
+              {/* Ellipsis menu for delete action */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        {note.note_type === 'ai' ? (
-                          <Bot className="h-4 w-4 text-teal" />
-                        ) : (
-                          <User className="h-4 w-4 text-muted-foreground" />
-                        )}
-                        <Badge variant="secondary" className="text-xs">
-                          {note.note_type === 'ai' ? t('common.aiGenerated') : t('common.human')}
-                        </Badge>
-                      </div>
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDeleteClick(note.id)
+                    }}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    {t('notebooks.deleteNote')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(note.updated), { 
-                            addSuffix: true,
-                            locale: getDateLocale(language)
-                          })}
-                        </span>
+          {note.title && (
+            <h4 className={`text-sm font-medium mb-2 ${embedded ? 'break-words' : 'break-all'}`}>{note.title}</h4>
+          )}
 
-                        {/* Context toggle - only show if handler provided */}
-                        {onContextModeChange && contextSelections?.[note.id] && (
-                          <div onClick={(event) => event.stopPropagation()}>
-                            <ContextToggle
-                              mode={contextSelections[note.id]}
-                              hasInsights={false}
-                              onChange={(mode) => onContextModeChange(note.id, mode)}
-                            />
-                          </div>
-                        )}
+          {note.content && (
+            <p className={`text-sm text-muted-foreground line-clamp-3 ${embedded ? 'break-words' : 'break-all'}`}>
+              {note.content}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 
-                        {/* Ellipsis menu for delete action */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteClick(note.id)
-                              }}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              {t('notebooks.deleteNote')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-
-                    {note.title && (
-                      <h4 className="text-sm font-medium mb-2 break-all">{note.title}</h4>
-                    )}
-
-                    {note.content && (
-                      <p className="text-sm text-muted-foreground line-clamp-3 break-all">
-                        {note.content}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </CollapsibleColumn>
-
+  const dialogs = (
+    <>
       <NoteEditorDialog
         open={editorOpen}
         onOpenChange={(open) => {
@@ -241,6 +229,54 @@ export function NotesColumn({
         isLoading={deleteNote.isPending}
         confirmVariant="destructive"
       />
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <>
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-3 py-2">
+            {headerActions}
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
+            {listBody}
+          </div>
+        </div>
+        {dialogs}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <CollapsibleColumn
+        isCollapsed={notesCollapsed}
+        onToggle={toggleNotes}
+        collapsedIcon={StickyNote}
+        collapsedLabel={notesLabel}
+      >
+        <Card className="h-full flex flex-col flex-1 overflow-hidden">
+          <CardHeader className="pb-3 flex-shrink-0">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                <span aria-hidden className="h-3.5 w-[3px] rounded-full bg-gold" />
+                {notesLabel}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {headerActions}
+                {collapseButton}
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="flex-1 overflow-y-auto min-h-0">
+            {listBody}
+          </CardContent>
+        </Card>
+      </CollapsibleColumn>
+
+      {dialogs}
     </>
   )
 }

@@ -77,7 +77,7 @@ export function MessageActions({ content, notebookId }: MessageActionsProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2"
+                className="h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
                 onClick={handleSaveToNote}
                 disabled={createNote.isPending}
               >
@@ -86,6 +86,7 @@ export function MessageActions({ content, notebookId }: MessageActionsProps) {
                 ) : (
                   <Save className="h-3.5 w-3.5" />
                 )}
+                <span>{t('common.saveToNote')}</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -98,7 +99,7 @@ export function MessageActions({ content, notebookId }: MessageActionsProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-2"
+              className="h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
               onClick={handleCopyToClipboard}
               disabled={createNote.isPending}
             >
@@ -107,6 +108,7 @@ export function MessageActions({ content, notebookId }: MessageActionsProps) {
               ) : (
                 <Copy className="h-3.5 w-3.5" />
               )}
+              <span>{t('chat.copy')}</span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>

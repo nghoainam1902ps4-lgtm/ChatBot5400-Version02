@@ -1,13 +1,12 @@
 'use client'
 
-import { memo, useCallback, useState, useRef, useEffect, useId } from 'react'
+import { memo, useCallback, useState, useRef, useEffect, useId, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock } from 'lucide-react'
+import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, BookOpen } from 'lucide-react'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import {
   SourceChatMessage,
@@ -22,6 +21,7 @@ import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { cn } from '@/lib/utils'
 
 interface NotebookContextStats {
   sourcesInsights: number
@@ -101,15 +101,60 @@ export function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Context chip(s) rendered inside the composer: source-chat indicators or
+  // the notebook context summary. Same data and conditions as before.
+  const contextChip = (
+    <>
+      {contextIndicators && (
+        <div className="flex flex-wrap gap-1.5 text-xs">
+          {contextIndicators.sources?.length > 0 && (
+            <Badge variant="outline" className="gap-1">
+              <FileText className="h-3 w-3" />
+              {contextIndicators.sources.length} {t('navigation.sources')}
+            </Badge>
+          )}
+          {contextIndicators.insights?.length > 0 && (
+            <Badge variant="outline" className="gap-1">
+              <Lightbulb className="h-3 w-3" />
+              {contextIndicators.insights.length} {contextIndicators.insights.length === 1 ? t('common.insight') : t('common.insights')}
+            </Badge>
+          )}
+          {contextIndicators.notes?.length > 0 && (
+            <Badge variant="outline" className="gap-1">
+              <StickyNote className="h-3 w-3" />
+              {contextIndicators.notes.length} {contextIndicators.notes.length === 1 ? t('common.note') : t('common.notes')}
+            </Badge>
+          )}
+        </div>
+      )}
+      {notebookContextStats && (
+        <ContextIndicator
+          sourcesInsights={notebookContextStats.sourcesInsights}
+          sourcesFull={notebookContextStats.sourcesFull}
+          notesCount={notebookContextStats.notesCount}
+          tokenCount={notebookContextStats.tokenCount}
+          charCount={notebookContextStats.charCount}
+          className="min-w-0 shrink flex-wrap gap-y-1 border-t-0 bg-transparent px-1 py-0 [&_div]:flex-wrap"
+        />
+      )}
+    </>
+  )
+
   return (
     <>
-    <Card className="flex flex-col h-full flex-1 overflow-hidden">
-      <CardHeader className="pb-3 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+    {/* Flat chat surface (design B). Below lg the original card frame is kept. */}
+    <section
+      className={cn(
+        'flex flex-col h-full flex-1 overflow-hidden',
+        'max-lg:bg-card max-lg:text-card-foreground max-lg:rounded-lg max-lg:border max-lg:gap-6 max-lg:py-6'
+      )}
+    >
+      <div className="flex-shrink-0 pb-3 px-6 lg:flex lg:h-12 lg:items-center lg:border-b lg:pb-0">
+        <div className="flex flex-1 items-center justify-between">
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">
             <span aria-hidden className="h-3.5 w-[3px] rounded-full bg-teal" />
             {title || (contextType === 'source' ? t('chat.chatWith', { name: t('navigation.sources') }) : t('chat.chatWith', { name: t('common.notebook') }))}
-          </CardTitle>
+          </h2>
           {onSelectSession && onCreateSession && onDeleteSession && (
             <Dialog open={sessionManagerOpen} onOpenChange={setSessionManagerOpen}>
               <Button
@@ -140,12 +185,13 @@ export function ChatPanel({
             </Dialog>
           )}
         </div>
-      </CardHeader>
-      <CardContent className="flex-1 flex flex-col min-h-0 p-0">
-        <ScrollArea className="flex-1 min-h-0 px-4" ref={scrollAreaRef}>
-          <div className="space-y-4 py-4">
+      </div>
+      <div className="flex-1 flex flex-col min-h-0">
+        <ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
+          {/* Centered reading column */}
+          <div className="mx-auto w-full max-w-[760px] space-y-6 px-4 py-4 lg:px-6 lg:py-8">
             {messages.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
+              <div className="text-center text-muted-foreground py-8 lg:py-16">
                 <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p className="text-sm">
                   {t('chat.startConversation', { type: contextType === 'source' ? t('navigation.sources') : t('common.notebook') })}
@@ -169,8 +215,8 @@ export function ChatPanel({
                     <Bot className="h-4 w-4 text-teal" />
                   </div>
                 </div>
-                <div className="rounded-lg px-4 py-2 bg-card border">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                <div className="flex items-center py-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-teal" />
                 </div>
               </div>
             )}
@@ -178,52 +224,16 @@ export function ChatPanel({
           </div>
         </ScrollArea>
 
-        {/* Context Indicators */}
-        {contextIndicators && (
-          <div className="border-t px-4 py-2">
-            <div className="flex flex-wrap gap-2 text-xs">
-              {contextIndicators.sources?.length > 0 && (
-                <Badge variant="outline" className="gap-1">
-                  <FileText className="h-3 w-3" />
-                  {contextIndicators.sources.length} {t('navigation.sources')}
-                </Badge>
-              )}
-              {contextIndicators.insights?.length > 0 && (
-                <Badge variant="outline" className="gap-1">
-                  <Lightbulb className="h-3 w-3" />
-                  {contextIndicators.insights.length} {contextIndicators.insights.length === 1 ? t('common.insight') : t('common.insights')}
-                </Badge>
-              )}
-              {contextIndicators.notes?.length > 0 && (
-                <Badge variant="outline" className="gap-1">
-                  <StickyNote className="h-3 w-3" />
-                  {contextIndicators.notes.length} {contextIndicators.notes.length === 1 ? t('common.note') : t('common.notes')}
-                </Badge>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Notebook Context Indicator */}
-        {notebookContextStats && (
-          <ContextIndicator
-            sourcesInsights={notebookContextStats.sourcesInsights}
-            sourcesFull={notebookContextStats.sourcesFull}
-            notesCount={notebookContextStats.notesCount}
-            tokenCount={notebookContextStats.tokenCount}
-            charCount={notebookContextStats.charCount}
-          />
-        )}
-
         {/* Input Area */}
         <ChatComposer
           onSendMessage={onSendMessage}
           isStreaming={isStreaming}
           modelOverride={modelOverride}
           onModelChange={onModelChange}
+          contextChip={(contextIndicators || notebookContextStats) ? contextChip : null}
         />
-      </CardContent>
-    </Card>
+      </div>
+    </section>
 
     </>
   )
@@ -236,13 +246,15 @@ interface ChatComposerProps {
   isStreaming: boolean
   modelOverride?: string
   onModelChange?: (model?: string) => void
+  contextChip?: ReactNode
 }
 
 function ChatComposer({
   onSendMessage,
   isStreaming,
   modelOverride,
-  onModelChange
+  onModelChange,
+  contextChip
 }: ChatComposerProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -271,44 +283,51 @@ function ChatComposer({
   const keyHint = isMac ? '⌘+Enter' : 'Ctrl+Enter'
 
   return (
-    <div className="flex-shrink-0 p-4 space-y-3 border-t">
-      {/* Model selector */}
-      {onModelChange && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">{t('chat.model')}</span>
-          <ModelSelector
-            currentModel={modelOverride}
-            onModelChange={onModelChange}
+    <div className="flex-shrink-0 border-t px-4 pb-4 pt-3 lg:border-t-0 lg:px-6 lg:pb-6 lg:pt-2">
+      <div className="mx-auto w-full max-w-[760px]">
+        <div className="rounded-2xl border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20">
+          <Textarea
+            id={chatInputId}
+            name="chat-message"
+            autoComplete="off"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={`${t('chat.sendPlaceholder')} (${t('chat.pressToSend', { key: keyHint })})`}
             disabled={isStreaming}
+            className="min-h-[52px] max-h-[160px] w-full min-w-0 resize-none border-0 bg-transparent px-4 pt-3 pb-1 shadow-none focus-visible:ring-0 dark:bg-transparent"
+            rows={1}
           />
+          <div className="flex items-end justify-between gap-2 px-2 pb-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              {/* Model chip */}
+              {onModelChange && (
+                <div className="flex flex-shrink-0 items-center" title={t('chat.model')}>
+                  <span className="sr-only">{t('chat.model')}</span>
+                  <ModelSelector
+                    currentModel={modelOverride}
+                    onModelChange={onModelChange}
+                    disabled={isStreaming}
+                  />
+                </div>
+              )}
+              {/* Context chip */}
+              {contextChip}
+            </div>
+            <Button
+              onClick={handleSend}
+              disabled={!input.trim() || isStreaming}
+              size="icon"
+              className="h-9 w-9 flex-shrink-0 rounded-full"
+            >
+              {isStreaming ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
-      )}
-
-      <div className="flex gap-2 items-end min-w-0">
-        <Textarea
-          id={chatInputId}
-          name="chat-message"
-          autoComplete="off"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={`${t('chat.sendPlaceholder')} (${t('chat.pressToSend', { key: keyHint })})`}
-          disabled={isStreaming}
-          className="flex-1 min-h-[40px] max-h-[100px] resize-none py-2 px-3 min-w-0"
-          rows={1}
-        />
-        <Button
-          onClick={handleSend}
-          disabled={!input.trim() || isStreaming}
-          size="icon"
-          className="h-[40px] w-[40px] flex-shrink-0"
-        >
-          {isStreaming ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-        </Button>
       </div>
     </div>
   )
@@ -327,50 +346,41 @@ const ChatMessage = memo(function ChatMessage({
   notebookId,
   onReferenceClick
 }: ChatMessageProps) {
-  return (
-    <div
-      className={`flex gap-3 ${
-        message.type === 'human' ? 'justify-end' : 'justify-start'
-      }`}
-    >
-      {message.type === 'ai' && (
+  if (message.type === 'ai') {
+    // AI answer: no bubble, full width of the reading column.
+    return (
+      <div className="flex gap-3 justify-start">
         <div className="flex-shrink-0">
           <div className="h-8 w-8 rounded-full bg-teal-tint flex items-center justify-center">
             <Bot className="h-4 w-4 text-teal" />
           </div>
         </div>
-      )}
-      <div className="flex flex-col gap-2 max-w-[80%]">
-        <div
-          className={`rounded-lg px-4 py-2 border ${
-            message.type === 'human'
-              ? 'bg-muted'
-              : 'bg-card'
-          }`}
-        >
-          {message.type === 'ai' ? (
-            <AIMessageContent
-              content={message.content}
-              onReferenceClick={onReferenceClick}
-            />
-          ) : (
-            <p className="text-sm break-all">{message.content}</p>
-          )}
-        </div>
-        {message.type === 'ai' && (
+        <div className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5">
+          <AIMessageContent
+            content={message.content}
+            onReferenceClick={onReferenceClick}
+          />
           <MessageActions
             content={message.content}
             notebookId={notebookId}
           />
-        )}
-      </div>
-      {message.type === 'human' && (
-        <div className="flex-shrink-0">
-          <div className="h-8 w-8 rounded-full bg-muted border flex items-center justify-center">
-            <User className="h-4 w-4 text-muted-foreground" />
-          </div>
         </div>
-      )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex gap-3 justify-end">
+      <div className="flex flex-col gap-2 max-w-[80%]">
+        <div className="rounded-2xl px-4 py-2.5 bg-muted">
+          <p className="text-sm break-all">{message.content}</p>
+        </div>
+      </div>
+      <div className="flex-shrink-0">
+        <div className="h-8 w-8 rounded-full bg-muted border flex items-center justify-center">
+          <User className="h-4 w-4 text-muted-foreground" />
+        </div>
+      </div>
     </div>
   )
 })
@@ -385,16 +395,70 @@ function AIMessageContent({
 }) {
   const { t } = useTranslation()
   // Convert references to compact markdown with numbered citations
-  const markdownWithCompactRefs = convertReferencesToCompactMarkdown(content, t('common.references'))
+  const referencesLabel = t('common.references')
+  const markdownWithCompactRefs = convertReferencesToCompactMarkdown(content, referencesLabel)
 
   // Create custom link component for compact references
   const LinkComponent = createCompactReferenceLinkComponent(onReferenceClick)
 
+  // Presentation only: the reference list that convertReferencesToCompactMarkdown
+  // appended ("\n\n<label>:" + one line per reference) is shown in its own
+  // "Nguồn dẫn" block instead of inline. Nothing is re-parsed — the output is
+  // split at the marker the converter itself wrote. When the converter found no
+  // references it returns the content unchanged, so nothing is split.
+  const marker = `\n\n${referencesLabel}:`
+  const markerIndex = markdownWithCompactRefs !== content ? markdownWithCompactRefs.lastIndexOf(marker) : -1
+  const body = markerIndex >= 0 ? markdownWithCompactRefs.slice(0, markerIndex) : markdownWithCompactRefs
+  const referenceLines = markerIndex >= 0
+    ? markdownWithCompactRefs.slice(markerIndex + marker.length).split('\n').filter(line => line.trim())
+    : []
+
   return (
-    <MarkdownRenderer components={{
-      a: LinkComponent
-    }}>
-      {markdownWithCompactRefs}
-    </MarkdownRenderer>
+    <>
+      <MarkdownRenderer components={{
+        a: LinkComponent
+      }}>
+        {body}
+      </MarkdownRenderer>
+      {referenceLines.length > 0 && (
+        <SourceCitations lines={referenceLines} linkComponent={LinkComponent} />
+      )}
+    </>
+  )
+}
+
+// "Nguồn dẫn" block: renders the reference lines produced above, with the same
+// clickable link component used for the inline [n] chips.
+function SourceCitations({
+  lines,
+  linkComponent
+}: {
+  lines: string[]
+  linkComponent: ReturnType<typeof createCompactReferenceLinkComponent>
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="rounded-lg border bg-muted/30 px-4 py-3">
+      <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+        <span className="inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          <BookOpen className="h-3.5 w-3.5" />
+          {t('chat.citationsTitle')}
+        </span>
+        <span className="text-muted-foreground">·</span>
+        <span className="text-muted-foreground">{t('chat.answeredFromCount', { count: lines.length })}</span>
+      </div>
+      <ol className="space-y-1 [&_.prose]:!text-sm [&_p]:!my-0 [&_p]:!leading-6">
+        {lines.map((line, index) => (
+          <li key={index}>
+            <MarkdownRenderer components={{
+              a: linkComponent,
+              p: ({ children }) => <p className="my-0">{children}</p>
+            }}>
+              {line}
+            </MarkdownRenderer>
+          </li>
+        ))}
+      </ol>
+    </div>
   )
 }

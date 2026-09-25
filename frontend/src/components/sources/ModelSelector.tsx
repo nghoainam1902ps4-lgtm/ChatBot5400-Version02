@@ -84,13 +84,13 @@ export function ModelSelector({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="ghost"
           size="sm"
           disabled={disabled}
-          className="gap-2"
+          className="h-7 gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
         >
-          <Settings2 className="h-4 w-4" />
+          <Settings2 className="h-3.5 w-3.5" />
           <span className="text-xs">
             {currentModelName}
           </span>

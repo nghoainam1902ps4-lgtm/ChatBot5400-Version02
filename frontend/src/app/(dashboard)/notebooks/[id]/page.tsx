@@ -7,6 +7,8 @@ import { NotebookHeader } from '../components/NotebookHeader'
 import { SourcesColumn } from '../components/SourcesColumn'
 import { NotesColumn } from '../components/NotesColumn'
 import { ChatColumn } from '../components/ChatColumn'
+import { ContextPanel } from '@/components/notebooks/ContextPanel'
+import { ContextIndicator } from '@/components/common/ContextIndicator'
 import { useNotebook } from '@/lib/hooks/use-notebooks'
 import { useNotebookSources } from '@/lib/hooks/use-sources'
 import { useNotes } from '@/lib/hooks/use-notes'
@@ -50,8 +52,8 @@ export default function NotebookPage() {
   } = useNotebookSources(notebookId)
   const { data: notes, isLoading: notesLoading } = useNotes(notebookId)
 
-  // Get collapse states for dynamic layout
-  const { sourcesCollapsed, notesCollapsed } = useNotebookColumnsStore()
+  // Collapse state for the desktop context panel (design B: one panel, one flag)
+  const { sourcesCollapsed } = useNotebookColumnsStore()
 
   // Detect desktop to avoid double-mounting ChatColumn
   const isDesktop = useIsDesktop()
@@ -154,11 +156,11 @@ export default function NotebookPage() {
   return (
     <AppShell>
       <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex-shrink-0 p-6 pb-0">
+        <div className="flex-shrink-0 p-6 pb-0 lg:p-0">
           <NotebookHeader notebook={notebook} />
         </div>
 
-        <div className="flex-1 p-6 pt-6 overflow-x-auto flex flex-col">
+        <div className="flex-1 p-6 pt-6 overflow-x-auto flex flex-col lg:p-0 lg:overflow-hidden min-h-0">
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
           {!isDesktop && (
             <>
@@ -220,48 +222,54 @@ export default function NotebookPage() {
             </>
           )}
 
-          {/* Desktop: Collapsible columns layout */}
-          <div className={cn(
-            'hidden lg:flex h-full min-h-0 gap-6 transition-all duration-150',
-            'flex-row'
-          )}>
-            {/* Sources Column */}
+          {/* Desktop (design B): context panel (Sources / Notes tabs) + chat */}
+          <div className="hidden lg:flex h-full min-h-0 flex-row">
             <div className={cn(
-              'transition-all duration-150',
-              sourcesCollapsed ? 'w-12 flex-shrink-0' : 'flex-none basis-1/3'
+              'flex-shrink-0 min-h-0 transition-all duration-150',
+              sourcesCollapsed ? 'w-[60px] border-r p-1.5' : 'w-[340px]'
             )}>
-              <SourcesColumn
-                sources={sources}
-                isLoading={sourcesLoading}
-                notebookId={notebookId}
-                notebookName={notebook?.name}
-                onRefresh={refetchSources}
-                contextSelections={contextSelections.sources}
-                onContextModeChange={handleSourceContextModeChange}
-                onBulkContextModeChange={handleBulkSourceContext}
-                hasNextPage={hasNextPage}
-                isFetchingNextPage={isFetchingNextPage}
-                fetchNextPage={fetchNextPage}
+              <ContextPanel
+                sourcesCount={sources?.length ?? 0}
+                notesCount={notes?.length ?? 0}
+                sources={
+                  <SourcesColumn
+                    embedded
+                    sources={sources}
+                    isLoading={sourcesLoading}
+                    notebookId={notebookId}
+                    notebookName={notebook?.name}
+                    onRefresh={refetchSources}
+                    contextSelections={contextSelections.sources}
+                    onContextModeChange={handleSourceContextModeChange}
+                    onBulkContextModeChange={handleBulkSourceContext}
+                    hasNextPage={hasNextPage}
+                    isFetchingNextPage={isFetchingNextPage}
+                    fetchNextPage={fetchNextPage}
+                  />
+                }
+                notes={
+                  <NotesColumn
+                    embedded
+                    notes={notes}
+                    isLoading={notesLoading}
+                    notebookId={notebookId}
+                    contextSelections={contextSelections.notes}
+                    onContextModeChange={handleNoteContextModeChange}
+                    onBulkContextModeChange={handleBulkNoteContext}
+                  />
+                }
+                footer={
+                  <ContextIndicator
+                    sourcesInsights={(sources ?? []).filter(source => contextSelections.sources[source.id] === 'insights').length}
+                    sourcesFull={(sources ?? []).filter(source => contextSelections.sources[source.id] === 'full').length}
+                    notesCount={(notes ?? []).filter(note => contextSelections.notes[note.id] === 'full').length}
+                  />
+                }
               />
             </div>
 
-            {/* Notes Column */}
-            <div className={cn(
-              'transition-all duration-150',
-              notesCollapsed ? 'w-12 flex-shrink-0' : 'flex-none basis-1/3'
-            )}>
-              <NotesColumn
-                notes={notes}
-                isLoading={notesLoading}
-                notebookId={notebookId}
-                contextSelections={contextSelections.notes}
-                onContextModeChange={handleNoteContextModeChange}
-                onBulkContextModeChange={handleBulkNoteContext}
-              />
-            </div>
-
-            {/* Chat Column - always expanded, takes remaining space */}
-            <div className="transition-all duration-150 flex-1 min-w-0 lg:pr-6 lg:-mr-6">
+            {/* Chat - takes remaining space */}
+            <div className="flex-1 min-w-0 min-h-0">
               <ChatColumn
                 notebookId={notebookId}
                 contextSelections={contextSelections}

@@ -39,6 +39,9 @@ interface SourcesColumnProps {
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
   fetchNextPage?: () => void
+  /** Render as a tab body inside the desktop ContextPanel: no Card shell, no
+   * per-column collapse (the panel owns collapse), compact list rows. */
+  embedded?: boolean
 }
 
 export function SourcesColumn({
@@ -52,6 +55,7 @@ export function SourcesColumn({
   hasNextPage,
   isFetchingNextPage,
   fetchNextPage,
+  embedded = false,
 }: SourcesColumnProps) {
   const { t } = useTranslation()
   const { isAdmin } = useAuth()
@@ -150,112 +154,95 @@ export function SourcesColumn({
     openModal('source', sourceId)
   }
 
-  return (
+  const headerActions = (
     <>
-      <CollapsibleColumn
-        isCollapsed={sourcesCollapsed}
-        onToggle={toggleSources}
-        collapsedIcon={FileText}
-        collapsedLabel={t('navigation.sources')}
-      >
-        <Card className="h-full flex flex-col flex-1 overflow-hidden">
-          <CardHeader className="pb-3 flex-shrink-0">
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">
-                <span aria-hidden className="h-3.5 w-[3px] rounded-full bg-sage" />
-                {t('navigation.sources')}
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                {onBulkContextModeChange && sources && sources.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-muted-foreground" title={t('sources.bulkContext')}>
-                        <ListChecks className="h-4 w-4" />
-                        <ChevronDown className="h-4 w-4 ml-1" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onBulkContextModeChange('insights')}>
-                        {t('sources.includeAllInsights')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onBulkContextModeChange('full')}>
-                        {t('sources.includeAllFull')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onBulkContextModeChange('exclude')}>
-                        {t('sources.excludeAllFromContext')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                {isAdmin && (
-                  <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="sm">
-                        <Plus className="h-4 w-4 mr-2" />
-                        {t('sources.addSource')}
-                        <ChevronDown className="h-4 w-4 ml-2" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        {t('sources.addSource')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
-                        <Link2 className="h-4 w-4 mr-2" />
-                        {t('sources.addExistingTitle')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                {collapseButton}
-              </div>
-            </div>
-          </CardHeader>
+      {onBulkContextModeChange && sources && sources.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="text-muted-foreground" title={t('sources.bulkContext')}>
+              <ListChecks className="h-4 w-4" />
+              <ChevronDown className="h-4 w-4 ml-1" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onBulkContextModeChange('insights')}>
+              {t('sources.includeAllInsights')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onBulkContextModeChange('full')}>
+              {t('sources.includeAllFull')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onBulkContextModeChange('exclude')}>
+              {t('sources.excludeAllFromContext')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+      {isAdmin && (
+        <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              {t('sources.addSource')}
+              <ChevronDown className="h-4 w-4 ml-2" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
+              <Plus className="h-4 w-4 mr-2" />
+              {t('sources.addSource')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
+              <Link2 className="h-4 w-4 mr-2" />
+              {t('sources.addExistingTitle')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </>
+  )
 
-          <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <LoadingSpinner />
-              </div>
-            ) : !sources || sources.length === 0 ? (
-              <EmptyState
-                icon={FileText}
-                title={t('sources.noSourcesYet')}
-                description={t('sources.createFirstSource')}
-              />
-            ) : (
-              <div className="space-y-2">
-                {sources.map((source) => (
-                  <SourceCard
-                    key={source.id}
-                    source={source}
-                    onClick={handleSourceClick}
-                    onDelete={handleDeleteClick}
-                    onRetry={handleRetry}
-                    onRefreshContent={handleRetry}
-                    onRemoveFromNotebook={handleRemoveFromNotebook}
-                    onRefresh={onRefresh}
-                    showRemoveFromNotebook={true}
-                    contextMode={contextSelections?.[source.id]}
-                    onContextModeChange={onContextModeChange
-                      ? (mode) => onContextModeChange(source.id, mode)
-                      : undefined
-                    }
-                  />
-                ))}
-                {/* Loading indicator for infinite scroll */}
-                {isFetchingNextPage && (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </CollapsibleColumn>
+  const listBody = isLoading ? (
+    <div className="flex items-center justify-center py-8">
+      <LoadingSpinner />
+    </div>
+  ) : !sources || sources.length === 0 ? (
+    <EmptyState
+      icon={FileText}
+      title={t('sources.noSourcesYet')}
+      description={t('sources.createFirstSource')}
+    />
+  ) : (
+    <div className={embedded ? 'space-y-0.5' : 'space-y-2'}>
+      {sources.map((source) => (
+        <SourceCard
+          key={source.id}
+          variant={embedded ? 'row' : 'card'}
+          source={source}
+          onClick={handleSourceClick}
+          onDelete={handleDeleteClick}
+          onRetry={handleRetry}
+          onRefreshContent={handleRetry}
+          onRemoveFromNotebook={handleRemoveFromNotebook}
+          onRefresh={onRefresh}
+          showRemoveFromNotebook={true}
+          contextMode={contextSelections?.[source.id]}
+          onContextModeChange={onContextModeChange
+            ? (mode) => onContextModeChange(source.id, mode)
+            : undefined
+          }
+        />
+      ))}
+      {/* Loading indicator for infinite scroll */}
+      {isFetchingNextPage && (
+        <div className="flex items-center justify-center py-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      )}
+    </div>
+  )
 
+  const dialogs = (
+    <>
       <AddSourceDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
@@ -290,6 +277,54 @@ export function SourcesColumn({
         isLoading={removeFromNotebook.isPending}
         confirmVariant="default"
       />
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <>
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex flex-shrink-0 items-center justify-end gap-2 px-3 py-2">
+            {headerActions}
+          </div>
+          <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
+            {listBody}
+          </div>
+        </div>
+        {dialogs}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <CollapsibleColumn
+        isCollapsed={sourcesCollapsed}
+        onToggle={toggleSources}
+        collapsedIcon={FileText}
+        collapsedLabel={t('navigation.sources')}
+      >
+        <Card className="h-full flex flex-col flex-1 overflow-hidden">
+          <CardHeader className="pb-3 flex-shrink-0">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">
+                <span aria-hidden className="h-3.5 w-[3px] rounded-full bg-sage" />
+                {t('navigation.sources')}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {headerActions}
+                {collapseButton}
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
+            {listBody}
+          </CardContent>
+        </Card>
+      </CollapsibleColumn>
+
+      {dialogs}
     </>
   )
 }
