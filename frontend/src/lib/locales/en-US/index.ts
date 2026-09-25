@@ -824,6 +824,8 @@ export const enUS = {
     checkingVersion: "Checking...",
     cannotCheckVersion: "Unable to check",
     connectionError: "Connection error",
+    updateToastTitle: "A new update is available (v{{version}})",
+    updateToastDesc: "Please check Advanced.",
     rebuild: {
       mode: "Rebuild Mode",
       existing: "Existing",

@@ -23,6 +23,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--success-bg": "#8B1538",
           "--success-text": "#ffffff",
           "--success-border": "#6f1029",
+          // Info toasts (e.g. update available) share the same Agribank look.
+          "--info-bg": "#8B1538",
+          "--info-text": "#ffffff",
+          "--info-border": "#6f1029",
         } as React.CSSProperties
       }
       {...props}

@@ -827,6 +827,8 @@ export const viVN = {
     checkingVersion: "Đang kiểm tra...",
     cannotCheckVersion: "Không thể kiểm tra",
     connectionError: "Lỗi kết nối",
+    updateToastTitle: "Có bản cập nhật mới (v{{version}})",
+    updateToastDesc: "Vui lòng kiểm tra trong Công cụ nâng cao.",
     rebuild: {
       mode: "Chế độ xây dựng lại",
       existing: "Hiện có",
