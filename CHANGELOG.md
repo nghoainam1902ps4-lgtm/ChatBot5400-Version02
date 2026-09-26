@@ -2,6 +2,39 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [0.0.7] - 2026-09-26
+
+Giao diện mới theo phương án B (Modern Knowledge Assistant) — chỉ thay lớp
+trình bày, không đổi API, backend, RAG/GraphRAG hay logic nghiệp vụ.
+
+### Font chữ (tự host, chạy offline)
+- Be Vietnam Pro cho toàn bộ giao diện, Bricolage Grotesque cho tiêu đề; tệp
+  WOFF2 kèm giấy phép OFL nằm trong mã nguồn, không tải font từ Internet.
+- Font mã/số dùng font monospace của hệ thống (Spline Sans Mono thiếu dấu
+  tiếng Việt).
+
+### Bố cục trang sổ tay (màn hình ≥ lg)
+- Thanh bên thu gọn thành rail 64px (mặc định); vẫn mở rộng được và nhớ lựa
+  chọn. Khi thu gọn, rê chuột vào logo để hiện nút "Mở rộng thanh bên".
+- Nguồn và Ghi chú gộp thành một bảng Ngữ cảnh 340px có tab; mỗi mục là một
+  hàng gọn có đường phân cách.
+- Tiêu đề sổ tay thành thanh trên 56px.
+- Khung trò chuyện phẳng, cột đọc 760px, câu trả lời AI không đóng khung,
+  ô nhập mới có chip mô hình và chip ngữ cảnh. Áp dụng cho cả trò chuyện theo
+  nguồn.
+- Màn hình nhỏ hơn lg giữ nguyên bố cục cũ.
+
+### Trích dẫn
+- Khối "Nguồn dẫn": mỗi trích dẫn là một hàng riêng gồm số, tên và loại
+  (Nguồn / Chi tiết / Ghi chú), không còn hiện mã ID thô. Tên lấy từ dữ liệu đã
+  tải sẵn, không phát sinh thêm request.
+- Số trích dẫn trong câu trả lời hiển thị dạng chip nhỏ; bấm vẫn mở đúng nguồn.
+
+### Sửa lỗi
+- Hộp thoại "Cấu hình mô hình" rộng hơn, tên mô hình dài không bị tràn.
+- Hộp thoại Thêm/Sửa chuyển đổi luôn hiện nút "Hủy" và "Thêm"/"Lưu thay đổi"
+  trên màn hình thấp (phần nội dung tự cuộn).
+
 ## [0.0.6] - 2026-09-25
 
 Sửa thông báo bản cập nhật mới.
