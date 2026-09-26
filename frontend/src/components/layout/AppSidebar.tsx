@@ -181,20 +181,30 @@ export function AppSidebar() {
             isCollapsed ? 'justify-center px-2' : 'justify-between px-4'
           )}
         >
-          {/* Same top slot in both states: collapsed swaps the brand for the
-              expand toggle (always visible), expanded shows brand + collapse. */}
+          {/* Same top slot in both states: collapsed shows the logo, which
+              turns into the expand toggle on hover; expanded shows brand +
+              collapse. */}
           {isCollapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
+                {/* Logo and expand icon share one grid cell (no absolute
+                    positioning): idle shows the logo, hover/keyboard focus
+                    swaps to the icon via CSS only — same box, no reflow. */}
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={toggleCollapse}
-                  className="h-9 w-9 text-sidebar-foreground hover:bg-sidebar-accent"
+                  className="group/expand grid h-9 w-9 place-items-center text-sidebar-foreground hover:bg-sidebar-accent"
                   data-testid="sidebar-toggle"
                   aria-label={t('common.expandSidebar')}
                 >
-                  <PanelLeftOpen className="h-4 w-4" />
+                  <span
+                    aria-hidden
+                    className="[grid-area:1/1] transition-opacity duration-150 group-hover/expand:opacity-0 group-focus-visible/expand:opacity-0"
+                  >
+                    <AgribankLogo className="h-8 w-8" />
+                  </span>
+                  <PanelLeftOpen className="[grid-area:1/1] h-4 w-4 opacity-0 transition-opacity duration-150 group-hover/expand:opacity-100 group-focus-visible/expand:opacity-100" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">{t('common.expandSidebar')}</TooltipContent>
