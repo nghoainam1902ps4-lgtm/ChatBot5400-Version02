@@ -86,9 +86,11 @@ describe('AppSidebar', () => {
 
     render(<AppSidebar />)
 
-    // In collapsed mode the wordmark text is hidden; only the logo mark shows.
+    // In collapsed mode the brand (wordmark and logo) gives its top slot to the
+    // expand toggle; the toggle is the first control of the rail.
     expect(screen.queryByText('Agribank Lâm Đồng')).toBeNull()
-    expect(screen.getByAltText('Agribank Lâm Đồng')).toBeDefined()
+    expect(screen.queryByAltText('Agribank Lâm Đồng')).toBeNull()
+    expect(screen.getAllByRole('button')[0].getAttribute('aria-label')).toBe('common.expandSidebar')
   })
 
   it('rail exposes every icon-only action by the same t() key via aria-label', () => {

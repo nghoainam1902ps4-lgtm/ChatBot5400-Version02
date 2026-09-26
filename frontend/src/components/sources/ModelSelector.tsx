@@ -96,7 +96,10 @@ export function ModelSelector({
           </span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      {/* Room for long model names (e.g. "Mặc định (google/gemini-3-flash-preview)").
+          The base DialogContent keeps max-w-[calc(100%-2rem)] below sm, so it never
+          overflows the viewport. */}
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
@@ -106,23 +109,31 @@ export function ModelSelector({
             {t('transformations.overrideModelDesc')}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
+        <div className="grid min-w-0 gap-4 py-4">
+          <div className="grid min-w-0 gap-2">
             <Label htmlFor="model">{t('common.model')}</Label>
             <Select value={selectedModel} onValueChange={setSelectedModel}>
-              <SelectTrigger id="model">
+              {/* Full width of the dialog; a long selected name truncates in the
+                  trigger (full name in the title tooltip and in the open list). */}
+              <SelectTrigger
+                id="model"
+                className="w-full min-w-0 *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1 [&_[data-slot=select-value]_span]:truncate"
+                title={selectedModel === 'default'
+                  ? (defaultModel ? `${t('common.default')} (${defaultModel.name})` : t('transformations.systemDefault'))
+                  : languageModels.find(m => m.id === selectedModel)?.name || selectedModel}
+              >
                 <SelectValue placeholder={t('models.selectModelPlaceholder')} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
                 <SelectItem value="default">
-                  <div className="flex items-center justify-between w-full">
-                    <span>
+                  <div className="flex min-w-0 items-center justify-between w-full">
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
                       {defaultModel 
                         ? `${t('common.default')} (${defaultModel.name})` 
                         : t('transformations.systemDefault')}
                     </span>
                     {defaultModel?.provider && (
-                      <span className="text-xs text-muted-foreground ml-2">
+                      <span className="flex-shrink-0 text-xs text-muted-foreground ml-2">
                         {defaultModel.provider}
                       </span>
                     )}
@@ -135,9 +146,9 @@ export function ModelSelector({
                 ) : (
                   languageModels.map((model) => (
                     <SelectItem key={model.id} value={model.id}>
-                      <div className="flex items-center justify-between w-full">
-                        <span>{model.name}</span>
-                        <span className="text-xs text-muted-foreground ml-2">
+                      <div className="flex min-w-0 items-center justify-between w-full">
+                        <span className="min-w-0 [overflow-wrap:anywhere]" title={model.name}>{model.name}</span>
+                        <span className="flex-shrink-0 text-xs text-muted-foreground ml-2">
                           {model.provider}
                         </span>
                       </div>
@@ -149,7 +160,7 @@ export function ModelSelector({
           </div>
           {selectedModel && selectedModel !== 'default' && (
             <div className="rounded-lg bg-muted p-3">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground break-words">
                 {t('transformations.sessionUseReplacement', { name: languageModels.find(m => m.id === selectedModel)?.name || selectedModel })}
               </p>
             </div>
