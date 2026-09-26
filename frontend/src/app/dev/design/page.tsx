@@ -112,10 +112,10 @@ const SHADOWS = [
 ] as const
 
 const RADII = [
-  ["--radius-sm", "sm 4px — chips, small buttons"],
-  ["--radius-md", "md 5px — controls, inputs"],
-  ["--radius-lg", "lg 5px — cards"],
-  ["--radius-xl", "xl 6px — panels, overlays"],
+  ["--radius-sm", "sm 6px — chips, small buttons"],
+  ["--radius-md", "md 8px — controls, inputs"],
+  ["--radius-lg", "lg 10px — cards"],
+  ["--radius-xl", "xl 12px — panels, overlays"],
 ] as const
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -209,12 +209,32 @@ function Sheet() {
           Display — Bricolage Grotesque 700
         </div>
         <div className="text-sm">
-          Body — Instrument Sans. Reading text stays on neutral surfaces;
+          Body — Be Vietnam Pro. Reading text stays on neutral surfaces;
           color is information, never decoration.
         </div>
         <div className="font-mono text-xs">
-          Mono — Spline Sans Mono · for data, not prose · 128 chunks · 04:32
+          Mono — system monospace · for data, not prose · 128 chunks · 04:32
         </div>
+      </div>
+
+      <SectionTitle>Vietnamese glyph check (self-hosted fonts)</SectionTitle>
+      <div className="space-y-4" data-testid="vi-glyph-check">
+        {(["font-sans", "font-display"] as const).map((family) => (
+          <div key={family} className={`${family} space-y-1`}>
+            <div className="font-mono text-xs text-muted-foreground">{family}</div>
+            <div className="text-base">{VI_GLYPHS}</div>
+            {[400, 500, 600, 700].map((w) => (
+              <div key={w} style={{ fontWeight: w }} className="text-base">
+                {w} — {VI_SENTENCE}
+              </div>
+            ))}
+            {["text-xs", "text-sm", "text-lg", "text-2xl", "text-4xl"].map((size) => (
+              <div key={size} className={size}>
+                {VI_SENTENCE}
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
 
       <SectionTitle>Content-type hues (dots, ticks, chips — never washes)</SectionTitle>
@@ -493,6 +513,11 @@ function Sheet() {
 // so themes only switch correctly via the `dark` class on the document root —
 // a nested `.dark` wrapper inherits already-resolved light values. Hence one
 // theme at a time here, toggled through the app's real theme store.
+const VI_GLYPHS =
+  "ă â đ ê ô ơ ư Ă Â Đ Ê Ô Ơ Ư á à ả ã ạ ấ ầ ẩ ẫ ậ ắ ằ ẳ ẵ ặ ế ề ể ễ ệ ố ồ ổ ỗ ộ ớ ờ ở ỡ ợ ứ ừ ử ữ ự";
+const VI_SENTENCE =
+  "Tra cứu thông tin khách hàng, nguồn vốn, dư nợ, tài sản bảo đảm, nghĩa vụ trả nợ và các quy định hiện hành của Agribank.";
+
 export default function DesignPage() {
   if (process.env.NODE_ENV === "production") {
     notFound()

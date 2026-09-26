@@ -462,7 +462,7 @@ export function createCompactReferenceLinkComponent(
             e.stopPropagation()
             onReferenceClick(type, id)
           }}
-          className="text-primary hover:underline cursor-pointer inline font-medium"
+          className="ml-0.5 inline-flex h-[1.3em] min-w-[1.3em] cursor-pointer items-center justify-center rounded bg-primary/10 px-1 align-[0.12em] text-[0.72em] font-semibold leading-none tabular-nums text-primary transition-colors hover:bg-primary/20"
           type="button"
         >
           {children}

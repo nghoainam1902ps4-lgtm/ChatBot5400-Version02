@@ -86,8 +86,44 @@ describe('AppSidebar', () => {
 
     render(<AppSidebar />)
 
-    // In collapsed mode the wordmark text is hidden; only the logo mark shows.
+    // In collapsed mode the wordmark is hidden; the logo sits inside the expand
+    // toggle in the rail's top slot (the icon replaces it on hover, via CSS).
     expect(screen.queryByText('Agribank Lâm Đồng')).toBeNull()
-    expect(screen.getByAltText('Agribank Lâm Đồng')).toBeDefined()
+    const toggle = screen.getAllByRole('button')[0]
+    expect(toggle.getAttribute('aria-label')).toBe('common.expandSidebar')
+    expect(toggle.contains(screen.getByAltText('Agribank Lâm Đồng'))).toBe(true)
+  })
+
+  it('rail exposes every icon-only action by the same t() key via aria-label', () => {
+    vi.mocked(useSidebarStore).mockReturnValue({
+      isCollapsed: true,
+      toggleCollapse: vi.fn(),
+    } as any)
+
+    render(<AppSidebar />)
+
+    // Nav links: labels are hidden in the rail but still reachable by name.
+    expect(screen.getByRole('link', { name: 'navigation.sources' }).getAttribute('href')).toBe('/sources')
+    expect(screen.getByRole('link', { name: 'navigation.notebooks' }).getAttribute('href')).toBe('/notebooks')
+
+    // Footer actions (labels hidden in the rail).
+    expect(screen.getByRole('group', { name: 'common.theme' })).toBeDefined()
+    expect(screen.getByRole('group', { name: 'common.language' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'common.signOut' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'common.create' })).toBeDefined()
+  })
+
+  it('shows a visible expand toggle in the rail that flips the stored state', () => {
+    const toggleCollapse = vi.fn()
+    vi.mocked(useSidebarStore).mockReturnValue({
+      isCollapsed: true,
+      toggleCollapse,
+    } as any)
+
+    render(<AppSidebar />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.expandSidebar' }))
+
+    expect(toggleCollapse).toHaveBeenCalled()
   })
 })

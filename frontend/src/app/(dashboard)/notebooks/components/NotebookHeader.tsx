@@ -52,22 +52,26 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
 
   return (
     <>
-      <div className="border-b pb-6">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
+      {/* Below lg: the original stacked header. From lg up (design B): one
+          56px top bar — name · description · dates … Archive / Delete. The
+          same elements are reflowed with responsive classes (no duplicate
+          InlineEdit instances), so every edit affordance stays available. */}
+      <div className="border-b pb-6 lg:pb-0">
+        <div className="space-y-2 lg:flex lg:min-h-14 lg:items-center lg:gap-4 lg:space-y-0 lg:px-6 lg:py-2">
+          <div className="flex items-center justify-between lg:contents">
+            <div className="flex items-center gap-3 flex-1 lg:max-w-[40%] lg:flex-none lg:min-w-0">
               {isAdmin ? (
                 <InlineEdit
                   id="notebook-name"
                   name="notebook-name"
                   value={notebook.name}
                   onSave={handleUpdateName}
-                  className="font-display text-2xl font-bold tracking-tight"
-                  inputClassName="font-display text-2xl font-bold tracking-tight"
+                  className="font-display text-2xl font-bold tracking-tight lg:mx-0 lg:truncate lg:text-lg"
+                  inputClassName="font-display text-2xl font-bold tracking-tight lg:text-lg"
                   placeholder={t('notebooks.namePlaceholder')}
                 />
               ) : (
-                <h1 className="font-display text-2xl font-bold tracking-tight">
+                <h1 className="font-display text-2xl font-bold tracking-tight lg:truncate lg:text-lg">
                   {notebook.name}
                 </h1>
               )}
@@ -76,7 +80,7 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
               )}
             </div>
             {isAdmin && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 lg:order-last lg:flex-shrink-0">
                 <Button
                   variant="outline"
                   size="sm"
@@ -108,29 +112,33 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
           </div>
 
           {/* Signature: one short flat fern underline — one hue, no show */}
-          <div aria-hidden className="h-[3px] w-14 rounded-[1px] bg-fern" />
+          <div aria-hidden className="h-[3px] w-14 rounded-[1px] bg-fern lg:hidden" />
 
-          {isAdmin ? (
-            <InlineEdit
-              id="notebook-description"
-              name="notebook-description"
-              value={notebook.description || ''}
-              onSave={handleUpdateDescription}
-              className="text-muted-foreground"
-              inputClassName="text-muted-foreground"
-              placeholder={t('notebooks.addDescription')}
-              multiline
-              emptyText={t('notebooks.addDescription')}
-            />
-          ) : (
-            notebook.description && (
-              <p className="text-muted-foreground whitespace-pre-wrap">
-                {notebook.description}
-              </p>
-            )
+          {(isAdmin || notebook.description) && (
+            <div className="lg:min-w-0 lg:flex-1">
+              {isAdmin ? (
+                <InlineEdit
+                  id="notebook-description"
+                  name="notebook-description"
+                  value={notebook.description || ''}
+                  onSave={handleUpdateDescription}
+                  className="text-muted-foreground lg:truncate lg:text-sm"
+                  inputClassName="text-muted-foreground"
+                  placeholder={t('notebooks.addDescription')}
+                  multiline
+                  emptyText={t('notebooks.addDescription')}
+                />
+              ) : (
+                <p className="text-muted-foreground whitespace-pre-wrap lg:truncate lg:whitespace-nowrap lg:text-sm">
+                  {notebook.description}
+                </p>
+              )}
+            </div>
           )}
-          
-          <div className="text-xs text-muted-foreground">
+          {/* Keeps the bar's actions right-aligned when there is no description. */}
+          {!isAdmin && !notebook.description && <div aria-hidden className="hidden lg:block lg:flex-1" />}
+
+          <div className="text-xs text-muted-foreground lg:hidden xl:block xl:flex-shrink-0 xl:whitespace-nowrap">
             {t('common.created', { time: formatDistanceToNow(new Date(notebook.created), { addSuffix: true, locale: dfLocale }) })} • 
             {t('common.updated', { time: formatDistanceToNow(new Date(notebook.updated), { addSuffix: true, locale: dfLocale }) })}
           </div>

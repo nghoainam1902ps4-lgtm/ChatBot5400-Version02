@@ -36,7 +36,7 @@ import {
   Settings,
   LogOut,
   ChevronLeft,
-  Menu,
+  PanelLeftOpen,
   FileText,
   Plus,
   Wrench,
@@ -177,22 +177,38 @@ export function AppSidebar() {
       >
         <div
           className={cn(
-            'flex h-16 items-center group',
+            'flex h-16 shrink-0 items-center group',
             isCollapsed ? 'justify-center px-2' : 'justify-between px-4'
           )}
         >
+          {/* Same top slot in both states: collapsed shows the logo, which
+              turns into the expand toggle on hover; expanded shows brand +
+              collapse. */}
           {isCollapsed ? (
-            <div className="relative flex items-center justify-center w-full">
-              <AgribankLogo className="h-8 w-8 transition-opacity group-hover:opacity-0" />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleCollapse}
-                className="absolute text-sidebar-foreground hover:bg-sidebar-accent opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {/* Logo and expand icon share one grid cell (no absolute
+                    positioning): idle shows the logo, hover/keyboard focus
+                    swaps to the icon via CSS only — same box, no reflow. */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleCollapse}
+                  className="group/expand grid h-9 w-9 place-items-center text-sidebar-foreground hover:bg-sidebar-accent"
+                  data-testid="sidebar-toggle"
+                  aria-label={t('common.expandSidebar')}
+                >
+                  <span
+                    aria-hidden
+                    className="[grid-area:1/1] transition-opacity duration-150 group-hover/expand:opacity-0 group-focus-visible/expand:opacity-0"
+                  >
+                    <AgribankLogo className="h-8 w-8" />
+                  </span>
+                  <PanelLeftOpen className="[grid-area:1/1] h-4 w-4 opacity-0 transition-opacity duration-150 group-hover/expand:opacity-100 group-focus-visible/expand:opacity-100" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{t('common.expandSidebar')}</TooltipContent>
+            </Tooltip>
           ) : (
             <>
               <div className="flex items-center gap-2.5">
@@ -207,6 +223,8 @@ export function AppSidebar() {
                 onClick={toggleCollapse}
                 className="text-sidebar-foreground hover:bg-sidebar-accent"
                 data-testid="sidebar-toggle"
+                aria-label={t('common.collapseSidebar')}
+                title={t('common.collapseSidebar')}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
@@ -216,7 +234,7 @@ export function AppSidebar() {
 
         <nav
           className={cn(
-            'flex-1 space-y-1 py-4',
+            'flex-1 space-y-1 overflow-y-auto py-4',
             isCollapsed ? 'px-2' : 'px-3'
           )}
         >
@@ -322,7 +340,7 @@ export function AppSidebar() {
                         'w-full gap-2.5 text-[13px] font-medium text-sidebar-foreground/80 sidebar-menu-item relative',
                         isActive &&
                           'bg-popover font-semibold text-sidebar-foreground ring-1 ring-inset ring-border before:absolute before:-left-1.5 before:top-[7px] before:bottom-[7px] before:w-[3px] before:rounded-[2px] before:bg-fern',
-                        isCollapsed ? 'justify-center px-2' : 'justify-start'
+                        isCollapsed ? 'h-10 justify-center px-2' : 'justify-start'
                       )}
                     >
                       <item.icon className={cn('h-4 w-4 opacity-85', item.iconClass)} />
@@ -334,7 +352,7 @@ export function AppSidebar() {
                     return (
                       <Tooltip key={item.name}>
                         <TooltipTrigger asChild>
-                          <Link href={item.href}>
+                          <Link href={item.href} aria-label={item.name} className="block rounded-md">
                             {button}
                           </Link>
                         </TooltipTrigger>
@@ -388,7 +406,7 @@ export function AppSidebar() {
               <>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div>
+                    <div role="group" aria-label={t('common.theme')} className="w-full">
                       <ThemeToggle iconOnly />
                     </div>
                   </TooltipTrigger>
@@ -396,7 +414,7 @@ export function AppSidebar() {
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div>
+                    <div role="group" aria-label={t('common.language')} className="w-full">
                       <LanguageToggle iconOnly />
                     </div>
                   </TooltipTrigger>

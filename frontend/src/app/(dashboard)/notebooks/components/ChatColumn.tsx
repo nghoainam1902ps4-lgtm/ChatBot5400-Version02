@@ -68,7 +68,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
   // Show loading state while sources/notes are being fetched
   if (sourcesLoading || notesLoading) {
     return (
-      <Card className="h-full flex flex-col">
+      <Card className="h-full flex flex-col lg:rounded-none lg:border-0 lg:bg-transparent">
         <CardContent className="flex-1 flex items-center justify-center">
           <LoadingSpinner size="lg" />
         </CardContent>
@@ -79,7 +79,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
   // Show error state if data fetch failed (unlikely but good to handle)
   if (!sources && !notes) {
     return (
-      <Card className="h-full flex flex-col">
+      <Card className="h-full flex flex-col lg:rounded-none lg:border-0 lg:bg-transparent">
         <CardContent className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">
             <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
