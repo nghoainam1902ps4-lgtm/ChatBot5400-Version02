@@ -459,6 +459,16 @@ export const enUS = {
     maxFilesAllowed: "Maximum {{count}} files allowed per batch",
   },
   chat: {
+    citationType: {
+      source: "Source",
+      insight: "Insight",
+      note: "Note",
+    },
+    citationFallback: {
+      source: "Source document",
+      insight: "Source insight",
+      note: "Note",
+    },
     copy: "Copy",
     citationsTitle: "Sources cited",
     answeredFromCount: "Answered from {{count}} sources",

@@ -1,6 +1,7 @@
 'use client'
 
 import { memo, useCallback, useState, useRef, useEffect, useId, type ReactNode } from 'react'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -421,25 +422,104 @@ function AIMessageContent({
         {body}
       </MarkdownRenderer>
       {referenceLines.length > 0 && (
-        <SourceCitations lines={referenceLines} linkComponent={LinkComponent} />
+        <SourceCitations lines={referenceLines} linkComponent={LinkComponent} onReferenceClick={onReferenceClick} />
       )}
     </>
   )
 }
 
-// "Nguồn dẫn" block: renders the reference lines produced above, with the same
-// clickable link component used for the inline [n] chips.
+// "Nguồn dẫn" block: one bordered row per reference line produced above.
+//
+// Each line is exactly what convertReferencesToCompactMarkdown wrote:
+// "[n] - [<type>:<id>](#ref-<type>-<id>)". Reading number/type/id back from
+// that line keeps the converter's numbering and targets as-is (no re-parse of
+// the answer). Titles are resolved from data the page has already loaded
+// (React Query cache: notebook sources/notes, source detail, opened insights);
+// nothing is fetched just for display. Unresolved references show a typed
+// fallback label instead of the raw database id.
+const REFERENCE_LINE = /^\[(\d+)\] - \[(source_insight|source|note):([^\]]+)\]\(#ref-[^)]+\)\s*$/
+
+type CitationType = 'source' | 'source_insight' | 'note'
+
+const CITATION_STYLES: Record<CitationType, { badge: string; labelKey: string; fallbackKey: string }> = {
+  source: { badge: 'bg-cite-source/15 text-cite-source', labelKey: 'chat.citationType.source', fallbackKey: 'chat.citationFallback.source' },
+  source_insight: { badge: 'bg-cite-derived/15 text-cite-derived', labelKey: 'chat.citationType.insight', fallbackKey: 'chat.citationFallback.insight' },
+  note: { badge: 'bg-cite-note/15 text-cite-note', labelKey: 'chat.citationType.note', fallbackKey: 'chat.citationFallback.note' },
+}
+
+type CachedRecord = { id?: unknown; title?: unknown; insight_type?: unknown; source_id?: unknown }
+
+// Find a record by id anywhere in the already-loaded sources/notes/insights
+// queries (plain lists, infinite-query pages, or single records).
+function findCachedRecord(queryClient: QueryClient, fullId: string): CachedRecord | undefined {
+  const bareId = fullId.slice(fullId.indexOf(':') + 1)
+  const matches = (item: CachedRecord) => item.id === fullId || item.id === bareId
+  const visit = (data: unknown): CachedRecord | undefined => {
+    if (!data || typeof data !== 'object') return undefined
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        const found = visit(item)
+        if (found) return found
+      }
+      return undefined
+    }
+    const record = data as CachedRecord & { pages?: unknown }
+    if (matches(record)) return record
+    if (Array.isArray(record.pages)) return visit(record.pages)
+    return undefined
+  }
+  for (const query of queryClient.getQueryCache().getAll()) {
+    const root = query.queryKey[0]
+    if (root !== 'sources' && root !== 'notes' && root !== 'insights') continue
+    const found = visit(query.state.data)
+    if (found) return found
+  }
+  return undefined
+}
+
+function resolveCitationTitle(queryClient: QueryClient, type: CitationType, id: string): string | null {
+  const record = findCachedRecord(queryClient, `${type}:${id}`)
+  if (!record) return null
+  if (type === 'source_insight') {
+    const insightType = typeof record.insight_type === 'string' ? record.insight_type : ''
+    const parent = typeof record.source_id === 'string' ? findCachedRecord(queryClient, record.source_id) : undefined
+    const parentTitle = typeof parent?.title === 'string' ? parent.title : ''
+    return [insightType, parentTitle].filter(Boolean).join(' — ') || null
+  }
+  return typeof record.title === 'string' && record.title.trim() ? record.title : null
+}
+
+// Re-render when sources/notes/insights finish loading, so a citation that
+// rendered before its title was cached picks it up.
+function useCitationCacheVersion(queryClient: QueryClient) {
+  const [version, setVersion] = useState(0)
+  useEffect(() => {
+    return queryClient.getQueryCache().subscribe((event) => {
+      const root = event.query.queryKey[0]
+      if (event.type === 'updated' && event.action.type === 'success' && (root === 'sources' || root === 'notes' || root === 'insights')) {
+        setVersion((v) => v + 1)
+      }
+    })
+  }, [queryClient])
+  return version
+}
+
 function SourceCitations({
   lines,
-  linkComponent
+  linkComponent,
+  onReferenceClick
 }: {
   lines: string[]
   linkComponent: ReturnType<typeof createCompactReferenceLinkComponent>
+  onReferenceClick: (type: string, id: string) => void
 }) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  useCitationCacheVersion(queryClient)
+
   return (
-    <div className="rounded-lg border bg-muted/30 px-4 py-3">
-      <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
         <span className="inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.12em] text-muted-foreground">
           <BookOpen className="h-3.5 w-3.5" />
           {t('chat.citationsTitle')}
@@ -447,17 +527,40 @@ function SourceCitations({
         <span className="text-muted-foreground">·</span>
         <span className="text-muted-foreground">{t('chat.answeredFromCount', { count: lines.length })}</span>
       </div>
-      <ol className="space-y-1 [&_.prose]:!text-sm [&_p]:!my-0 [&_p]:!leading-6">
-        {lines.map((line, index) => (
-          <li key={index}>
-            <MarkdownRenderer components={{
-              a: linkComponent,
-              p: ({ children }) => <p className="my-0">{children}</p>
-            }}>
-              {line}
-            </MarkdownRenderer>
-          </li>
-        ))}
+      <ol className="space-y-1.5">
+        {lines.map((line, index) => {
+          const match = REFERENCE_LINE.exec(line)
+          if (!match) {
+            // Unexpected line shape: keep the previous rendering for it.
+            return (
+              <li key={index} className="rounded-md border bg-card px-3 py-2 [&_.prose]:!text-sm [&_p]:!my-0">
+                <MarkdownRenderer components={{ a: linkComponent, p: ({ children }) => <p className="my-0">{children}</p> }}>
+                  {line}
+                </MarkdownRenderer>
+              </li>
+            )
+          }
+          const [, number, rawType, id] = match
+          const type = rawType as CitationType
+          const style = CITATION_STYLES[type]
+          const title = resolveCitationTitle(queryClient, type, id) ?? t(style.fallbackKey)
+          return (
+            <li key={index}>
+              <button
+                type="button"
+                onClick={() => onReferenceClick(type, id)}
+                title={title}
+                className="flex w-full items-center gap-3 rounded-md border bg-card px-3 py-2 text-left transition-colors duration-150 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              >
+                <span className={cn('inline-flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded px-1 text-[11px] font-semibold tabular-nums', style.badge)}>
+                  {number}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-foreground">{title}</span>
+                <span className="flex-shrink-0 text-xs text-muted-foreground">{t(style.labelKey)}</span>
+              </button>
+            </li>
+          )
+        })}
       </ol>
     </div>
   )

@@ -356,7 +356,7 @@ function SourceCardImpl({
     return (
       <div
         className={cn(
-          'group relative flex items-start gap-2.5 rounded-md px-2 py-2 cursor-pointer transition-colors duration-150 hover:bg-accent/60',
+          'group relative flex items-start gap-2.5 border-b border-border/70 px-2 py-2.5 last:border-b-0 cursor-pointer transition-colors duration-150 hover:bg-accent/40',
           className
         )}
         onClick={handleCardClick}

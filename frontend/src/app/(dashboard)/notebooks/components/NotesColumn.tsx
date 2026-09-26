@@ -112,6 +112,44 @@ export function NotesColumn({
     </>
   )
 
+  const renderNoteToggle = (note: NoteResponse) =>
+    onContextModeChange && contextSelections?.[note.id] ? (
+      <div onClick={(event) => event.stopPropagation()}>
+        <ContextToggle
+          mode={contextSelections[note.id]}
+          hasInsights={false}
+          onChange={(mode) => onContextModeChange(note.id, mode)}
+        />
+      </div>
+    ) : null
+
+  const renderNoteMenu = (note: NoteResponse, triggerClassName: string) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={triggerClassName}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation()
+            handleDeleteClick(note.id)
+          }}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          {t('notebooks.deleteNote')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
   const listBody = isLoading ? (
     <div className="flex items-center justify-center py-8">
       <LoadingSpinner />
@@ -122,14 +160,59 @@ export function NotesColumn({
       title={t('notebooks.noNotesYet')}
       description={t('sources.createFirstNote')}
     />
-  ) : (
-    <div className={embedded ? 'space-y-0.5' : 'space-y-2'}>
+  ) : embedded ? (
+    // Context-panel rows: same rhythm, separator and hover as SourceCard's row variant.
+    <div>
       {notes.map((note) => (
         <div
           key={note.id}
-          className={embedded
-            ? 'px-2 py-2 rounded-md group relative cursor-pointer transition-colors duration-150 hover:bg-accent/60'
-            : 'p-3 border rounded-md bg-card shadow-none card-hover group relative cursor-pointer'}
+          className="group relative flex items-start gap-2.5 border-b border-border/70 px-2 py-2.5 last:border-b-0 cursor-pointer transition-colors duration-150 hover:bg-accent/40"
+          onClick={() => handleOpenEditor(note)}
+        >
+          <span
+            aria-hidden
+            className={`mt-[7px] size-2 flex-shrink-0 rounded-full ${note.note_type === 'ai' ? 'bg-type-ai' : 'bg-type-note'}`}
+          />
+          <div className="min-w-0 flex-1">
+            <h4 className="truncate text-sm font-medium leading-snug" title={note.title || undefined}>
+              {note.title || note.content}
+            </h4>
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              {note.note_type === 'ai' ? (
+                <Bot className="h-3 w-3 flex-shrink-0 text-teal" />
+              ) : (
+                <User className="h-3 w-3 flex-shrink-0" />
+              )}
+              <span className="flex-shrink-0">
+                {note.note_type === 'ai' ? t('common.aiGenerated') : t('common.human')}
+              </span>
+              <span aria-hidden>·</span>
+              <span className="truncate">
+                {formatDistanceToNow(new Date(note.updated), {
+                  addSuffix: true,
+                  locale: getDateLocale(language)
+                })}
+              </span>
+            </div>
+            {note.title && note.content && (
+              <p className="mt-1 text-xs text-muted-foreground line-clamp-2 break-words">
+                {note.content}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-0.5">
+            {renderNoteToggle(note)}
+            {renderNoteMenu(note, 'h-7 w-7 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity')}
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="space-y-2">
+      {notes.map((note) => (
+        <div
+          key={note.id}
+          className="p-3 border rounded-md bg-card shadow-none card-hover group relative cursor-pointer"
           onClick={() => handleOpenEditor(note)}
         >
           <div className="flex items-start justify-between mb-2">
@@ -153,50 +236,19 @@ export function NotesColumn({
               </span>
 
               {/* Context toggle - only show if handler provided */}
-              {onContextModeChange && contextSelections?.[note.id] && (
-                <div onClick={(event) => event.stopPropagation()}>
-                  <ContextToggle
-                    mode={contextSelections[note.id]}
-                    hasInsights={false}
-                    onChange={(mode) => onContextModeChange(note.id, mode)}
-                  />
-                </div>
-              )}
+              {renderNoteToggle(note)}
 
               {/* Ellipsis menu for delete action */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteClick(note.id)
-                    }}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {t('notebooks.deleteNote')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {renderNoteMenu(note, 'h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity')}
             </div>
           </div>
 
           {note.title && (
-            <h4 className={`text-sm font-medium mb-2 ${embedded ? 'break-words' : 'break-all'}`}>{note.title}</h4>
+            <h4 className="text-sm font-medium mb-2 break-all">{note.title}</h4>
           )}
 
           {note.content && (
-            <p className={`text-sm text-muted-foreground line-clamp-3 ${embedded ? 'break-words' : 'break-all'}`}>
+            <p className="text-sm text-muted-foreground line-clamp-3 break-all">
               {note.content}
             </p>
           )}

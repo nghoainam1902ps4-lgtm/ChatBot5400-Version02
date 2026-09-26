@@ -462,6 +462,16 @@ export const viVN = {
     maxFilesAllowed: "Tối đa {{count}} tệp cho mỗi lô",
   },
   chat: {
+    citationType: {
+      source: "Nguồn",
+      insight: "Chi tiết",
+      note: "Ghi chú",
+    },
+    citationFallback: {
+      source: "Nguồn tài liệu",
+      insight: "Thông tin chi tiết của nguồn",
+      note: "Ghi chú",
+    },
     copy: "Sao chép",
     citationsTitle: "Nguồn dẫn",
     answeredFromCount: "Trả lời từ {{count}} nguồn",

@@ -212,7 +212,7 @@ export function SourcesColumn({
       description={t('sources.createFirstSource')}
     />
   ) : (
-    <div className={embedded ? 'space-y-0.5' : 'space-y-2'}>
+    <div className={embedded ? undefined : 'space-y-2'}>
       {sources.map((source) => (
         <SourceCard
           key={source.id}
