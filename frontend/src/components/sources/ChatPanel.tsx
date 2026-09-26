@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useCallback, useState, useRef, useEffect, useId, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, useState, useRef, useEffect, useId, type ReactNode } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -433,10 +433,9 @@ function AIMessageContent({
 // Each line is exactly what convertReferencesToCompactMarkdown wrote:
 // "[n] - [<type>:<id>](#ref-<type>-<id>)". Reading number/type/id back from
 // that line keeps the converter's numbering and targets as-is (no re-parse of
-// the answer). Titles are resolved from data the page has already loaded
-// (React Query cache: notebook sources/notes, source detail, opened insights);
-// nothing is fetched just for display. Unresolved references show a typed
-// fallback label instead of the raw database id.
+// the answer). Titles are resolved locally from data the page has already
+// loaded (see buildCitationLookup); nothing is fetched for display.
+// Unresolved references show a typed fallback label, never the raw id.
 const REFERENCE_LINE = /^\[(\d+)\] - \[(source_insight|source|note):([^\]]+)\]\(#ref-[^)]+\)\s*$/
 
 type CitationType = 'source' | 'source_insight' | 'note'
@@ -447,56 +446,88 @@ const CITATION_STYLES: Record<CitationType, { badge: string; labelKey: string; f
   note: { badge: 'bg-cite-note/15 text-cite-note', labelKey: 'chat.citationType.note', fallbackKey: 'chat.citationFallback.note' },
 }
 
-type CachedRecord = { id?: unknown; title?: unknown; insight_type?: unknown; source_id?: unknown }
+type AnyRecord = Record<string, unknown>
 
-// Find a record by id anywhere in the already-loaded sources/notes/insights
-// queries (plain lists, infinite-query pages, or single records).
-function findCachedRecord(queryClient: QueryClient, fullId: string): CachedRecord | undefined {
-  const bareId = fullId.slice(fullId.indexOf(':') + 1)
-  const matches = (item: CachedRecord) => item.id === fullId || item.id === bareId
-  const visit = (data: unknown): CachedRecord | undefined => {
-    if (!data || typeof data !== 'object') return undefined
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        const found = visit(item)
-        if (found) return found
-      }
-      return undefined
-    }
-    const record = data as CachedRecord & { pages?: unknown }
-    if (matches(record)) return record
-    if (Array.isArray(record.pages)) return visit(record.pages)
-    return undefined
+type CitationLookup = {
+  sourceById: Map<string, AnyRecord>
+  insightById: Map<string, AnyRecord & { parentTitle?: string }>
+  noteById: Map<string, AnyRecord>
+}
+
+const CACHE_ROOTS = ['sources', 'notes', 'insights', 'notebookChatContext'] as const
+
+const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : '')
+const bare = (id: string) => id.slice(id.indexOf(':') + 1)
+
+// One pass over data the page already loaded, producing id -> record maps.
+// Sources: notebook source lists (plain + infinite pages) and source detail.
+// Notes: the notebook's note list. Insights: the last /chat/context response
+// (each source carries its insights) plus any insight opened in a dialog.
+// Keys are stored with and without the "table:" prefix.
+function buildCitationLookup(queryClient: QueryClient): CitationLookup {
+  const lookup: CitationLookup = { sourceById: new Map(), insightById: new Map(), noteById: new Map() }
+  const put = <T extends AnyRecord>(map: Map<string, T>, record: T) => {
+    const id = text(record.id)
+    if (!id) return
+    if (!map.has(id)) map.set(id, record)
+    if (!map.has(bare(id))) map.set(bare(id), record)
   }
+  const records = (data: unknown): AnyRecord[] => {
+    if (!data || typeof data !== 'object') return []
+    if (Array.isArray(data)) return data.flatMap(records)
+    const record = data as AnyRecord
+    if (Array.isArray(record.pages)) return records(record.pages)
+    return [record]
+  }
+
   for (const query of queryClient.getQueryCache().getAll()) {
     const root = query.queryKey[0]
-    if (root !== 'sources' && root !== 'notes' && root !== 'insights') continue
-    const found = visit(query.state.data)
-    if (found) return found
+    const data = query.state.data
+    if (root === 'sources') records(data).forEach((r) => put(lookup.sourceById, r))
+    else if (root === 'notes') records(data).forEach((r) => put(lookup.noteById, r))
+    else if (root === 'insights') records(data).forEach((r) => put(lookup.insightById, r))
+    else if (root === 'notebookChatContext' && data && typeof data === 'object') {
+      const context = data as { sources?: unknown; notes?: unknown }
+      for (const source of records(context.sources)) {
+        put(lookup.sourceById, source)
+        for (const insight of records(source.insights)) {
+          put(lookup.insightById, { ...insight, parentTitle: text(source.title) })
+        }
+      }
+      records(context.notes).forEach((r) => put(lookup.noteById, r))
+    }
   }
-  return undefined
+  return lookup
 }
 
-function resolveCitationTitle(queryClient: QueryClient, type: CitationType, id: string): string | null {
-  const record = findCachedRecord(queryClient, `${type}:${id}`)
-  if (!record) return null
-  if (type === 'source_insight') {
-    const insightType = typeof record.insight_type === 'string' ? record.insight_type : ''
-    const parent = typeof record.source_id === 'string' ? findCachedRecord(queryClient, record.source_id) : undefined
-    const parentTitle = typeof parent?.title === 'string' ? parent.title : ''
-    return [insightType, parentTitle].filter(Boolean).join(' — ') || null
+// Display title by entity type, following the agreed fallback order.
+// Returns '' when nothing meaningful is known (caller shows the typed fallback).
+function citationTitle(lookup: CitationLookup, type: CitationType, id: string): string {
+  if (type === 'source') {
+    const source = lookup.sourceById.get(`source:${id}`) ?? lookup.sourceById.get(id)
+    return text(source?.title) || text(source?.name)
   }
-  return typeof record.title === 'string' && record.title.trim() ? record.title : null
+  if (type === 'note') {
+    const note = lookup.noteById.get(`note:${id}`) ?? lookup.noteById.get(id)
+    const summary = text(note?.content).split('\n')[0]
+    return text(note?.title) || text(note?.name) || (summary.length > 90 ? `${summary.slice(0, 90)}…` : summary)
+  }
+  const insight = lookup.insightById.get(`source_insight:${id}`) ?? lookup.insightById.get(id)
+  if (!insight) return ''
+  const parentTitle = insight.parentTitle
+    || text(lookup.sourceById.get(text(insight.source_id))?.title)
+  const label = [text(insight.insight_type), parentTitle].filter(Boolean).join(' — ')
+  return text(insight.title) || text(insight.name) || label
 }
 
-// Re-render when sources/notes/insights finish loading, so a citation that
-// rendered before its title was cached picks it up.
+// Re-render when sources/notes/insights/chat context land in the cache, so a
+// citation that rendered before its metadata arrived picks the title up.
 function useCitationCacheVersion(queryClient: QueryClient) {
   const [version, setVersion] = useState(0)
   useEffect(() => {
     return queryClient.getQueryCache().subscribe((event) => {
       const root = event.query.queryKey[0]
-      if (event.type === 'updated' && event.action.type === 'success' && (root === 'sources' || root === 'notes' || root === 'insights')) {
+      if (event.type === 'updated' && event.action.type === 'success' && (CACHE_ROOTS as readonly unknown[]).includes(root)) {
         setVersion((v) => v + 1)
       }
     })
@@ -515,7 +546,11 @@ function SourceCitations({
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  useCitationCacheVersion(queryClient)
+  const cacheVersion = useCitationCacheVersion(queryClient)
+  // Built once per render of this block (not per citation); rebuilt only when
+  // relevant cache entries change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const lookup = useMemo(() => buildCitationLookup(queryClient), [queryClient, cacheVersion])
 
   return (
     <div className="space-y-2">
@@ -543,7 +578,7 @@ function SourceCitations({
           const [, number, rawType, id] = match
           const type = rawType as CitationType
           const style = CITATION_STYLES[type]
-          const title = resolveCitationTitle(queryClient, type, id) ?? t(style.fallbackKey)
+          const title = citationTitle(lookup, type, id) || t(style.fallbackKey)
           return (
             <li key={index}>
               <button

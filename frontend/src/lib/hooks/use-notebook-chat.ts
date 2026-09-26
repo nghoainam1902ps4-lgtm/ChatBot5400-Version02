@@ -23,6 +23,9 @@ interface UseNotebookChatParams {
   contextSelections: ContextSelections
 }
 
+// Last /chat/context response for a notebook (read by citation rendering).
+export const notebookChatContextKey = (notebookId: string) => ['notebookChatContext', notebookId] as const
+
 export function useNotebookChat({ notebookId, sources, notes, contextSelections }: UseNotebookChatParams) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -169,8 +172,13 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setTokenCount(response.token_count)
     setCharCount(response.char_count)
 
+    // Keep the context the server just returned (source titles + their
+    // insights, notes) so citation rows can show names instead of ids.
+    // Cache write only — no extra request.
+    queryClient.setQueryData(notebookChatContextKey(notebookId), response.context)
+
     return response.context
-  }, [notebookId, sources, notes, contextSelections])
+  }, [notebookId, sources, notes, contextSelections, queryClient])
 
   // Send message (synchronous, no streaming)
   const sendMessage = useCallback(async (message: string, modelOverride?: string) => {

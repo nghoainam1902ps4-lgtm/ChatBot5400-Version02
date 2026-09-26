@@ -468,8 +468,8 @@ export const viVN = {
       note: "Ghi chú",
     },
     citationFallback: {
-      source: "Nguồn tài liệu",
-      insight: "Thông tin chi tiết của nguồn",
+      source: "Nguồn",
+      insight: "Chi tiết nguồn",
       note: "Ghi chú",
     },
     copy: "Sao chép",

@@ -465,7 +465,7 @@ export const enUS = {
       note: "Note",
     },
     citationFallback: {
-      source: "Source document",
+      source: "Source",
       insight: "Source insight",
       note: "Note",
     },
