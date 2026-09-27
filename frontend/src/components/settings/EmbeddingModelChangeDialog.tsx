@@ -10,6 +10,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogBody,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
@@ -53,12 +54,13 @@ export function EmbeddingModelChangeDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-lg">
-        <AlertDialogHeader>
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="h-5 w-5 text-warn" />
-            <AlertDialogTitle>{t('models.embeddingChangeTitle')}</AlertDialogTitle>
-          </div>
+      {/* B2 Long content: LG, body scrolls, header/footer fixed, three
+          actions on one row. */}
+      <AlertDialogContent size="lg">
+        <AlertDialogHeader icon={<AlertTriangle />} iconTone="warn">
+          <AlertDialogTitle>{t('models.embeddingChangeTitle')}</AlertDialogTitle>
+        </AlertDialogHeader>
+        <AlertDialogBody>
           <AlertDialogDescription asChild>
             <div className="space-y-3 text-base text-muted-foreground">
               <p>
@@ -87,8 +89,8 @@ export function EmbeddingModelChangeDialog({
               </p>
             </div>
           </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+        </AlertDialogBody>
+        <AlertDialogFooter>
           <AlertDialogCancel disabled={isConfirming}>
             {t('common.cancel')}
           </AlertDialogCancel>
@@ -102,7 +104,6 @@ export function EmbeddingModelChangeDialog({
           <AlertDialogAction
             onClick={handleConfirmAndRebuild}
             disabled={isConfirming}
-            className="bg-primary"
           >
             <ExternalLink className="mr-2 h-4 w-4" />
             {t('models.changeAndRebuild')}

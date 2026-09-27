@@ -14,8 +14,10 @@ import {
 } from '@/lib/hooks/use-podcasts'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -154,7 +156,7 @@ export function SpeakerProfileFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>
             {isEdit ? t('podcasts.editSpeakerProfile') : t('podcasts.createSpeakerProfile')}
@@ -164,7 +166,8 @@ export function SpeakerProfileFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 pt-2">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">{t('podcasts.profileName')} *</Label>
@@ -336,7 +339,9 @@ export function SpeakerProfileFormDialog({
             ) : null}
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          </DialogBody>
+
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -351,7 +356,7 @@ export function SpeakerProfileFormDialog({
                   ? t('common.saveChanges')
                   : t('podcasts.createProfile')}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

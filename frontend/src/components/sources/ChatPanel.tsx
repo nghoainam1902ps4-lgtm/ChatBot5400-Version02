@@ -168,7 +168,7 @@ export function ChatPanel({
                 <Clock className="h-4 w-4" />
                 <span className="text-xs">{t('chat.sessions')}</span>
               </Button>
-              <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
+              <DialogContent size="sm" className="p-0">
                 <DialogTitle className="sr-only">{t('chat.sessionsTitle')}</DialogTitle>
                 <SessionManager
                   sessions={sessions}

@@ -5,6 +5,15 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { DIALOG_ICON_TONES, type DialogIconTone, type DialogSize } from "@/components/ui/dialog"
+
+// Same B2 size scale as Dialog; confirmations default to SM.
+const ALERT_DIALOG_SIZES: Record<DialogSize, string> = {
+  sm: "sm:max-w-[420px]",
+  md: "sm:max-w-[560px]",
+  lg: "sm:max-w-[760px]",
+  xl: "sm:max-w-[1040px]",
+}
 
 function AlertDialog({
   ...props
@@ -44,17 +53,23 @@ function AlertDialogOverlay({
   )
 }
 
+// No close button by design (B2 decision 3): a confirmation is left only
+// through Cancel or the primary action; Escape keeps Radix's default.
 function AlertDialogContent({
   className,
+  size = "sm",
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
+  size?: DialogSize
+}) {
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
         className={cn(
-          "bg-card data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-5 rounded-xl border p-6 shadow-overlay duration-200 sm:max-w-lg",
+          "bg-card data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 flex flex-col w-full max-w-[calc(100%-2rem)] max-h-[88vh] translate-x-[-50%] translate-y-[-50%] rounded-xl border shadow-overlay duration-200 overflow-hidden",
+          ALERT_DIALOG_SIZES[size],
           className
         )}
         {...props}
@@ -65,12 +80,46 @@ function AlertDialogContent({
 
 function AlertDialogHeader({
   className,
+  children,
+  icon,
+  iconTone = "danger",
   ...props
-}: React.ComponentProps<"div">) {
+}: React.ComponentProps<"div"> & {
+  /** Optional semantic icon (e.g. the danger icon of a destructive confirm). */
+  icon?: React.ReactNode
+  iconTone?: DialogIconTone
+}) {
   return (
     <div
       data-slot="alert-dialog-header"
-      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      className={cn(
+        "flex-shrink-0 flex items-start gap-3 border-b border-border/70 px-6 py-4 text-left",
+        className
+      )}
+      {...props}
+    >
+      {icon && (
+        <span
+          aria-hidden
+          className={cn(
+            "flex size-[34px] flex-shrink-0 items-center justify-center rounded-md [&_svg]:size-[17px]",
+            DIALOG_ICON_TONES[iconTone]
+          )}
+        >
+          {icon}
+        </span>
+      )}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">{children}</div>
+    </div>
+  )
+}
+
+/** The single scrolling region between header and footer. */
+function AlertDialogBody({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-dialog-body"
+      className={cn("min-h-0 flex-1 overflow-y-auto px-6 py-5", className)}
       {...props}
     />
   )
@@ -84,7 +133,7 @@ function AlertDialogFooter({
     <div
       data-slot="alert-dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        "flex-shrink-0 flex flex-col-reverse gap-2 border-t border-border/70 px-6 py-3.5 sm:flex-row sm:items-center sm:justify-end",
         className
       )}
       {...props}
@@ -99,7 +148,7 @@ function AlertDialogTitle({
   return (
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
-      className={cn("text-lg font-semibold", className)}
+      className={cn("font-display text-lg leading-6 font-semibold tracking-[-0.015em]", className)}
       {...props}
     />
   )
@@ -120,11 +169,15 @@ function AlertDialogDescription({
 
 function AlertDialogAction({
   className,
+  variant = "default",
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Action> & {
+  /** `destructive` uses the danger token — only for actions that delete. */
+  variant?: "default" | "destructive"
+}) {
   return (
     <AlertDialogPrimitive.Action
-      className={cn(buttonVariants(), className)}
+      className={cn(buttonVariants({ variant }), className)}
       {...props}
     />
   )
@@ -149,6 +202,7 @@ export {
   AlertDialogTrigger,
   AlertDialogContent,
   AlertDialogHeader,
+  AlertDialogBody,
   AlertDialogFooter,
   AlertDialogTitle,
   AlertDialogDescription,

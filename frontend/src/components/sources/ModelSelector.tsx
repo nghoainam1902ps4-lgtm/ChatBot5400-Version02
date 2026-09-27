@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -75,6 +76,14 @@ export function ModelSelector({
     setOpen(false)
   }
 
+  // Closing without saving (Hủy, X, Esc, overlay) discards the draft selection
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
+      setSelectedModel(currentModel || 'default')
+    }
+    setOpen(next)
+  }
+
   const handleReset = () => {
     setSelectedModel('default')
     onModelChange(undefined)
@@ -82,7 +91,7 @@ export function ModelSelector({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button
           variant="ghost"
@@ -96,20 +105,18 @@ export function ModelSelector({
           </span>
         </Button>
       </DialogTrigger>
-      {/* Room for long model names (e.g. "Mặc định (google/gemini-3-flash-preview)").
-          The base DialogContent keeps max-w-[calc(100%-2rem)] below sm, so it never
-          overflows the viewport. */}
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
+      {/* md (560px) leaves room for long model names; below sm the base
+          DialogContent keeps max-w-[calc(100%-2rem)], so it never overflows. */}
+      <DialogContent size="md">
+        <DialogHeader icon={<Sparkles />}>
+          <DialogTitle>
             {t('common.modelConfiguration')}
           </DialogTitle>
           <DialogDescription>
             {t('transformations.overrideModelDesc')}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid min-w-0 gap-4 py-4">
+        <DialogBody className="grid min-w-0 gap-4">
           <div className="grid min-w-0 gap-2">
             <Label htmlFor="model">{t('common.model')}</Label>
             <Select value={selectedModel} onValueChange={setSelectedModel}>
@@ -165,14 +172,19 @@ export function ModelSelector({
               </p>
             </div>
           )}
-        </div>
-        <DialogFooter className="flex justify-between">
-          <Button variant="outline" onClick={handleReset}>
+        </DialogBody>
+        <DialogFooter className="sm:justify-between">
+          <Button variant="ghost" onClick={handleReset}>
             {t('common.resetToDefault')}
           </Button>
-          <Button onClick={handleSave}>
-            {t('common.saveChanges')}
-          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => handleOpenChange(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={handleSave}>
+              {t('common.saveChanges')}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

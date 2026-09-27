@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -131,7 +133,7 @@ export function CredentialFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>
             {isEditing
@@ -139,7 +141,8 @@ export function CredentialFormDialog({
               : t('apiKeys.addConfig', { provider: providerDisplayName })}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="space-y-4">
           {/* Name */}
           <div className="space-y-2">
             <Label htmlFor="cred-name">{t('apiKeys.configName')}</Label>
@@ -280,8 +283,9 @@ export function CredentialFormDialog({
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4 border-t">
+          </DialogBody>
+
+          <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               {t('common.cancel')}
             </Button>
@@ -289,7 +293,7 @@ export function CredentialFormDialog({
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {isEditing ? t('common.save') : t('apiKeys.addConfig')}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

@@ -42,11 +42,10 @@ export function SourceDialog({ open, onOpenChange, sourceId }: SourceDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Wide, tall reading modal for long legal documents. Fixed h-[90vh] so
+      {/* Wide (xl), tall reading modal for long legal documents. Fixed height so
           SourceDetailContent (flex-col h-full) can pin its header and scroll
-          only the body. Width overrides the dialog's default sm:max-w-lg.
-          No overflow here — the inner content owns its own scroll. */}
-      <DialogContent className="w-[92vw] max-w-7xl sm:max-w-7xl h-[90vh] flex flex-col p-0 overflow-hidden">
+          only the body — the inner content owns its own scroll. */}
+      <DialogContent size="xl" className="h-[88vh]">
         {/* Accessibility title (hidden visually but read by screen readers) */}
         <DialogTitle className="sr-only">{t('sources.detailsTitle')}</DialogTitle>
 

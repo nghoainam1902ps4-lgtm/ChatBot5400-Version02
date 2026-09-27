@@ -188,6 +188,9 @@ export const enUS = {
     localDevLabel: "For local development",
   },
   auth: {
+    loginTitle: "ChatBot 5400",
+    usernameLabel: "Username",
+    passwordLabel: "Password",
     usernamePlaceholder: "Username",
     changePassword: "Change Password",
     changePasswordDesc: "Update your account password",
@@ -904,6 +907,9 @@ export const enUS = {
     overrideModelDesc: "Override the default model for this chat session. Leave empty to use the system default.",
     sessionUseReplacement: "This session will use {{name}} instead of the default model.",
     systemDefault: "System Default",
+    createTitle: "New transformation",
+    editorDesc: "The prompt runs on source content to produce insights.",
+    deleteTitle: "Delete transformation",
   },
   models: {
     embedding: "Embedding Models",
@@ -966,6 +972,11 @@ export const enUS = {
     addCustomModel: "Add \"{{name}}\"",
   },
   apiKeys: {
+    linkedModelsCount: "This credential has {{count}} linked model(s).",
+    migrateModelsTo: "Migrate models to:",
+    selectCredential: "Select credential",
+    migrateAndDelete: "Migrate & Delete",
+    deleteWithModels: "Delete with Models",
     title: "Models",
     description: "Connect your AI providers and securely store their credentials.",
     encryptionRequired: "Encryption key not configured",

@@ -5,6 +5,7 @@ import { useDebounce } from 'use-debounce'
 import { Search, Link2, LoaderIcon, FileText, Link as LinkIcon, Upload } from 'lucide-react'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -15,7 +16,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { searchApi } from '@/lib/api/search'
 import { sourcesApi } from '@/lib/api/sources'
 import { useSources, useAddSourcesToNotebook } from '@/lib/hooks/use-sources'
@@ -185,10 +185,9 @@ export function AddExistingSourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Link2 className="h-5 w-5" />
+      <DialogContent size="lg">
+        <DialogHeader icon={<Link2 />}>
+          <DialogTitle>
             {t('sources.addExistingTitle')}
           </DialogTitle>
           <DialogDescription>
@@ -196,7 +195,7 @@ export function AddExistingSourceDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+        <DialogBody className="space-y-4">
           {/* Search Input */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -212,7 +211,7 @@ export function AddExistingSourceDialog({
           </div>
 
           {/* Source List */}
-          <ScrollArea className="h-[400px] border rounded-md">
+          <div className="rounded-md border">
             {isSearching && filteredSources.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground">
                 <LoaderIcon className="h-12 w-12 mb-2 animate-spin" />
@@ -265,7 +264,7 @@ export function AddExistingSourceDialog({
                 })}
               </div>
             )}
-          </ScrollArea>
+          </div>
 
           {/* Truncation Warning */}
           {allSources.length >= 100 && !debouncedSearchQuery && (
@@ -280,7 +279,7 @@ export function AddExistingSourceDialog({
               {t('sources.selectedCount', { count: selectedSourceIds.length })}
             </div>
           )}
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button

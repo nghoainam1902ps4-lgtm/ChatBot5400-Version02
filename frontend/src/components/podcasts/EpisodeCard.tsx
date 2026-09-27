@@ -17,6 +17,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogBody,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
@@ -25,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -247,7 +249,7 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                   <InfoIcon className="mr-2 h-4 w-4" /> {t('podcasts.details')}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="w-[min(90vw,720px)] max-h-[85vh] overflow-hidden">
+              <DialogContent size="lg">
                 <DialogHeader>
                   <DialogTitle>{episode.name}</DialogTitle>
                   <DialogDescription>
@@ -255,7 +257,9 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                     {createdLabel ? ` • ${createdLabel}` : ''}
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 overflow-hidden">
+                {/* Tabs own the scroll (per-tab ScrollArea); the 60vh tab height
+                    shrinks on short viewports so the dialog never overflows. */}
+                <DialogBody className="flex flex-col gap-4 overflow-hidden">
                   {audioSrc ? (
                     <div className="rounded-md border bg-card p-2">
                       <audio controls preload="none" src={audioSrc} className="w-full" />
@@ -264,7 +268,7 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                     <p className="text-sm text-destructive">{audioError}</p>
                   ) : null}
 
-                  <Tabs defaultValue="summary" className="h-[60vh] flex flex-col">
+                  <Tabs defaultValue="summary" className="h-[60vh] min-h-0 flex flex-col">
                     <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="summary">{t('podcasts.summaryTab')}</TabsTrigger>
                       <TabsTrigger value="outline">{t('podcasts.outlineTab')}</TabsTrigger>
@@ -391,7 +395,7 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                       </ScrollArea>
                     </TabsContent>
                   </Tabs>
-                </div>
+                </DialogBody>
               </DialogContent>
             </Dialog>
             {isFailed && onRetry ? (
@@ -413,15 +417,17 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
-                <AlertDialogHeader>
+                <AlertDialogHeader icon={<Trash2 />}>
                   <AlertDialogTitle>{t('podcasts.deleteEpisodeTitle')}</AlertDialogTitle>
+                </AlertDialogHeader>
+                <AlertDialogBody className="space-y-2">
                   <AlertDialogDescription>
                     {t('podcasts.deleteEpisodeDesc', { name: episode.name })}
                   </AlertDialogDescription>
-                </AlertDialogHeader>
+                </AlertDialogBody>
                 <AlertDialogFooter>
                   <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} disabled={deleting}>
+                  <AlertDialogAction variant="destructive" onClick={handleDelete} disabled={deleting}>
                     {deleting ? t('podcasts.deleting') : t('podcasts.delete')}
                   </AlertDialogAction>
                 </AlertDialogFooter>

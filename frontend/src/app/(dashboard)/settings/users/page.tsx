@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -23,6 +24,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogBody,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
@@ -244,13 +246,13 @@ export default function UsersPage() {
 
       {/* Create / Edit dialog */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent>
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>
               {editing ? t('users.editUser') : t('users.addUser')}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <DialogBody className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="u-username">{t('users.username')}</Label>
               <Input
@@ -291,7 +293,7 @@ export default function UsersPage() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>
               {t('common.cancel')}
@@ -313,14 +315,14 @@ export default function UsersPage() {
         open={resetting !== null}
         onOpenChange={(open) => !open && setResetting(null)}
       >
-        <DialogContent>
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>{t('users.resetPassword')}</DialogTitle>
             <DialogDescription>
               {resetting?.username}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-1.5 py-2">
+          <DialogBody className="space-y-1.5">
             <Label htmlFor="u-reset-pw">{t('users.newPassword')}</Label>
             <Input
               id="u-reset-pw"
@@ -328,7 +330,7 @@ export default function UsersPage() {
               value={resetPw}
               onChange={(e) => setResetPw(e.target.value)}
             />
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setResetting(null)}>
               {t('common.cancel')}
@@ -349,15 +351,17 @@ export default function UsersPage() {
         onOpenChange={(open) => !open && setDeleting(null)}
       >
         <AlertDialogContent>
-          <AlertDialogHeader>
+          <AlertDialogHeader icon={<Trash2 />}>
             <AlertDialogTitle>{t('users.confirmDeleteTitle')}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogBody className="space-y-2">
             <AlertDialogDescription>
               {deleting?.username} — {t('users.confirmDeleteDesc')}
             </AlertDialogDescription>
-          </AlertDialogHeader>
+          </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>
+            <AlertDialogAction variant="destructive" onClick={confirmDelete}>
               {t('users.deleteUser')}
             </AlertDialogAction>
           </AlertDialogFooter>

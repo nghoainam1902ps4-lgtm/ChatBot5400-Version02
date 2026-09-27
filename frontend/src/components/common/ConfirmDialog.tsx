@@ -8,8 +8,10 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogBody,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Trash2 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 
@@ -39,17 +41,21 @@ export function ConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
+      {/* B2 Confirmation / Destructive: SM, no close button. The danger icon
+          is shown only for destructive confirms, where it carries meaning. */}
+      <AlertDialogContent size="sm">
+        <AlertDialogHeader icon={confirmVariant === 'destructive' ? <Trash2 /> : undefined}>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        <AlertDialogBody>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogBody>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>{t('common.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             disabled={isLoading}
-            className={confirmVariant === 'destructive' ? 'bg-destructive text-white hover:bg-destructive/90' : ''}
+            variant={confirmVariant}
           >
             {isLoading ? (
               <>

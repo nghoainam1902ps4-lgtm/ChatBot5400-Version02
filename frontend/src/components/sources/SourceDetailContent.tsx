@@ -35,6 +35,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogBody,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
@@ -877,22 +878,22 @@ function SourceDetailContentInner({
 
       <AlertDialog open={!!insightToDelete} onOpenChange={() => setInsightToDelete(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader>
+          <AlertDialogHeader icon={<Trash2 />}>
             <AlertDialogTitle>{t('sources.deleteInsight')}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogBody className="space-y-2">
             <AlertDialogDescription>
               {t('sources.deleteInsightConfirm')}
             </AlertDialogDescription>
-          </AlertDialogHeader>
+          </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletingInsight}>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction asChild>
-              <Button
-                onClick={handleDeleteInsight}
-                disabled={deletingInsight}
-                variant="destructive"
-              >
-                {deletingInsight ? t('common.deleting') : t('common.delete')}
-              </Button>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleDeleteInsight}
+              disabled={deletingInsight}
+            >
+              {deletingInsight ? t('common.deleting') : t('common.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

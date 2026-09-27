@@ -9,10 +9,12 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogBody,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
+import { Trash2 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useNotebookDeletePreview, useDeleteNotebook } from '@/lib/hooks/use-notebooks'
@@ -67,15 +69,16 @@ export function NotebookDeleteDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
+      <AlertDialogContent size="sm">
+        <AlertDialogHeader icon={<Trash2 />}>
           <AlertDialogTitle>{t('notebooks.deleteNotebook')}</AlertDialogTitle>
+        </AlertDialogHeader>
+
+        {/* Body scrolls when the preview is long; header and footer stay put. */}
+        <AlertDialogBody className="space-y-3">
           <AlertDialogDescription>
             {t('notebooks.deleteNotebookDesc', { name: notebookName })}
           </AlertDialogDescription>
-        </AlertDialogHeader>
-
-        <div className="space-y-3">
           {isLoadingPreview ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <LoadingSpinner size="sm" />
@@ -142,14 +145,14 @@ export function NotebookDeleteDialog({
               )}
             </>
           ) : null}
-        </div>
+        </AlertDialogBody>
 
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting}>{t('common.cancel')}</AlertDialogCancel>
           <AlertDialogAction
+            variant="destructive"
             onClick={handleConfirm}
             disabled={isDeleting || isLoadingPreview}
-            className="bg-destructive text-white hover:bg-destructive/90"
           >
             {isDeleting ? (
               <>

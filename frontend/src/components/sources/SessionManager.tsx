@@ -26,6 +26,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogBody,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { BaseChatSession } from '@/lib/types/api'
@@ -251,15 +252,17 @@ export function SessionManager({
 
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader>
+          <AlertDialogHeader icon={<Trash2 />}>
             <AlertDialogTitle>{t('chat.deleteSession')}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogBody className="space-y-2">
             <AlertDialogDescription>
               {t('chat.deleteSessionDesc')}
             </AlertDialogDescription>
-          </AlertDialogHeader>
+          </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm}>
+            <AlertDialogAction variant="destructive" onClick={handleDeleteConfirm}>
               {t('common.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>

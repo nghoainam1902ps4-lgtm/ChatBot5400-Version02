@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FileText } from 'lucide-react'
@@ -73,9 +73,9 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+      <DialogContent size="lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between gap-2 pr-8">
+          <DialogTitle className="flex items-center justify-between gap-2">
             <span>{t('sources.sourceInsight')}</span>
             <div className="flex items-center gap-2">
               {displayInsight?.insight_type && (
@@ -99,6 +99,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
           </DialogTitle>
         </DialogHeader>
 
+        <DialogBody>
         {showDeleteConfirm ? (
           <div className="flex flex-col items-center justify-center py-8 gap-4">
             <p className="text-center text-muted-foreground">
@@ -123,7 +124,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div>
             {isLoading ? (
               <div className="flex items-center justify-center py-10">
                 <span className="text-sm text-muted-foreground">{t('common.loading')}</span>
@@ -142,6 +143,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
             )}
           </div>
         )}
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )

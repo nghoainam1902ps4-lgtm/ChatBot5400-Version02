@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogBody,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -65,12 +66,12 @@ export function ChangePasswordDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>{t('auth.changePassword')}</DialogTitle>
           <DialogDescription>{t('auth.changePasswordDesc')}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
+        <DialogBody className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="cp-current">{t('auth.currentPassword')}</Label>
             <Input
@@ -107,7 +108,7 @@ export function ChangePasswordDialog({
               {error}
             </div>
           )}
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             {t('common.cancel')}

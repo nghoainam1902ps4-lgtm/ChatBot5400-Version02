@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useCreateNote, useUpdateNote, useNote } from '@/lib/hooks/use-notes'
 import { QUERY_KEYS } from '@/lib/api/query-client'
@@ -130,9 +130,9 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className={cn(
-          "sm:max-w-3xl w-full h-[90vh] max-h-[90vh] overflow-hidden p-0 flex flex-col",
-          isEditorFullscreen && "!max-w-screen !max-h-screen border-none w-screen h-screen"
+      <DialogContent size="xl" className={cn(
+          "h-[88vh]",
+          isEditorFullscreen && "!max-w-screen !max-h-screen w-screen h-screen rounded-none border-none"
       )}>
         <DialogTitle className="sr-only">
           {isEditing ? t('sources.editNote') : t('sources.createNote')}
@@ -145,12 +145,12 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
         ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-1 min-h-0 flex-col min-w-0">
           {isEditing && noteLoading ? (
-            <div className="flex-1 flex items-center justify-center py-10">
+            <DialogBody className="flex items-center justify-center py-10">
               <span className="text-sm text-muted-foreground">{t('common.loading')}</span>
-            </div>
+            </DialogBody>
           ) : (
             <>
-              <div className="border-b px-6 py-4">
+              <div className="flex-shrink-0 border-b border-border/70 py-4 pl-6 pr-14">
                 <InlineEdit
                   id="note-title"
                   name="title"
@@ -163,10 +163,7 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
                 />
               </div>
 
-              <div className={cn(
-                  "flex-1 min-h-0 overflow-y-auto",
-                  !isEditorFullscreen && "px-6 py-4")
-              }>
+              <DialogBody className={cn(isEditorFullscreen && "p-0")}>
                 <Controller
                   control={control}
                   name="content"
@@ -188,11 +185,11 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
                 {errors.content && (
                   <p className="text-sm text-destructive mt-1">{errors.content.message}</p>
                 )}
-              </div>
+              </DialogBody>
             </>
           )}
 
-          <div className="border-t px-6 py-4 flex justify-end gap-2">
+          <DialogFooter>
             <Button type="button" variant="outline" onClick={handleClose}>
               {t('common.cancel')}
             </Button>
@@ -206,7 +203,7 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
                   ? t('sources.saveNote')
                   : t('sources.createNoteBtn')}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
         )}
       </DialogContent>

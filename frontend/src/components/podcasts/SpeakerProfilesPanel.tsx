@@ -18,6 +18,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogBody,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
@@ -211,8 +212,10 @@ export function SpeakerProfilesPanel({
                         </DropdownMenuContent>
                       </DropdownMenu>
                       <AlertDialogContent>
-                        <AlertDialogHeader>
+                        <AlertDialogHeader icon={<Trash2 />}>
                           <AlertDialogTitle>{t('podcasts.deleteSpeakerProfileTitle')}</AlertDialogTitle>
+                        </AlertDialogHeader>
+                        <AlertDialogBody className="space-y-2">
                           <AlertDialogDescription>
                             {t('podcasts.deleteSpeakerProfileDesc', { name: profile.name })}
                           </AlertDialogDescription>
@@ -221,10 +224,10 @@ export function SpeakerProfilesPanel({
                               {t('podcasts.deleteSpeakerDisabledHint')}
                             </p>
                           ) : null}
-                        </AlertDialogHeader>
+                        </AlertDialogBody>
                         <AlertDialogFooter>
                           <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-                          <AlertDialogAction
+                          <AlertDialogAction variant="destructive"
                             onClick={() => deleteProfile.mutate({ profileId: profile.id, name: profile.name })}
                             disabled={deleteDisabled || deleteProfile.isPending}
                           >

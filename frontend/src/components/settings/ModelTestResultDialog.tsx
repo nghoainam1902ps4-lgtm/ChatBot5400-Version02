@@ -6,6 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogBody,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Check, X } from 'lucide-react'
@@ -29,7 +30,7 @@ export function ModelTestResultDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {result.success ? (
@@ -41,7 +42,7 @@ export function ModelTestResultDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <DialogBody className="space-y-3">
           <p className="text-sm text-muted-foreground">{modelName}</p>
           <p className="text-sm">{result.message}</p>
 
@@ -50,7 +51,7 @@ export function ModelTestResultDialog({
               {result.details}
             </pre>
           )}
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

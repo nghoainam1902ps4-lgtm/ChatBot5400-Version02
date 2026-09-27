@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -156,7 +157,7 @@ export function DiscoverModelsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] grid-rows-[auto_1fr_auto]">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>
             {t('models.discoverModels')} - {providerInfo?.display_name || credential.provider}
@@ -166,7 +167,7 @@ export function DiscoverModelsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 overflow-y-auto">
+        <DialogBody>
         {discoverModels.isPending ? (
           <div className="flex items-center justify-center py-12">
             <LoadingSpinner size="lg" />
@@ -260,7 +261,7 @@ export function DiscoverModelsDialog({
             </div>
           </div>
         )}
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

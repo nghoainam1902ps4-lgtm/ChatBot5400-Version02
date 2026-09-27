@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -436,14 +437,16 @@ function Sheet() {
           <DialogTrigger asChild>
             <Button variant="outline">Open dialog</Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent size="sm">
             <DialogHeader>
               <DialogTitle>Rename notebook</DialogTitle>
               <DialogDescription>
                 Overlays use the one real shadow and 6px corners.
               </DialogDescription>
             </DialogHeader>
-            <Input placeholder="Notebook name" />
+            <DialogBody>
+              <Input placeholder="Notebook name" />
+            </DialogBody>
             <DialogFooter>
               <Button variant="ghost">Cancel</Button>
               <Button>Save</Button>

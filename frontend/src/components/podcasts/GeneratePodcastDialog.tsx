@@ -16,6 +16,7 @@ import { useToast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -478,7 +479,7 @@ export function GeneratePodcastDialog({ open, onOpenChange }: GeneratePodcastDia
         resetState()
       }
     }}>
-      <DialogContent className="w-[80vw] max-w-[1080px] max-h-[90vh] overflow-hidden">
+      <DialogContent size="xl">
         <DialogHeader>
           <DialogTitle>{t('podcasts.generateEpisode')}</DialogTitle>
           <DialogDescription>
@@ -486,7 +487,7 @@ export function GeneratePodcastDialog({ open, onOpenChange }: GeneratePodcastDia
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-6 md:grid-cols-[2fr_1fr] xl:grid-cols-[3fr_1fr]">
+        <DialogBody className="grid gap-6 md:grid-cols-[2fr_1fr] xl:grid-cols-[3fr_1fr]">
           <ContentSelectionPanel
             notebooks={notebooks}
             isLoading={notebooksQuery.isLoading}
@@ -598,7 +599,7 @@ export function GeneratePodcastDialog({ open, onOpenChange }: GeneratePodcastDia
               </Button>
             </div>
           </div>
-        </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )
