@@ -2,6 +2,32 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [0.0.8] - 2026-09-27
+
+Giao diện B2: trang đăng nhập mới và hệ thống hộp thoại thống nhất. Chỉ thay lớp
+trình bày, không đổi API, backend, xác thực hay logic nghiệp vụ.
+
+### Trang đăng nhập
+- Logo và wordmark Agribank Lâm Đồng, tiêu đề "ChatBot 5400", nhãn cho ô tên
+  đăng nhập và mật khẩu, khối báo lỗi rõ ràng, chân trang hiện phiên bản.
+- Luồng đăng nhập, kiểm tra phiên và màn hình lỗi kết nối giữ nguyên.
+
+### Hệ thống hộp thoại
+- Mọi hộp thoại dùng chung một khung với 4 cỡ: nhỏ 420px, vừa 560px, lớn 760px,
+  rất lớn 1040px; cao tối đa 88% màn hình; dưới 640px rộng bằng màn hình trừ lề.
+- Tiêu đề và hàng nút luôn cố định, chỉ phần nội dung cuộn, nên nút "Hủy",
+  "Lưu", "Xóa"… không bao giờ bị che trên màn hình thấp.
+- Hộp thoại xác nhận và xóa không còn nút X; nút xóa màu đỏ thống nhất.
+- Cấu hình mô hình: "Đặt lại mặc định" bên trái, "Hủy" | "Lưu thay đổi" bên
+  phải; bấm Hủy sẽ bỏ lựa chọn chưa lưu.
+- Thêm/Sửa chuyển đổi: hộp thoại rộng, có tiêu đề rõ ràng, ô prompt tối thiểu
+  320px và co giãn theo màn hình.
+- Hộp thoại xóa cấu hình AI được dịch đầy đủ tiếng Việt/tiếng Anh; hộp thoại xóa
+  chuyển đổi hiện đúng tiêu đề "Xóa chuyển đổi".
+
+### Sửa lỗi
+- Trang sổ tay không còn bị đẩy lệch lên khiến thanh tiêu đề bị che một phần.
+
 ## [0.0.7] - 2026-09-26
 
 Giao diện mới theo phương án B (Modern Knowledge Assistant) — chỉ thay lớp
