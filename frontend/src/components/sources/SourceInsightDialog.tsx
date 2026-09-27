@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { MOBILE_SHEET_CLASSES, SheetGrip } from '@/components/ui/mobile-sheet'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FileText } from 'lucide-react'
@@ -73,9 +74,11 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center justify-between gap-2 pr-8">
+      {/* < lg: bottom sheet (M1); lg+: the B2 dialog, unchanged */}
+      <DialogContent size="lg" className={MOBILE_SHEET_CLASSES}>
+        <SheetGrip />
+        <DialogHeader className="max-lg:pt-2">
+          <DialogTitle className="flex items-center justify-between gap-2">
             <span>{t('sources.sourceInsight')}</span>
             <div className="flex items-center gap-2">
               {displayInsight?.insight_type && (
@@ -89,7 +92,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
                   variant="outline"
                   size="sm"
                   onClick={handleViewSource}
-                  className="gap-1"
+                  className="gap-1 max-lg:hidden"
                 >
                   <FileText className="h-3 w-3" />
                   {t('sources.viewSource')}
@@ -99,6 +102,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
           </DialogTitle>
         </DialogHeader>
 
+        <DialogBody>
         {showDeleteConfirm ? (
           <div className="flex flex-col items-center justify-center py-8 gap-4">
             <p className="text-center text-muted-foreground">
@@ -123,7 +127,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div>
             {isLoading ? (
               <div className="flex items-center justify-center py-10">
                 <span className="text-sm text-muted-foreground">{t('common.loading')}</span>
@@ -142,6 +146,19 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
             )}
           </div>
         )}
+        </DialogBody>
+        {/* M1 sheet footer: always reachable; same actions as the dialog */}
+        <DialogFooter className="flex-row gap-2 lg:hidden">
+          <Button variant="outline" className="h-11 flex-1" onClick={() => onOpenChange(false)}>
+            {t('common.close')}
+          </Button>
+          {sourceId && (
+            <Button className="h-11 flex-1 gap-1.5" onClick={handleViewSource}>
+              <FileText className="h-4 w-4" />
+              {t('sources.viewSource')}
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

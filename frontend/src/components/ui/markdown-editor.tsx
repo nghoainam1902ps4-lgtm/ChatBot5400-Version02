@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { forwardRef } from 'react'
+import { forwardRef, type CSSProperties } from 'react'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
@@ -55,7 +55,8 @@ export interface MarkdownEditorProps {
   value?: string
   onChange?: (value?: string) => void
   placeholder?: string
-  height?: number
+  /** Pixels, or any CSS height (e.g. "100%" to fill a sized parent). */
+  height?: CSSProperties['height']
   preview?: 'live' | 'edit' | 'preview'
   hideToolbar?: boolean
   textareaId?: string

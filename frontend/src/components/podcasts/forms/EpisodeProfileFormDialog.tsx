@@ -14,8 +14,10 @@ import {
 import { useTranslation } from '@/lib/hooks/use-translation'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -152,7 +154,7 @@ export function EpisodeProfileFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>
             {isEdit ? t('podcasts.editEpisodeProfile') : t('podcasts.createEpisodeProfile')}
@@ -162,16 +164,16 @@ export function EpisodeProfileFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {speakerProfiles.length === 0 ? (
-          <Alert className="bg-warn-tint text-warn border-warn/30">
-            <AlertTitle>{t('podcasts.noSpeakerProfilesAvailable')}</AlertTitle>
-            <AlertDescription>
-              {t('podcasts.noSpeakerProfilesDesc')}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 pt-2">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="space-y-6">
+          {speakerProfiles.length === 0 ? (
+            <Alert className="bg-warn-tint text-warn border-warn/30">
+              <AlertTitle>{t('podcasts.noSpeakerProfilesAvailable')}</AlertTitle>
+              <AlertDescription>
+                {t('podcasts.noSpeakerProfilesDesc')}
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">{t('podcasts.profileName')} *</Label>
@@ -377,7 +379,9 @@ export function EpisodeProfileFormDialog({
             ) : null}
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          </DialogBody>
+
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -392,7 +396,7 @@ export function EpisodeProfileFormDialog({
                   ? t('common.saveChanges')
                   : t('podcasts.createProfile')}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

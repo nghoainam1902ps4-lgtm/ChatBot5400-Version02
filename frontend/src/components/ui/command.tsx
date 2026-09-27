@@ -44,7 +44,9 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
+      {/* Rendered outside the portal: reset the B2 header padding/border so
+          sr-only stays a 1px box and cannot extend the page's scroll height. */}
+      <DialogHeader className="sr-only border-0 p-0">
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>

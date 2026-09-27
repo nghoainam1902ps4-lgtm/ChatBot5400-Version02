@@ -8,8 +8,10 @@ import { LoaderIcon, CheckCircleIcon, XCircleIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -458,7 +460,7 @@ export function AddSourceDialog({
 
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-[500px]" showCloseButton={true}>
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>
               {batchProgress ? t('sources.processingFiles') : t('sources.statusProcessing')}
@@ -471,7 +473,7 @@ export function AddSourceDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <DialogBody className="space-y-4">
             <div className="flex items-center gap-3">
               <LoaderIcon className="h-5 w-5 animate-spin text-primary" />
               <span className="text-sm text-muted-foreground">
@@ -524,7 +526,7 @@ export function AddSourceDialog({
                 />
               </div>
             )}
-          </div>
+          </DialogBody>
         </DialogContent>
       </Dialog>
     )
@@ -534,20 +536,21 @@ export function AddSourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[700px] p-0">
-        <DialogHeader className="px-6 pt-6 pb-0">
+      <DialogContent size="lg">
+        <DialogHeader>
           <DialogTitle>{t('sources.addNew')}</DialogTitle>
           <DialogDescription>
             {t('sources.processDescription')}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="min-w-0">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 min-w-0 flex-1 flex-col">
           <WizardContainer
             currentStep={currentStep}
             steps={WIZARD_STEPS}
             onStepClick={handleStepClick}
-            className="border-0"
+            // Fixed 500px wizard height, allowed to shrink so the footer stays visible on short viewports
+            className="min-h-0 rounded-none border-0"
           >
             {currentStep === 1 && (
               <SourceTypeStep
@@ -585,7 +588,7 @@ export function AddSourceDialog({
           </WizardContainer>
 
           {/* Navigation */}
-          <div className="flex justify-between items-center px-6 py-4 border-t border-border">
+          <DialogFooter className="sm:justify-between">
             <Button 
               type="button" 
               variant="outline" 
@@ -594,7 +597,7 @@ export function AddSourceDialog({
               {t('common.cancel')}
             </Button>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
               {currentStep > 1 && (
                 <Button
                   type="button"
@@ -626,7 +629,7 @@ export function AddSourceDialog({
                 {createSource.isPending ? t('common.adding') : t('common.done')}
               </Button>
             </div>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

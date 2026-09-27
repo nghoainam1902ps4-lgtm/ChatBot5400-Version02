@@ -1,17 +1,19 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { getConfig } from '@/lib/config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { APP_NAME, APP_VERSION } from '@/lib/constants/app'
+import { APP_VERSION } from '@/lib/constants/app'
 
 export function LoginForm() {
   const { t, language } = useTranslation()
@@ -140,58 +142,86 @@ export function LoginForm() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle>{APP_NAME}</CardTitle>
-          <CardDescription>
+      <div className="flex w-full max-w-[420px] flex-col items-center gap-6">
+        {/* Brand: official logo asset + wordmark (same as the sidebar) */}
+        <div className="flex items-center gap-3">
+          <Image
+            src="/agribank-logo.svg"
+            alt="Agribank Lâm Đồng"
+            width={44}
+            height={44}
+            className="object-contain"
+            unoptimized
+            priority
+          />
+          <span className="font-display text-[15px] font-bold leading-tight text-primary">
+            Agribank Lâm Đồng
+          </span>
+        </div>
+
+        <div className="w-full rounded-xl border bg-card p-6 shadow-pop sm:p-8">
+          <h1 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.02em]">
+            {t('auth.loginTitle')}
+          </h1>
+          <span aria-hidden className="mt-2.5 block h-[3px] w-12 rounded-full bg-fern" />
+          <p className="mt-3 text-sm text-muted-foreground">
             {t('auth.loginDesc')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
+          </p>
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="login-username">{t('auth.usernameLabel')}</Label>
               <Input
+                id="login-username"
                 type="text"
                 autoComplete="username"
                 placeholder={t('auth.usernamePlaceholder')}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={isLoading}
+                aria-invalid={error ? true : undefined}
                 autoFocus
               />
             </div>
-            <div>
+            <div className="space-y-1.5">
+              <Label htmlFor="login-password">{t('auth.passwordLabel')}</Label>
               <Input
+                id="login-password"
                 type="password"
                 autoComplete="current-password"
                 placeholder={t('auth.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
+                aria-invalid={error ? true : undefined}
               />
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 text-destructive text-sm">
-                <AlertCircle className="h-4 w-4" />
-                {error}
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive-tint px-3 py-2.5 text-sm text-destructive"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span className="min-w-0 flex-1 break-words">{error}</span>
               </div>
             )}
 
             <Button
               type="submit"
+              size="lg"
               className="w-full"
               disabled={isLoading || !username.trim() || !password.trim()}
             >
               {isLoading ? t('auth.signingIn') : t('auth.signIn')}
             </Button>
-
-            <div className="text-xs text-center text-muted-foreground pt-2 border-t">
-              {t('common.version')} {APP_VERSION}
-            </div>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+
+        <p className="max-w-full break-all text-center font-mono text-xs text-muted-foreground/80">
+          {t('common.version')} {APP_VERSION}
+        </p>
+      </div>
     </div>
   )
 }

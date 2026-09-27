@@ -4,6 +4,7 @@ import { FileText, Lightbulb, StickyNote } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/lib/hooks/use-translation'
 
 interface ContextIndicatorProps {
   sourcesInsights: number
@@ -12,6 +13,9 @@ interface ContextIndicatorProps {
   tokenCount?: number
   charCount?: number
   className?: string
+  /** `bar` (default): the existing context summary. `chip`: M1 composer chip
+   * ("n sources · m notes") followed by the token count. */
+  variant?: 'bar' | 'chip'
 }
 
 // Helper function to format large numbers with K/M suffixes
@@ -31,8 +35,34 @@ export function ContextIndicator({
   notesCount,
   tokenCount,
   charCount,
-  className
+  className,
+  variant = 'bar'
 }: ContextIndicatorProps) {
+  const { t } = useTranslation()
+
+  if (variant === 'chip') {
+    return (
+      <>
+        <span
+          className={cn(
+            'inline-flex h-[26px] min-w-0 flex-shrink items-center gap-[5px] truncate rounded-full bg-muted/60 px-[9px] text-[11.5px] text-muted-foreground',
+            className
+          )}
+        >
+          <FileText className="size-3 flex-shrink-0" />
+          <span className="truncate">
+            {t('chat.contextChip', { sources: sourcesInsights + sourcesFull, notes: notesCount })}
+          </span>
+        </span>
+        {tokenCount !== undefined && tokenCount > 0 && (
+          <span className={cn('ml-auto flex-shrink-0 pl-1 font-mono text-xs text-muted-foreground', className)}>
+            {formatNumber(tokenCount)}
+          </span>
+        )}
+      </>
+    )
+  }
+
   const hasContext = (sourcesInsights + sourcesFull) > 0 || notesCount > 0
 
   if (!hasContext) {

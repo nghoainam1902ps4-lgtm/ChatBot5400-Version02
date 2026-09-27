@@ -3,6 +3,10 @@ import type { TranslationShape } from '../en-US';
 // Vietnamese locale.
 export const viVN = {
   common: {
+    openNavigation: "Mở điều hướng",
+    closeNavigation: "Đóng điều hướng",
+    navigationMenu: "Điều hướng",
+    moreOptions: "Thêm tùy chọn",
     expandSidebar: "Mở rộng thanh bên",
     collapseSidebar: "Thu gọn thanh bên",
     search: "Tìm kiếm...",
@@ -93,7 +97,7 @@ export const viVN = {
     default: "Mặc định",
     nameRequired: "Tên là bắt buộc",
     modelConfiguration: "Cấu hình mô hình",
-    resetToDefault: "Đặt lại về mặc định",
+    resetToDefault: "Đặt lại mặc định",
     reasoning: "Suy luận",
     searchTerms: "Từ khóa tìm kiếm",
     strategy: "Chiến lược",
@@ -191,6 +195,9 @@ export const viVN = {
     localDevLabel: "Đối với phát triển cục bộ",
   },
   auth: {
+    loginTitle: "ChatBot 5400",
+    usernameLabel: "Tên đăng nhập",
+    passwordLabel: "Mật khẩu",
     usernamePlaceholder: "Tên đăng nhập",
     changePassword: "Đổi mật khẩu",
     changePasswordDesc: "Cập nhật mật khẩu tài khoản của bạn",
@@ -299,6 +306,8 @@ export const viVN = {
     lastViewed: "Đã xem {{time}}",
   },
   sources: {
+    contextChip: "Ngữ cảnh",
+    inContextCount: "{{count}} đang dùng",
     title: "Nguồn",
     newSource: "Nguồn mới",
     bulkContext: "Ngữ cảnh",
@@ -462,6 +471,10 @@ export const viVN = {
     maxFilesAllowed: "Tối đa {{count}} tệp cho mỗi lô",
   },
   chat: {
+    mobilePlaceholderSource: "Hỏi về nguồn này…",
+    mobilePlaceholder: "Hỏi về tài liệu trong sổ tay…",
+    send: "Gửi",
+    contextChip: "{{sources}} nguồn · {{notes}} ghi chú",
     citationType: {
       source: "Nguồn",
       insight: "Chi tiết",
@@ -907,6 +920,9 @@ export const viVN = {
     overrideModelDesc: "Ghi đè mô hình mặc định cho phiên trò chuyện này. Để trống để dùng mặc định của hệ thống.",
     sessionUseReplacement: "Phiên này sẽ sử dụng {{name}} thay cho mô hình mặc định.",
     systemDefault: "Mặc định hệ thống",
+    createTitle: "Chuyển đổi mới",
+    editorDesc: "Prompt sẽ chạy trên nội dung nguồn để tạo thông tin chi tiết.",
+    deleteTitle: "Xóa chuyển đổi",
   },
   models: {
     embedding: "Mô hình embedding",
@@ -969,6 +985,11 @@ export const viVN = {
     addCustomModel: "Thêm \"{{name}}\"",
   },
   apiKeys: {
+    linkedModelsCount: "Cấu hình này có {{count}} mô hình liên kết.",
+    migrateModelsTo: "Chuyển các mô hình sang:",
+    selectCredential: "Chọn cấu hình",
+    migrateAndDelete: "Chuyển rồi xóa",
+    deleteWithModels: "Xóa kèm mô hình",
     title: "Mô hình",
     description: "Kết nối các nhà cung cấp AI của bạn và lưu trữ thông tin xác thực của họ một cách an toàn.",
     encryptionRequired: "Chưa cấu hình khóa mã hóa",

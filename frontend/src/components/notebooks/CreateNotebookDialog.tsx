@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -65,7 +66,7 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>{t('notebooks.createNew')}</DialogTitle>
           <DialogDescription>
@@ -73,7 +74,8 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="notebook-name">{t('common.name')} *</Label>
             <Input
@@ -97,7 +99,9 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
             />
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          </DialogBody>
+
+          <DialogFooter>
             <Button type="button" variant="outline" onClick={closeDialog}>
               {t('common.cancel')}
             </Button>

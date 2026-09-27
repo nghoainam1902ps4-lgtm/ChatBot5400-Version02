@@ -5,6 +5,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -91,14 +92,14 @@ export function AiProvidersGuideModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[92vw] max-w-4xl sm:max-w-4xl h-[85vh] flex flex-col p-0 overflow-hidden">
-        <DialogHeader className="shrink-0 border-b border-border px-6 py-4 pr-12">
+      <DialogContent size="lg" className="h-[85vh]">
+        <DialogHeader>
           <DialogTitle style={{ color: BORDEAUX }}>
             {t('apiKeys.guideTitle')}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+        <DialogBody>
           {status === 'loading' && (
             <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -116,7 +117,7 @@ export function AiProvidersGuideModal({
               {content}
             </MarkdownRenderer>
           )}
-        </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )

@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogBody,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ModelSelector } from '@/components/common/ModelSelector'
@@ -57,7 +58,7 @@ export function AdvancedModelsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>{t('searchPage.advancedModelTitle')}</DialogTitle>
           <DialogDescription>
@@ -65,7 +66,7 @@ export function AdvancedModelsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <DialogBody className="space-y-4">
           <ModelSelector
             label={t('searchPage.strategyModel')}
             modelType="language"
@@ -89,7 +90,7 @@ export function AdvancedModelsDialog({
             onChange={setFinalAnswerModel}
             placeholder={t('searchPage.selectFinalPlaceholder')}
           />
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

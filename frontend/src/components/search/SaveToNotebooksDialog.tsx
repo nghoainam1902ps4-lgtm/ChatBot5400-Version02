@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogBody,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { CheckboxList } from '@/components/ui/checkbox-list'
@@ -76,7 +77,7 @@ export function SaveToNotebooksDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>{t('searchPage.saveToNotebooks')}</DialogTitle>
           <DialogDescription>
@@ -84,7 +85,7 @@ export function SaveToNotebooksDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-4">
+        <DialogBody>
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <LoadingSpinner />
@@ -97,7 +98,7 @@ export function SaveToNotebooksDialog({
               emptyMessage={t('sources.noNotebooksFound')}
             />
           )}
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

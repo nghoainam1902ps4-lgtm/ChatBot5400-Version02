@@ -45,8 +45,9 @@ interface SourceCardProps {
   contextMode?: ContextMode
   onContextModeChange?: (mode: ContextMode) => void
   /** `card` (default) keeps the bordered card; `row` is the compact list row
-   * used by the desktop context panel (type dot, one-line title, one-line meta). */
-  variant?: 'card' | 'row'
+   * used by the desktop context panel (type dot, one-line title, one-line meta);
+   * `list` is the M1 mobile row (full width, 2-line title, 44px touch targets). */
+  variant?: 'card' | 'row' | 'list'
 }
 
 const SOURCE_TYPE_ICONS = {
@@ -240,7 +241,9 @@ function SourceCardImpl({
           size="sm"
           className={cn(
             'h-7 w-7 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity',
-            variant === 'card' ? 'absolute top-1.5 right-1.5' : 'focus-visible:opacity-100'
+            variant === 'card' ? 'absolute top-1.5 right-1.5' : 'focus-visible:opacity-100',
+            // Touch: no hover, so the menu stays visible with a 44px target
+            variant === 'list' && 'size-11 opacity-100'
           )}
           onClick={(e) => e.stopPropagation()}
         >
@@ -352,11 +355,14 @@ function SourceCardImpl({
     </>
   )
 
-  if (variant === 'row') {
+  if (variant === 'row' || variant === 'list') {
+    const isList = variant === 'list'
     return (
       <div
         className={cn(
-          'group relative flex items-start gap-2.5 border-b border-border/70 px-2 py-2.5 last:border-b-0 cursor-pointer transition-colors duration-150 hover:bg-accent/40',
+          isList
+            ? 'group relative flex min-h-11 items-start gap-3 border-b border-border/60 bg-card py-3 pl-4 pr-1 cursor-pointer transition-colors duration-150 active:bg-muted/60'
+            : 'group relative flex items-start gap-2.5 border-b border-border/70 px-2 py-2.5 last:border-b-0 cursor-pointer transition-colors duration-150 hover:bg-accent/40',
           className
         )}
         onClick={handleCardClick}
@@ -366,10 +372,17 @@ function SourceCardImpl({
           className={cn('mt-[7px] size-2 flex-shrink-0 rounded-full', SOURCE_TYPE_DOTS[sourceType])}
         />
         <div className="flex-1 min-w-0">
-          <h4 className="truncate text-sm font-medium leading-snug" title={title}>
+          <h4
+            className={cn(
+              isList
+                ? 'line-clamp-2 break-words text-[14.5px] font-medium leading-5'
+                : 'truncate text-sm font-medium leading-snug'
+            )}
+            title={title}
+          >
             {title}
           </h4>
-          <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
+          <div className={cn('flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground', isList && 'mt-[3px] leading-4')}>
             {!isCompleted && (
               <>
                 <span className={cn('inline-flex flex-shrink-0 items-center gap-1 font-medium', statusConfig.color)}>
@@ -405,7 +418,7 @@ function SourceCardImpl({
           )}
           {footerBlocks}
         </div>
-        <div className="flex flex-shrink-0 items-center gap-0.5">
+        <div className={cn('flex flex-shrink-0 items-center gap-0.5', isList && '-my-2')}>
           {onContextModeChange && contextMode && (
             <ContextToggle
               mode={contextMode}
