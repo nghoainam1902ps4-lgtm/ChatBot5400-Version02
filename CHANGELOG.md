@@ -2,6 +2,28 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [0.0.9] - 2026-09-27
+
+Giao diện điện thoại và máy tính bảng (M1) cho màn hình dưới 1024px. Chỉ thay
+lớp trình bày; giao diện máy tính (Design B) và hệ hộp thoại B2 giữ nguyên, không
+đổi API, backend, RAG/GraphRAG, trích dẫn hay phiên trò chuyện.
+
+### Điện thoại (dưới 640px)
+- Thanh bên thay bằng ngăn điều hướng mở từ nút ☰: đủ mục Mới, các nhóm điều
+  hướng, giao diện, ngôn ngữ, đổi mật khẩu, đăng xuất.
+- Thanh trên gọn: tên sổ tay một dòng, nút Phiên, menu ⋮ chứa mô tả, ngày tạo/cập
+  nhật, Lưu trữ và Xóa.
+- Ba tab Nguồn · Ghi chú · Trò chuyện chia đều, có số đếm.
+- Nguồn và Ghi chú là danh sách đầy màn hình; nút ngữ cảnh và menu đủ lớn để chạm.
+- Trò chuyện không còn khung thẻ, chữ dễ đọc hơn; nguồn dẫn thành dải chip cuộn ngang.
+- Ô nhập dính đáy màn hình, tự cao dần (tối đa 148px), luôn nhìn thấy khi bàn phím
+  mở; tôn trọng vùng an toàn của iPhone.
+- Chi tiết nguồn và thông tin chi tiết mở dạng bảng trượt từ dưới lên.
+
+### Máy tính bảng (640–1023px)
+- Cùng bố cục với điện thoại, nội dung canh giữa, hiện lại thời gian cập nhật cạnh
+  tên sổ tay.
+
 ## [0.0.8] - 2026-09-27
 
 Giao diện B2: trang đăng nhập mới và hệ thống hộp thoại thống nhất. Chỉ thay lớp
