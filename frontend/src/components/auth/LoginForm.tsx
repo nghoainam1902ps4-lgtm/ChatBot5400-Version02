@@ -220,7 +220,6 @@ export function LoginForm() {
 
         <p className="max-w-full break-all text-center font-mono text-xs text-muted-foreground/80">
           {t('common.version')} {APP_VERSION}
-          {configInfo?.apiUrl ? ` · ${configInfo.apiUrl}` : ''}
         </p>
       </div>
     </div>
