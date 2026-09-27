@@ -23,6 +23,7 @@ import { ContextMode } from '../[id]/page'
 import type { SourceBulkAction } from '@/lib/utils/source-context'
 import { CollapsibleColumn, createCollapseButton } from '@/components/notebooks/CollapsibleColumn'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
+import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useAuth } from '@/lib/hooks/use-auth'
 
@@ -42,6 +43,8 @@ interface SourcesColumnProps {
   /** Render as a tab body inside the desktop ContextPanel: no Card shell, no
    * per-column collapse (the panel owns collapse), compact list rows. */
   embedded?: boolean
+  /** M1 (< lg) tab page: full-width list, 46px toolbar, no Card shell. */
+  mobile?: boolean
 }
 
 export function SourcesColumn({
@@ -56,6 +59,7 @@ export function SourcesColumn({
   isFetchingNextPage,
   fetchNextPage,
   embedded = false,
+  mobile = false,
 }: SourcesColumnProps) {
   const { t } = useTranslation()
   const { isAdmin } = useAuth()
@@ -212,11 +216,11 @@ export function SourcesColumn({
       description={t('sources.createFirstSource')}
     />
   ) : (
-    <div className={embedded ? undefined : 'space-y-2'}>
+    <div className={embedded || mobile ? undefined : 'space-y-2'}>
       {sources.map((source) => (
         <SourceCard
           key={source.id}
-          variant={embedded ? 'row' : 'card'}
+          variant={mobile ? 'list' : embedded ? 'row' : 'card'}
           source={source}
           onClick={handleSourceClick}
           onDelete={handleDeleteClick}
@@ -279,6 +283,79 @@ export function SourcesColumn({
       />
     </>
   )
+
+  if (mobile) {
+    const inContext = (sources ?? []).filter((source) => {
+      const mode = contextSelections?.[source.id]
+      return mode === 'insights' || mode === 'full'
+    }).length
+    const chip = 'inline-flex h-[30px] items-center gap-[5px] rounded-full px-3 text-[12.5px] font-medium'
+    return (
+      <>
+        <div className="flex h-full min-h-0 flex-1 flex-col">
+          {/* Toolbar: bulk context · in-context count · add source (existing actions) */}
+          <div className="flex h-[46px] flex-shrink-0 items-center gap-1 border-b border-border/60 bg-background pl-3 pr-2">
+            {onBulkContextModeChange && sources && sources.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="inline-flex h-11 items-center" title={t('sources.bulkContext')}>
+                    <span className={cn(chip, 'bg-muted/70 text-muted-foreground')}>
+                      <ListChecks className="size-3.5" />
+                      {t('sources.contextChip')}
+                      <ChevronDown className="size-3.5" />
+                    </span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => onBulkContextModeChange('insights')}>
+                    {t('sources.includeAllInsights')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onBulkContextModeChange('full')}>
+                    {t('sources.includeAllFull')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onBulkContextModeChange('exclude')}>
+                    {t('sources.excludeAllFromContext')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {sources && sources.length > 0 && (
+              <span className="min-w-0 truncate text-xs text-muted-foreground">
+                {t('sources.inContextCount', { count: inContext })}
+              </span>
+            )}
+            {isAdmin && (
+              <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="ml-auto inline-flex h-11 flex-shrink-0 items-center">
+                    <span className={cn(chip, 'bg-primary text-primary-foreground')}>
+                      <Plus className="size-3.5" />
+                      {t('sources.addSource')}
+                      <ChevronDown className="size-3.5" />
+                    </span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    {t('sources.addSource')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
+                    <Link2 className="h-4 w-4 mr-2" />
+                    {t('sources.addExistingTitle')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+          <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {listBody}
+          </div>
+        </div>
+        {dialogs}
+      </>
+    )
+  }
 
   if (embedded) {
     return (

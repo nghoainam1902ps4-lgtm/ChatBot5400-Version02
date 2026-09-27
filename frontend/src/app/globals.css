@@ -491,3 +491,23 @@
   text-indent: 0;
   text-transform: none;
 }
+
+/* ---------- M1 mobile / responsive (< 1024px only) ----------
+   Utilities only — no token changes. Desktop (lg+) never uses these. */
+
+/* Horizontal strip that scrolls inside itself (citation chips). */
+.m1-hscroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.m1-hscroll::-webkit-scrollbar {
+  display: none;
+}
+/* Right-edge fade hinting that more chips follow; the next chip also stays
+   partially visible, which is the fallback where mask-image is unsupported. */
+.m1-fade-right {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
+}

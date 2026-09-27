@@ -445,27 +445,28 @@ function SourceDetailContentInner({
     <div className="flex flex-col h-full">
       {/* Header — pinned; never scrolls or shrinks (only the body below does). */}
       <div className="pb-5 pr-10 shrink-0">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+        {/* M1 (< lg): title on its own line, actions wrap below it */}
+        <div className="flex items-start justify-between max-lg:flex-col max-lg:gap-3">
+          <div className="flex-1 max-lg:w-full max-lg:min-w-0">
             {isAdmin ? (
               <InlineEdit
                 value={source.title || ''}
                 onSave={handleUpdateTitle}
-                className="text-2xl font-bold"
+                className="text-2xl font-bold max-lg:[word-break:normal] max-lg:[overflow-wrap:anywhere] max-lg:text-lg max-lg:leading-6"
                 inputClassName="text-2xl font-bold"
                 placeholder={t('sources.titlePlaceholder')}
                 emptyText={t('sources.untitledSource')}
               />
             ) : (
-              <h1 className="text-2xl font-bold">
+              <h1 className="text-2xl font-bold max-lg:[word-break:normal] max-lg:[overflow-wrap:anywhere] max-lg:text-lg max-lg:leading-6">
                 {source.title || t('sources.untitledSource')}
               </h1>
             )}
-            <p className="mt-1 font-mono text-xs text-muted-foreground">
+            <p className="mt-1 font-mono text-xs text-muted-foreground max-lg:break-all">
               {t('sources.id')}: {source.id}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 max-lg:flex-wrap">
             {getSourceIcon()}
             <Badge variant="secondary" className="text-sm">
               {getSourceType()}

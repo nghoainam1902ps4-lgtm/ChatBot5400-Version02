@@ -70,14 +70,14 @@ export function MessageActions({ content, notebookId }: MessageActionsProps) {
 
   return (
     <TooltipProvider>
-      <div className="flex gap-1">
+      <div className="flex gap-1 max-lg:-ml-3 max-lg:gap-0.5">
         {notebookId && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                className="h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground max-lg:h-11 max-lg:px-3"
                 onClick={handleSaveToNote}
                 disabled={createNote.isPending}
               >
@@ -99,7 +99,7 @@ export function MessageActions({ content, notebookId }: MessageActionsProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+              className="h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground max-lg:h-11 max-lg:px-3"
               onClick={handleCopyToClipboard}
               disabled={createNote.isPending}
             >

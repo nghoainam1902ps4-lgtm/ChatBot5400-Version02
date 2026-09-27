@@ -1,6 +1,7 @@
 'use client'
 
 import { memo, useCallback, useMemo, useState, useRef, useEffect, useId, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -23,6 +24,7 @@ import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
+import { useIsDesktop } from '@/lib/hooks/use-media-query'
 
 interface NotebookContextStats {
   sourcesInsights: number
@@ -54,6 +56,10 @@ interface ChatPanelProps {
   notebookContextStats?: NotebookContextStats
   // Notebook ID for saving notes
   notebookId?: string
+  /** M1 (< lg): node in the page's mobile top bar. When set, the session
+   * button is portalled there (icon only) and the panel title row is hidden
+   * on mobile. The session dialog state stays in this component. */
+  sessionTriggerContainer?: HTMLElement | null
 }
 
 export function ChatPanel({
@@ -73,13 +79,15 @@ export function ChatPanel({
   title,
   contextType = 'source',
   notebookContextStats,
-  notebookId
+  notebookId,
+  sessionTriggerContainer
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { openModal } = useModalManager()
+  const canManageSessions = Boolean(onSelectSession && onCreateSession && onDeleteSession)
 
   // Stable reference-click handler so memoized messages don't re-render on
   // composer keystrokes (which no longer re-render this component at all, since
@@ -129,45 +137,75 @@ export function ChatPanel({
         </div>
       )}
       {notebookContextStats && (
-        <ContextIndicator
-          sourcesInsights={notebookContextStats.sourcesInsights}
-          sourcesFull={notebookContextStats.sourcesFull}
-          notesCount={notebookContextStats.notesCount}
-          tokenCount={notebookContextStats.tokenCount}
-          charCount={notebookContextStats.charCount}
-          className="min-w-0 shrink flex-wrap gap-y-1 border-t-0 bg-transparent px-1 py-0 [&_div]:flex-wrap"
-        />
+        <>
+          <ContextIndicator
+            sourcesInsights={notebookContextStats.sourcesInsights}
+            sourcesFull={notebookContextStats.sourcesFull}
+            notesCount={notebookContextStats.notesCount}
+            tokenCount={notebookContextStats.tokenCount}
+            charCount={notebookContextStats.charCount}
+            className="min-w-0 shrink flex-wrap gap-y-1 border-t-0 bg-transparent px-1 py-0 [&_div]:flex-wrap max-lg:hidden"
+          />
+          {/* M1 (< lg): one compact chip + token count in the composer meta row */}
+          <ContextIndicator
+            variant="chip"
+            sourcesInsights={notebookContextStats.sourcesInsights}
+            sourcesFull={notebookContextStats.sourcesFull}
+            notesCount={notebookContextStats.notesCount}
+            tokenCount={notebookContextStats.tokenCount}
+            className="lg:hidden"
+          />
+        </>
       )}
     </>
   )
 
   return (
     <>
-    {/* Flat chat surface (design B). Below lg the original card frame is kept. */}
-    <section
-      className={cn(
-        'flex flex-col h-full flex-1 overflow-hidden',
-        'max-lg:bg-card max-lg:text-card-foreground max-lg:rounded-lg max-lg:border max-lg:gap-6 max-lg:py-6'
-      )}
-    >
-      <div className="flex-shrink-0 pb-3 px-6 lg:flex lg:h-12 lg:items-center lg:border-b lg:pb-0">
+    {/* Flat chat surface (design B). M1: flat below lg as well — no card frame,
+        conversation near full width, composer pinned to the bottom. */}
+    <section className="flex flex-col h-full flex-1 min-h-0 overflow-hidden">
+      <div
+        className={cn(
+          'flex-shrink-0 pb-3 px-6 lg:flex lg:h-12 lg:items-center lg:border-b lg:pb-0',
+          'max-lg:flex max-lg:h-11 max-lg:items-center max-lg:border-b max-lg:bg-card max-lg:px-4 max-lg:pb-0',
+          sessionTriggerContainer && 'max-lg:hidden'
+        )}
+      >
         <div className="flex flex-1 items-center justify-between">
           <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-muted-foreground">
             <span aria-hidden className="h-3.5 w-[3px] rounded-full bg-teal" />
             {title || (contextType === 'source' ? t('chat.chatWith', { name: t('navigation.sources') }) : t('chat.chatWith', { name: t('common.notebook') }))}
           </h2>
-          {onSelectSession && onCreateSession && onDeleteSession && (
+          {canManageSessions && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2 text-muted-foreground"
+              onClick={() => setSessionManagerOpen(true)}
+              disabled={loadingSessions}
+            >
+              <Clock className="h-4 w-4" />
+              <span className="text-xs">{t('chat.sessions')}</span>
+            </Button>
+          )}
+        </div>
+      </div>
+      {canManageSessions && sessionTriggerContainer && createPortal(
+        <button
+          type="button"
+          onClick={() => setSessionManagerOpen(true)}
+          disabled={loadingSessions}
+          aria-label={t('chat.sessions')}
+          title={t('chat.sessions')}
+          className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground active:bg-muted disabled:opacity-50"
+        >
+          <Clock className="size-5" />
+        </button>,
+        sessionTriggerContainer
+      )}
+      {canManageSessions && (
             <Dialog open={sessionManagerOpen} onOpenChange={setSessionManagerOpen}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2 text-muted-foreground"
-                onClick={() => setSessionManagerOpen(true)}
-                disabled={loadingSessions}
-              >
-                <Clock className="h-4 w-4" />
-                <span className="text-xs">{t('chat.sessions')}</span>
-              </Button>
               <DialogContent size="sm" className="p-0">
                 <DialogTitle className="sr-only">{t('chat.sessionsTitle')}</DialogTitle>
                 <SessionManager
@@ -175,7 +213,7 @@ export function ChatPanel({
                   currentSessionId={currentSessionId ?? null}
                   onCreateSession={(title) => onCreateSession?.(title)}
                   onSelectSession={(sessionId) => {
-                    onSelectSession(sessionId)
+                    onSelectSession?.(sessionId)
                     setSessionManagerOpen(false)
                   }}
                   onUpdateSession={(sessionId, title) => onUpdateSession?.(sessionId, title)}
@@ -184,13 +222,14 @@ export function ChatPanel({
                 />
               </DialogContent>
             </Dialog>
-          )}
-        </div>
-      </div>
+      )}
       <div className="flex-1 flex flex-col min-h-0">
-        <ScrollArea className="flex-1 min-h-0" ref={scrollAreaRef}>
+        {/* M1: Radix wraps content in a `display: table` box that widens to the
+            widest child (e.g. the citation chip strip); block keeps the reading
+            column at viewport width below lg. */}
+        <ScrollArea className="flex-1 min-h-0 max-lg:[&_[data-slot=scroll-area-viewport]>div]:!block" ref={scrollAreaRef}>
           {/* Centered reading column */}
-          <div className="mx-auto w-full max-w-[760px] space-y-6 px-4 py-4 lg:px-6 lg:py-8">
+          <div className="mx-auto w-full max-w-[760px] space-y-6 px-4 py-4 lg:px-6 lg:py-8 max-lg:space-y-[18px] max-lg:pt-3.5 max-lg:pb-2 min-[430px]:max-lg:px-[18px] sm:max-lg:max-w-[728px] sm:max-lg:space-y-[22px] sm:max-lg:px-6 sm:max-lg:pt-[22px] sm:max-lg:pb-2.5">
             {messages.length === 0 ? (
               <div className="text-center text-muted-foreground py-8 lg:py-16">
                 <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -232,6 +271,7 @@ export function ChatPanel({
           modelOverride={modelOverride}
           onModelChange={onModelChange}
           contextChip={(contextIndicators || notebookContextStats) ? contextChip : null}
+          contextType={contextType}
         />
       </div>
     </section>
@@ -248,6 +288,7 @@ interface ChatComposerProps {
   modelOverride?: string
   onModelChange?: (model?: string) => void
   contextChip?: ReactNode
+  contextType?: 'source' | 'notebook'
 }
 
 function ChatComposer({
@@ -255,11 +296,30 @@ function ChatComposer({
   isStreaming,
   modelOverride,
   onModelChange,
-  contextChip
+  contextChip,
+  contextType = 'source'
 }: ChatComposerProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
   const [input, setInput] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const isDesktop = useIsDesktop()
+
+  // M1 (< lg): the input grows with its text from 44px up to 148px, then
+  // scrolls. Sized from JS (field-sizing is off below lg) so the placeholder
+  // never sets the height and iOS Safari behaves the same. Desktop keeps the
+  // CSS `field-sizing: content` behaviour untouched.
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    if (isDesktop) {
+      el.style.removeProperty('height')
+      return
+    }
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(Math.max(el.scrollHeight + 2, 44), 148)}px`
+  }, [input, isDesktop])
 
   const handleSend = () => {
     if (input.trim() && !isStreaming) {
@@ -284,23 +344,30 @@ function ChatComposer({
   const keyHint = isMac ? '⌘+Enter' : 'Ctrl+Enter'
 
   return (
-    <div className="flex-shrink-0 border-t px-4 pb-4 pt-3 lg:border-t-0 lg:px-6 lg:pb-6 lg:pt-2">
-      <div className="mx-auto w-full max-w-[760px]">
-        <div className="rounded-2xl border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20">
+    // M1 (< lg): pinned bottom bar — meta row (model · context · tokens), then
+    // the auto-growing input beside a 44px send button; bottom safe area. The
+    // same elements are reflowed with max-lg classes (grid + display:contents),
+    // so input state, send/stop and model/context logic are shared with desktop.
+    <div className="flex-shrink-0 border-t px-4 pb-4 pt-3 lg:border-t-0 lg:px-6 lg:pb-6 lg:pt-2 max-lg:bg-card max-lg:px-3 max-lg:pt-1.5 max-lg:pb-[calc(6px+env(safe-area-inset-bottom))] sm:max-lg:px-6">
+      <div className="mx-auto w-full max-w-[760px] sm:max-lg:max-w-[680px]">
+        <div className="rounded-2xl border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20 max-lg:grid max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:items-end max-lg:gap-x-2 max-lg:rounded-none max-lg:border-0 max-lg:bg-transparent max-lg:shadow-none max-lg:focus-within:ring-0">
           <Textarea
+            ref={textareaRef}
             id={chatInputId}
             name="chat-message"
             autoComplete="off"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={`${t('chat.sendPlaceholder')} (${t('chat.pressToSend', { key: keyHint })})`}
+            placeholder={isDesktop
+              ? `${t('chat.sendPlaceholder')} (${t('chat.pressToSend', { key: keyHint })})`
+              : contextType === 'notebook' ? t('chat.mobilePlaceholder') : t('chat.mobilePlaceholderSource')}
             disabled={isStreaming}
-            className="min-h-[52px] max-h-[160px] w-full min-w-0 resize-none border-0 bg-transparent px-4 pt-3 pb-1 shadow-none focus-visible:ring-0 dark:bg-transparent"
+            className="min-h-[52px] max-h-[160px] w-full min-w-0 resize-none border-0 bg-transparent px-4 pt-3 pb-1 shadow-none focus-visible:ring-0 dark:bg-transparent max-lg:order-2 max-lg:min-h-11 max-lg:max-h-[148px] max-lg:[field-sizing:fixed] max-lg:!text-base max-lg:rounded-[14px] max-lg:border max-lg:border-border max-lg:bg-muted/60 max-lg:dark:bg-muted/60 max-lg:px-3.5 max-lg:py-2.5 max-lg:leading-[22px] max-lg:focus-visible:border-primary max-lg:focus-visible:ring-[3px] max-lg:focus-visible:ring-primary/30"
             rows={1}
           />
-          <div className="flex items-end justify-between gap-2 px-2 pb-2">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          <div className="flex items-end justify-between gap-2 px-2 pb-2 max-lg:contents">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 max-lg:order-1 max-lg:col-span-2 max-lg:mb-1 max-lg:h-[30px] max-lg:flex-nowrap max-lg:overflow-hidden">
               {/* Model chip */}
               {onModelChange && (
                 <div className="flex flex-shrink-0 items-center" title={t('chat.model')}>
@@ -319,7 +386,8 @@ function ChatComposer({
               onClick={handleSend}
               disabled={!input.trim() || isStreaming}
               size="icon"
-              className="h-9 w-9 flex-shrink-0 rounded-full"
+              className="h-9 w-9 flex-shrink-0 rounded-full max-lg:order-3 max-lg:size-11 max-lg:rounded-[14px]"
+              aria-label={t('chat.send')}
             >
               {isStreaming ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -351,12 +419,12 @@ const ChatMessage = memo(function ChatMessage({
     // AI answer: no bubble, full width of the reading column.
     return (
       <div className="flex gap-3 justify-start">
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 max-lg:hidden">
           <div className="h-8 w-8 rounded-full bg-teal-tint flex items-center justify-center">
             <Bot className="h-4 w-4 text-teal" />
           </div>
         </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5 max-lg:pt-0 max-lg:[&_.prose]:text-[15px] max-lg:[&_.prose_p]:mb-3 max-lg:[&_.prose_p]:leading-6 max-lg:[&_.prose_li]:leading-6 sm:max-lg:[&_.prose]:text-[15.5px] sm:max-lg:[&_.prose_p]:leading-[25px] sm:max-lg:[&_.prose_li]:leading-[25px]">
           <AIMessageContent
             content={message.content}
             onReferenceClick={onReferenceClick}
@@ -372,12 +440,12 @@ const ChatMessage = memo(function ChatMessage({
 
   return (
     <div className="flex gap-3 justify-end">
-      <div className="flex flex-col gap-2 max-w-[80%]">
-        <div className="rounded-2xl px-4 py-2.5 bg-muted">
-          <p className="text-sm break-all">{message.content}</p>
+      <div className="flex flex-col gap-2 max-w-[80%] max-lg:max-w-[85%]">
+        <div className="rounded-2xl px-4 py-2.5 bg-muted max-lg:rounded-[14px] max-lg:px-[13px] max-lg:py-[9px]">
+          <p className="text-sm break-all max-lg:break-normal max-lg:[overflow-wrap:anywhere] max-lg:text-[15px] max-lg:leading-[23px] sm:max-lg:text-[15.5px] sm:max-lg:leading-6">{message.content}</p>
         </div>
       </div>
-      <div className="flex-shrink-0">
+      <div className="flex-shrink-0 max-lg:hidden">
         <div className="h-8 w-8 rounded-full bg-muted border flex items-center justify-center">
           <User className="h-4 w-4 text-muted-foreground" />
         </div>
@@ -416,6 +484,17 @@ function AIMessageContent({
 
   return (
     <>
+      {/* M1 (< lg): the avatar column is dropped; a small head row carries it */}
+      <div className="flex items-center gap-2 lg:hidden">
+        <span className="inline-flex size-[22px] flex-shrink-0 items-center justify-center rounded-full bg-teal-tint">
+          <Bot className="size-[13px] text-teal" />
+        </span>
+        {referenceLines.length > 0 && (
+          <span className="text-[12.5px] font-medium text-teal-deep">
+            {t('chat.answeredFromCount', { count: referenceLines.length })}
+          </span>
+        )}
+      </div>
       <MarkdownRenderer components={{
         a: LinkComponent
       }}>
@@ -552,8 +631,21 @@ function SourceCitations({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const lookup = useMemo(() => buildCitationLookup(queryClient), [queryClient, cacheVersion])
 
+  // Parsed once for both presentations (desktop list, mobile chip strip).
+  const items = lines.map((line, index) => {
+    const match = REFERENCE_LINE.exec(line)
+    if (!match) return { index, line, match: null }
+    const [, number, rawType, id] = match
+    const type = rawType as CitationType
+    const style = CITATION_STYLES[type]
+    const title = citationTitle(lookup, type, id) || t(style.fallbackKey)
+    return { index, line, match: { number, type, id, style, title } }
+  })
+
   return (
-    <div className="space-y-2">
+    <>
+    <CitationStrip items={items} linkComponent={linkComponent} onReferenceClick={onReferenceClick} />
+    <div className="space-y-2 max-lg:hidden">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
         <span className="inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.12em] text-muted-foreground">
           <BookOpen className="h-3.5 w-3.5" />
@@ -563,8 +655,7 @@ function SourceCitations({
         <span className="text-muted-foreground">{t('chat.answeredFromCount', { count: lines.length })}</span>
       </div>
       <ol className="space-y-1.5">
-        {lines.map((line, index) => {
-          const match = REFERENCE_LINE.exec(line)
+        {items.map(({ index, line, match }) => {
           if (!match) {
             // Unexpected line shape: keep the previous rendering for it.
             return (
@@ -575,10 +666,7 @@ function SourceCitations({
               </li>
             )
           }
-          const [, number, rawType, id] = match
-          const type = rawType as CitationType
-          const style = CITATION_STYLES[type]
-          const title = citationTitle(lookup, type, id) || t(style.fallbackKey)
+          const { number, type, id, style, title } = match
           return (
             <li key={index}>
               <button
@@ -597,6 +685,83 @@ function SourceCitations({
           )
         })}
       </ol>
+    </div>
+    </>
+  )
+}
+
+type CitationItem = {
+  index: number
+  line: string
+  match: { number: string; type: CitationType; id: string; style: (typeof CITATION_STYLES)[CitationType]; title: string } | null
+}
+
+// M1 (< lg): "Nguồn dẫn" as a horizontal chip strip under the answer. It scrolls
+// inside itself (never the page); while more chips follow on the right, the
+// edge fades and the next chip stays partially visible. Same targets and click
+// handler as the desktop list.
+function CitationStrip({
+  items,
+  linkComponent,
+  onReferenceClick
+}: {
+  items: CitationItem[]
+  linkComponent: ReturnType<typeof createCompactReferenceLinkComponent>
+  onReferenceClick: (type: string, id: string) => void
+}) {
+  const stripRef = useRef<HTMLDivElement>(null)
+  const [moreRight, setMoreRight] = useState(false)
+
+  const measure = useCallback(() => {
+    const el = stripRef.current
+    if (!el) return
+    setMoreRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
+  }, [])
+
+  useEffect(() => {
+    measure()
+    const el = stripRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [measure, items.length])
+
+  return (
+    <div
+      ref={stripRef}
+      onScroll={measure}
+      className={cn(
+        'm1-hscroll flex items-center gap-2 border-t border-border/60 pt-2.5 lg:hidden',
+        moreRight && 'm1-fade-right'
+      )}
+    >
+      {items.map(({ index, line, match }) => {
+        if (!match) {
+          return (
+            <span key={index} className="flex-shrink-0 text-[12.5px] [&_p]:!my-0">
+              <MarkdownRenderer components={{ a: linkComponent, p: ({ children }) => <span>{children}</span> }}>
+                {line}
+              </MarkdownRenderer>
+            </span>
+          )
+        }
+        const { number, type, id, style, title } = match
+        return (
+          <button
+            key={index}
+            type="button"
+            onClick={() => onReferenceClick(type, id)}
+            title={title}
+            className="inline-flex h-8 max-w-[180px] flex-shrink-0 items-center gap-1.5 rounded-full border bg-card px-2.5 text-[12.5px] text-foreground active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          >
+            <span className={cn('inline-flex h-[17px] min-w-[17px] flex-shrink-0 items-center justify-center rounded px-1 font-mono text-[11px] font-medium tabular-nums', style.badge)}>
+              {number}
+            </span>
+            <span className="min-w-0 truncate">{title}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }

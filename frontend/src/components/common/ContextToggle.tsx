@@ -75,7 +75,8 @@ export function ContextToggle<TMode extends ContextMode = ContextMode>({
             variant="ghost"
             size="sm"
             className={cn(
-              'h-7 w-7 p-0 transition-colors',
+              // M1: 44px touch target below lg; desktop keeps 28px
+              'h-7 w-7 p-0 transition-colors max-lg:size-11',
               config.bgColor,
               className
             )}

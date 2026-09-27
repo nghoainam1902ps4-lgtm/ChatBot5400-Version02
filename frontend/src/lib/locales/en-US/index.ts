@@ -1,5 +1,9 @@
 export const enUS = {
   common: {
+    openNavigation: "Open navigation",
+    closeNavigation: "Close navigation",
+    navigationMenu: "Navigation",
+    moreOptions: "More options",
     expandSidebar: "Expand sidebar",
     collapseSidebar: "Collapse sidebar",
     search: "Search...",
@@ -299,6 +303,8 @@ export const enUS = {
     lastViewed: "Viewed {{time}}",
   },
   sources: {
+    contextChip: "Context",
+    inContextCount: "{{count}} in use",
     title: "Sources",
     newSource: "New Source",
     bulkContext: "Context",
@@ -462,6 +468,10 @@ export const enUS = {
     maxFilesAllowed: "Maximum {{count}} files allowed per batch",
   },
   chat: {
+    mobilePlaceholderSource: "Ask about this source…",
+    mobilePlaceholder: "Ask about the documents in this notebook…",
+    send: "Send",
+    contextChip: "{{sources}} sources · {{notes}} notes",
     citationType: {
       source: "Source",
       insight: "Insight",

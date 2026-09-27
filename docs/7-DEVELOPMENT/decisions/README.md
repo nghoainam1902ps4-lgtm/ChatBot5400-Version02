@@ -52,5 +52,6 @@ What this makes easier, what it makes harder, what to watch. (bullets)
 | [ADR-008](ADR-008-notebook-scoped-search.md) | Notebook scope is an optional filter on the existing search functions | Accepted |
 | [ADR-009](ADR-009-design-b-presentation-layer.md) | Design B is a presentation-only change with self-hosted fonts | Accepted |
 | [ADR-010](ADR-010-b2-modal-shell.md) | One shared modal shell with size variants (B2) | Accepted |
+| [ADR-011](ADR-011-m1-mobile-shell.md) | Mobile / responsive chat (M1) is a below-lg presentation layer | Accepted |
 | [PDR-001](PDR-001-single-user-first.md) | Single-user first; don't preclude multi-user | Accepted |
 | [PDR-002](PDR-002-provider-agnostic-core.md) | Provider-agnostic core by default | Accepted |

@@ -97,10 +97,10 @@ export function ModelSelector({
           variant="ghost"
           size="sm"
           disabled={disabled}
-          className="h-7 gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
+          className="h-7 gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground max-lg:h-[26px] max-lg:max-w-[46vw] max-lg:flex-shrink-0 max-lg:gap-[5px] max-lg:bg-muted/60 max-lg:px-[9px] max-lg:text-[11.5px]"
         >
           <Settings2 className="h-3.5 w-3.5" />
-          <span className="text-xs">
+          <span className="text-xs max-lg:min-w-0 max-lg:truncate max-lg:text-[11.5px]">
             {currentModelName}
           </span>
         </Button>

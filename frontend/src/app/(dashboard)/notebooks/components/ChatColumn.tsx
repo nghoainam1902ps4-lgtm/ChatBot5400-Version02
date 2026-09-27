@@ -10,16 +10,21 @@ import { AlertCircle } from 'lucide-react'
 import { ContextSelections } from '../[id]/page'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { SourceListResponse } from '@/lib/types/api'
+import { useMobileNav } from '@/components/layout/mobile-nav-context'
 
 interface ChatColumnProps {
   notebookId: string
   contextSelections: ContextSelections
   sources: SourceListResponse[]
   sourcesLoading: boolean
+  /** M1: this is the visible mobile chat — show its session button in the
+   * page's mobile top bar (only one ChatColumn may claim the slot). */
+  sessionInMobileTopBar?: boolean
 }
 
-export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoading }: ChatColumnProps) {
+export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoading, sessionInMobileTopBar = false }: ChatColumnProps) {
   const { t } = useTranslation()
+  const { topBarActions } = useMobileNav()
 
   // Fetch notes for this notebook
   const { data: notes = [], isLoading: notesLoading } = useNotes(notebookId)
@@ -68,7 +73,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
   // Show loading state while sources/notes are being fetched
   if (sourcesLoading || notesLoading) {
     return (
-      <Card className="h-full flex flex-col lg:rounded-none lg:border-0 lg:bg-transparent">
+      <Card className="h-full flex flex-col rounded-none border-0 bg-transparent shadow-none lg:rounded-none lg:border-0 lg:bg-transparent">
         <CardContent className="flex-1 flex items-center justify-center">
           <LoadingSpinner size="lg" />
         </CardContent>
@@ -79,7 +84,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
   // Show error state if data fetch failed (unlikely but good to handle)
   if (!sources && !notes) {
     return (
-      <Card className="h-full flex flex-col lg:rounded-none lg:border-0 lg:bg-transparent">
+      <Card className="h-full flex flex-col rounded-none border-0 bg-transparent shadow-none lg:rounded-none lg:border-0 lg:bg-transparent">
         <CardContent className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">
             <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -110,6 +115,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       loadingSessions={chat.loadingSessions}
       notebookContextStats={contextStats}
       notebookId={notebookId}
+      sessionTriggerContainer={sessionInMobileTopBar ? topBarActions : null}
     />
   )
 }

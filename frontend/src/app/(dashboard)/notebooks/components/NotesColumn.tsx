@@ -36,6 +36,8 @@ interface NotesColumnProps {
   /** Render as a tab body inside the desktop ContextPanel: no Card shell, no
    * per-column collapse (the panel owns collapse), compact list rows. */
   embedded?: boolean
+  /** M1 (< lg) tab page: full-width list, 46px toolbar, no Card shell. */
+  mobile?: boolean
 }
 
 export function NotesColumn({
@@ -45,7 +47,8 @@ export function NotesColumn({
   contextSelections,
   onContextModeChange,
   onBulkContextModeChange,
-  embedded = false
+  embedded = false,
+  mobile = false
 }: NotesColumnProps) {
   const { t, language } = useTranslation()
   const [editorOpen, setEditorOpen] = useState(false)
@@ -160,6 +163,51 @@ export function NotesColumn({
       title={t('notebooks.noNotesYet')}
       description={t('sources.createFirstNote')}
     />
+  ) : mobile ? (
+    // M1 rows: kind · time, title (2 lines), preview (2 lines); context toggle
+    // and the note menu stay reachable at 44px.
+    <div>
+      {notes.map((note) => (
+        <div
+          key={note.id}
+          className="group flex min-h-11 items-start gap-2 border-b border-border/60 bg-card py-3 pl-4 pr-1 cursor-pointer transition-colors duration-150 active:bg-muted/60"
+          onClick={() => handleOpenEditor(note)}
+        >
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className={`inline-flex min-w-0 items-center gap-[5px] ${note.note_type === 'ai' ? 'text-teal-deep' : 'text-muted-foreground'}`}>
+                {note.note_type === 'ai' ? (
+                  <Bot className="size-3.5 flex-shrink-0" />
+                ) : (
+                  <User className="size-3.5 flex-shrink-0" />
+                )}
+                <span className="truncate">
+                  {note.note_type === 'ai' ? t('common.aiGenerated') : t('common.human')}
+                </span>
+              </span>
+              <span className="flex-shrink-0 text-muted-foreground">
+                {formatDistanceToNow(new Date(note.updated), {
+                  addSuffix: true,
+                  locale: getDateLocale(language)
+                })}
+              </span>
+            </div>
+            <h4 className="line-clamp-2 break-words text-[14.5px] font-medium leading-5">
+              {note.title || note.content}
+            </h4>
+            {note.title && note.content && (
+              <p className="line-clamp-2 break-words text-[13.5px] leading-5 text-muted-foreground">
+                {note.content}
+              </p>
+            )}
+          </div>
+          <div className="-my-2 flex flex-shrink-0 items-center gap-0.5">
+            {renderNoteToggle(note)}
+            {renderNoteMenu(note, 'size-11 p-0 text-muted-foreground')}
+          </div>
+        </div>
+      ))}
+    </div>
   ) : embedded ? (
     // Context-panel rows: same rhythm, separator and hover as SourceCard's row variant.
     <div>
@@ -283,6 +331,55 @@ export function NotesColumn({
       />
     </>
   )
+
+  if (mobile) {
+    const inContext = (notes ?? []).filter((note) => contextSelections?.[note.id] === 'full').length
+    const chip = 'inline-flex h-[30px] items-center gap-[5px] rounded-full px-3 text-[12.5px] font-medium'
+    return (
+      <>
+        <div className="flex h-full min-h-0 flex-1 flex-col">
+          <div className="flex h-[46px] flex-shrink-0 items-center gap-1 border-b border-border/60 bg-background pl-3 pr-2">
+            {onBulkContextModeChange && notes && notes.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="inline-flex h-11 items-center" title={t('sources.bulkContext')}>
+                    <span className={`${chip} bg-muted/70 text-muted-foreground`}>
+                      <ListChecks className="size-3.5" />
+                      {t('sources.contextChip')}
+                      <ChevronDown className="size-3.5" />
+                    </span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => onBulkContextModeChange('include')}>
+                    {t('sources.includeAllInContext')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onBulkContextModeChange('exclude')}>
+                    {t('sources.excludeAllFromContext')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {notes && notes.length > 0 && (
+              <span className="min-w-0 truncate text-xs text-muted-foreground">
+                {t('sources.inContextCount', { count: inContext })}
+              </span>
+            )}
+            <button type="button" onClick={() => handleOpenEditor()} className="ml-auto inline-flex h-11 flex-shrink-0 items-center">
+              <span className={`${chip} bg-primary text-primary-foreground`}>
+                <Plus className="size-3.5" />
+                {t('common.writeNote')}
+              </span>
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {listBody}
+          </div>
+        </div>
+        {dialogs}
+      </>
+    )
+  }
 
   if (embedded) {
     return (

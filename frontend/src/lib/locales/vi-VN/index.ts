@@ -3,6 +3,10 @@ import type { TranslationShape } from '../en-US';
 // Vietnamese locale.
 export const viVN = {
   common: {
+    openNavigation: "Mở điều hướng",
+    closeNavigation: "Đóng điều hướng",
+    navigationMenu: "Điều hướng",
+    moreOptions: "Thêm tùy chọn",
     expandSidebar: "Mở rộng thanh bên",
     collapseSidebar: "Thu gọn thanh bên",
     search: "Tìm kiếm...",
@@ -302,6 +306,8 @@ export const viVN = {
     lastViewed: "Đã xem {{time}}",
   },
   sources: {
+    contextChip: "Ngữ cảnh",
+    inContextCount: "{{count}} đang dùng",
     title: "Nguồn",
     newSource: "Nguồn mới",
     bulkContext: "Ngữ cảnh",
@@ -465,6 +471,10 @@ export const viVN = {
     maxFilesAllowed: "Tối đa {{count}} tệp cho mỗi lô",
   },
   chat: {
+    mobilePlaceholderSource: "Hỏi về nguồn này…",
+    mobilePlaceholder: "Hỏi về tài liệu trong sổ tay…",
+    send: "Gửi",
+    contextChip: "{{sources}} nguồn · {{notes}} ghi chú",
     citationType: {
       source: "Nguồn",
       insight: "Chi tiết",

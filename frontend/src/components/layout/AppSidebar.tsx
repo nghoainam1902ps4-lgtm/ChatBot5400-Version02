@@ -43,6 +43,7 @@ import {
   Command,
   Users,
   KeyRound,
+  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ChangePasswordDialog } from '@/components/auth/ChangePasswordDialog'
@@ -104,11 +105,25 @@ function AgribankLogo({ className }: { className?: string }) {
 
 type CreateTarget = 'source' | 'notebook' | 'podcast'
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  /** `rail` (default): the desktop sidebar, hidden below lg. `drawer`: the same
+   * navigation rendered inside the M1 mobile drawer — always expanded, never
+   * reads or writes the rail's collapse preference. */
+  variant?: 'rail' | 'drawer'
+  /** Drawer only: close the drawer (after navigating or opening a create dialog). */
+  onRequestClose?: () => void
+}
+
+export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps = {}) {
   const { t } = useTranslation()
   const pathname = usePathname()
   const { logout, user, isAdmin } = useAuth()
-  const { isCollapsed, toggleCollapse } = useSidebarStore()
+  const { isCollapsed: railCollapsed, toggleCollapse } = useSidebarStore()
+  const isDrawer = variant === 'drawer'
+  const isCollapsed = isDrawer ? false : railCollapsed
+  const closeDrawer = () => {
+    if (isDrawer) onRequestClose?.()
+  }
   const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
   const [changePwOpen, setChangePwOpen] = useState(false)
 
@@ -157,6 +172,7 @@ export function AppSidebar() {
 
   const handleCreateSelection = (target: CreateTarget) => {
     setCreateMenuOpen(false)
+    closeDrawer()
 
     if (target === 'source') {
       openSourceDialog()
@@ -171,20 +187,43 @@ export function AppSidebar() {
     <TooltipProvider delayDuration={0}>
       <div
         className={cn(
-          'app-sidebar flex h-full flex-col bg-sidebar border-sidebar-border border-r transition-all duration-300',
-          isCollapsed ? 'w-16' : 'w-64'
+          isDrawer
+            ? 'app-sidebar flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]'
+            : cn(
+                'app-sidebar flex h-full flex-col bg-sidebar border-sidebar-border border-r transition-all duration-300 max-lg:hidden',
+                isCollapsed ? 'w-16' : 'w-64'
+              )
         )}
       >
         <div
           className={cn(
-            'flex h-16 shrink-0 items-center group',
-            isCollapsed ? 'justify-center px-2' : 'justify-between px-4'
+            'flex shrink-0 items-center group',
+            isDrawer ? 'h-14 justify-between border-b border-sidebar-border pl-3.5 pr-1.5' : 'h-16',
+            !isDrawer && (isCollapsed ? 'justify-center px-2' : 'justify-between px-4')
           )}
         >
           {/* Same top slot in both states: collapsed shows the logo, which
               turns into the expand toggle on hover; expanded shows brand +
               collapse. */}
-          {isCollapsed ? (
+          {isDrawer ? (
+            <>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <AgribankLogo className="h-[30px] w-[30px] shrink-0" />
+                <span className="truncate font-display text-[14.5px] font-bold tracking-tight text-primary leading-tight">
+                  Agribank Lâm Đồng
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={closeDrawer}
+                className="size-11 flex-shrink-0 text-sidebar-foreground hover:bg-sidebar-accent"
+                aria-label={t('common.closeNavigation')}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </>
+          ) : isCollapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 {/* Logo and expand icon share one grid cell (no absolute
@@ -268,7 +307,7 @@ export function AppSidebar() {
                     onClick={() => setCreateMenuOpen(true)}
                     variant="default"
                     size="sm"
-                    className="w-full justify-start font-display font-bold"
+                    className={cn('w-full justify-start font-display font-bold', isDrawer && 'h-11 text-[14.5px]')}
                    >
                     <Plus className="h-4 w-4 mr-2" />
                     {t('common.create')}
@@ -340,7 +379,8 @@ export function AppSidebar() {
                         'w-full gap-2.5 text-[13px] font-medium text-sidebar-foreground/80 sidebar-menu-item relative',
                         isActive &&
                           'bg-popover font-semibold text-sidebar-foreground ring-1 ring-inset ring-border before:absolute before:-left-1.5 before:top-[7px] before:bottom-[7px] before:w-[3px] before:rounded-[2px] before:bg-fern',
-                        isCollapsed ? 'h-10 justify-center px-2' : 'justify-start'
+                        isCollapsed ? 'h-10 justify-center px-2' : 'justify-start',
+                        isDrawer && 'h-[46px] gap-3 text-[14.5px] [&_svg]:!size-[18px]'
                       )}
                     >
                       <item.icon className={cn('h-4 w-4 opacity-85', item.iconClass)} />
@@ -362,7 +402,7 @@ export function AppSidebar() {
                   }
 
                   return (
-                    <Link key={item.name} href={item.href}>
+                    <Link key={item.name} href={item.href} onClick={closeDrawer}>
                       {button}
                     </Link>
                   )
@@ -372,14 +412,54 @@ export function AppSidebar() {
           ))}
         </nav>
 
+        {isDrawer ? (
+          <div className="shrink-0 space-y-2 border-t border-sidebar-border px-2.5 pt-2.5 pb-2.5">
+            <div className="grid grid-cols-4 gap-1.5 [&_button]:!h-11">
+              <div role="group" aria-label={t('common.theme')}>
+                <ThemeToggle iconOnly />
+              </div>
+              <div role="group" aria-label={t('common.language')}>
+                <LanguageToggle iconOnly />
+              </div>
+              <Button
+                variant="ghost"
+                className="w-full justify-center sidebar-menu-item"
+                onClick={() => setChangePwOpen(true)}
+                aria-label={t('auth.changePassword')}
+                title={t('auth.changePassword')}
+              >
+                <KeyRound className="h-[18px] w-[18px]" />
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-center sidebar-menu-item"
+                onClick={() => void logout()}
+                aria-label={t('common.signOut')}
+                title={t('common.signOut')}
+              >
+                <LogOut className="h-[18px] w-[18px]" />
+              </Button>
+            </div>
+            {user && (
+              <div className="px-1 text-xs">
+                <div className="truncate text-[13px] font-medium text-sidebar-foreground">
+                  {user.name || user.username}
+                </div>
+                <div className="text-[10.5px] uppercase tracking-wide text-sidebar-foreground/50">
+                  {user.role === 'admin' ? t('users.roleAdmin') : t('users.roleUser')}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
         <div
           className={cn(
             'border-t border-sidebar-border p-3 space-y-2',
             isCollapsed && 'px-2'
           )}
         >
-          {/* Command Palette hint */}
-          {!isCollapsed && (
+          {/* Command Palette hint (keyboard shortcut; not shown in the touch drawer) */}
+          {!isCollapsed && !isDrawer && (
             <div className="px-3 py-1.5 text-xs text-sidebar-foreground/60">
               <div className="flex items-center justify-between">
                  <span className="flex items-center gap-1.5">
@@ -496,6 +576,7 @@ export function AppSidebar() {
             </Button>
           )}
         </div>
+        )}
       </div>
       <ChangePasswordDialog open={changePwOpen} onOpenChange={setChangePwOpen} />
     </TooltipProvider>

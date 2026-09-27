@@ -18,7 +18,6 @@ import { useIsDesktop } from '@/lib/hooks/use-media-query'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { FileText, StickyNote, MessageSquare } from 'lucide-react'
 import {
   applyBulkSourceContext,
   applyBulkNoteContext,
@@ -153,30 +152,34 @@ export default function NotebookPage() {
     )
   }
 
+  const mobileTabClass =
+    'h-[46px] gap-1.5 whitespace-nowrap border-b-0 px-1 text-[13.5px] font-medium text-muted-foreground shadow-[inset_0_-2px_0_transparent] data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-[inset_0_-2px_0_var(--primary)] sm:text-[14.5px]'
+  const mobileTabCount = 'font-mono text-[11px] tabular-nums text-muted-foreground group-data-[state=active]:text-primary'
+
   return (
-    <AppShell>
+    <AppShell hideMobileTopBar>
       <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex-shrink-0 p-6 pb-0 lg:p-0">
+        <div className="flex-shrink-0 lg:p-0">
           <NotebookHeader notebook={notebook} />
         </div>
 
-        <div className="flex-1 p-6 pt-6 overflow-x-auto flex flex-col lg:p-0 lg:overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden lg:p-0 lg:overflow-hidden">
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
           {!isDesktop && (
             <>
-              <div className="lg:hidden mb-4">
-                <Tabs value={mobileActiveTab} onValueChange={(value) => setMobileActiveTab(value as 'sources' | 'notes' | 'chat')}>
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="sources" className="gap-2">
-                      <FileText className="h-4 w-4" />
+              {/* M1: three equal tabs, no icons, counts, burgundy underline */}
+              <div className="flex-shrink-0 border-b bg-card sm:px-11 lg:hidden">
+                <Tabs value={mobileActiveTab} onValueChange={(value) => setMobileActiveTab(value as 'sources' | 'notes' | 'chat')} className="gap-0">
+                  <TabsList className="grid w-full grid-cols-3 gap-0 border-b-0">
+                    <TabsTrigger value="sources" className={`group ${mobileTabClass}`}>
                       {t('navigation.sources')}
+                      <span className={mobileTabCount}>{sources?.length ?? 0}</span>
                     </TabsTrigger>
-                    <TabsTrigger value="notes" className="gap-2">
-                      <StickyNote className="h-4 w-4" />
+                    <TabsTrigger value="notes" className={`group ${mobileTabClass}`}>
                       {t('common.notes')}
+                      <span className={mobileTabCount}>{notes?.length ?? 0}</span>
                     </TabsTrigger>
-                    <TabsTrigger value="chat" className="gap-2">
-                      <MessageSquare className="h-4 w-4" />
+                    <TabsTrigger value="chat" className={mobileTabClass}>
                       {t('common.chat')}
                     </TabsTrigger>
                   </TabsList>
@@ -184,9 +187,10 @@ export default function NotebookPage() {
               </div>
 
               {/* Mobile: Show only active tab */}
-              <div className="flex-1 overflow-hidden lg:hidden">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:hidden">
                 {mobileActiveTab === 'sources' && (
                   <SourcesColumn
+                    mobile
                     sources={sources}
                     isLoading={sourcesLoading}
                     notebookId={notebookId}
@@ -202,6 +206,7 @@ export default function NotebookPage() {
                 )}
                 {mobileActiveTab === 'notes' && (
                   <NotesColumn
+                    mobile
                     notes={notes}
                     isLoading={notesLoading}
                     notebookId={notebookId}
@@ -212,6 +217,7 @@ export default function NotebookPage() {
                 )}
                 {mobileActiveTab === 'chat' && (
                   <ChatColumn
+                    sessionInMobileTopBar
                     notebookId={notebookId}
                     contextSelections={contextSelections}
                     sources={sources}

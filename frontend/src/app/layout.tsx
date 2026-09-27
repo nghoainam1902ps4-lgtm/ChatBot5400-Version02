@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import "katex/dist/katex.min.css";
@@ -33,6 +33,16 @@ const bricolageGrotesque = localFont({
 export const metadata: Metadata = {
   title: "ChatBot 5400 - Agribank Chi Nhánh Lâm Đồng",
   description: "Trợ lý tra cứu tài liệu nội bộ - Agribank Chi nhánh Lâm Đồng",
+};
+
+// M1: `viewport-fit=cover` makes env(safe-area-inset-*) available on notched
+// phones; `interactive-widget=resizes-content` lets Android Chrome shrink the
+// layout viewport for the software keyboard. No effect on desktop browsers.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
