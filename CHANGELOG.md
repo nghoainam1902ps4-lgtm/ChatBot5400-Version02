@@ -2,6 +2,33 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.0.0] - 2026-09-28
+
+Tìm kiếm nguồn (SOURCE_SEARCH_V1) ở trang "Tất cả nguồn" và tab Nguồn của từng
+sổ tay. Không đổi RAG/GraphRAG, embedding, cách nạp nguồn hay ngữ cảnh sổ tay;
+không có migration hay index mới.
+
+### Tìm kiếm nguồn
+- Ô "Tìm kiếm nguồn..." có biểu tượng kính lúp, nút X để xóa, phím Esc để xóa;
+  cao 44px trên điện thoại.
+- Tìm theo tiêu đề nguồn và tên file đã tải lên, không phân biệt hoa/thường và
+  không cần gõ dấu: "quy dinh" tìm được "Quy định", "641" tìm được
+  "Quy định số 641...".
+- Tìm trên toàn bộ nguồn ở máy chủ, kể cả nguồn chưa được tải khi cuộn; kết quả
+  vẫn tải thêm khi cuộn và giữ đúng cách sắp xếp đang chọn.
+- Chỉ gửi yêu cầu sau khi ngừng gõ 300ms, không gửi theo từng phím.
+- Không có kết quả thì hiện "Không tìm thấy nguồn phù hợp.".
+- Trong sổ tay, ô tìm kiếm nằm ngay trên dòng Ngữ cảnh; số nguồn trên tab và số
+  nguồn trong ngữ cảnh không đổi khi đang lọc; đổi sổ tay thì ô tìm kiếm tự xóa.
+- API: `GET /api/sources` nhận thêm tham số tùy chọn `q`; không có `q` thì hoạt
+  động như cũ.
+
+### Hạn chế đã biết
+- Số nguồn trên tab và trong ngữ cảnh là số nguồn đã tải (30 mỗi lần cuộn), chưa
+  phải tổng số ở máy chủ.
+- Kết quả tìm nằm ngoài các trang đã tải chưa có nút bật/tắt ngữ cảnh.
+- Trên điện thoại, ô tìm kiếm tự xóa khi rời tab Nguồn rồi quay lại.
+
 ## [0.0.9] - 2026-09-27
 
 Giao diện điện thoại và máy tính bảng (M1) cho màn hình dưới 1024px. Chỉ thay
