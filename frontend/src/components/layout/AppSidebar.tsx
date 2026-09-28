@@ -28,18 +28,18 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { Separator } from '@/components/ui/separator'
 import {
-  Book,
-  Search,
-  Mic,
-  Bot,
-  Shuffle,
+  NotebookText,
+  MessageCircleQuestion,
+  Podcast,
+  Cpu,
+  ArrowRightLeft,
   Settings,
   LogOut,
-  ChevronLeft,
+  PanelLeftClose,
   PanelLeftOpen,
-  FileText,
+  Files,
   Plus,
-  Wrench,
+  Terminal,
   Command,
   Users,
   KeyRound,
@@ -60,29 +60,29 @@ const getNavigation = (t: TFunction) => [
   {
     title: t('navigation.collect'),
     items: [
-      { name: t('navigation.sources'), href: '/sources', icon: FileText, iconClass: 'text-sage' },
+      { name: t('navigation.sources'), href: '/sources', icon: Files, iconClass: 'text-sage' },
     ],
   },
   {
     title: t('navigation.process'),
     items: [
-      { name: t('navigation.notebooks'), href: '/notebooks', icon: Book, iconClass: 'text-teal' },
-      { name: t('navigation.askAndSearch'), href: '/search', icon: Search, iconClass: undefined },
+      { name: t('navigation.notebooks'), href: '/notebooks', icon: NotebookText, iconClass: 'text-teal' },
+      { name: t('navigation.askAndSearch'), href: '/search', icon: MessageCircleQuestion, iconClass: undefined },
     ],
   },
   {
     title: t('navigation.create'),
     items: [
-      { name: t('navigation.podcasts'), href: '/podcasts', icon: Mic, iconClass: 'text-mauve' },
+      { name: t('navigation.podcasts'), href: '/podcasts', icon: Podcast, iconClass: 'text-mauve' },
     ],
   },
   {
     title: t('navigation.manage'),
     items: [
-      { name: t('navigation.models'), href: '/settings/models', icon: Bot, iconClass: undefined },
-      { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle, iconClass: undefined },
+      { name: t('navigation.models'), href: '/settings/models', icon: Cpu, iconClass: undefined },
+      { name: t('navigation.transformations'), href: '/transformations', icon: ArrowRightLeft, iconClass: undefined },
       { name: t('navigation.settings'), href: '/settings', icon: Settings, iconClass: undefined },
-      { name: t('navigation.advanced'), href: '/advanced', icon: Wrench, iconClass: undefined },
+      { name: t('navigation.advanced'), href: '/advanced', icon: Terminal, iconClass: undefined },
     ],
   },
 ] as const
@@ -265,7 +265,7 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
                 aria-label={t('common.collapseSidebar')}
                 title={t('common.collapseSidebar')}
               >
-                <ChevronLeft className="h-4 w-4" />
+                <PanelLeftClose className="h-4 w-4" />
               </Button>
             </>
           )}
@@ -328,7 +328,7 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
                     }}
                     className="gap-2"
                   >
-                     <FileText className="h-4 w-4" />
+                     <Files className="h-4 w-4" />
                     {t('common.source')}
                   </DropdownMenuItem>
                 )}
@@ -340,7 +340,7 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
                     }}
                     className="gap-2"
                   >
-                     <Book className="h-4 w-4" />
+                     <NotebookText className="h-4 w-4" />
                     {t('common.notebook')}
                   </DropdownMenuItem>
                 )}
@@ -351,7 +351,7 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
                   }}
                   className="gap-2"
                 >
-                   <Mic className="h-4 w-4" />
+                   <Podcast className="h-4 w-4" />
                   {t('common.podcast')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
