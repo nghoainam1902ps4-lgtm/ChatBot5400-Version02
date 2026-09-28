@@ -11,12 +11,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Plus, FileText, Link2, ChevronDown, Loader2, ListChecks } from 'lucide-react'
+import { useDebounce } from 'use-debounce'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
 import { AddExistingSourceDialog } from '@/components/sources/AddExistingSourceDialog'
 import { SourceCard } from '@/components/sources/SourceCard'
-import { useDeleteSource, useRetrySource, useRemoveSourceFromNotebook } from '@/lib/hooks/use-sources'
+import { SourceSearchInput } from '@/components/sources/SourceSearchInput'
+import {
+  useDeleteSource,
+  useRetrySource,
+  useRemoveSourceFromNotebook,
+  useNotebookSourceSearch,
+} from '@/lib/hooks/use-sources'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { ContextMode } from '../[id]/page'
@@ -83,20 +90,48 @@ export function SourcesColumn({
     [toggleSources, t('navigation.sources')]
   )
 
+  // Source search: local UI state, keyed to the notebook so switching
+  // notebooks resets it without an extra render or a stale request.
+  const [search, setSearch] = useState({ notebookId, query: '' })
+  const searchQuery = search.notebookId === notebookId ? search.query : ''
+  const setSearchQuery = useCallback(
+    (query: string) => setSearch({ notebookId, query }),
+    [notebookId]
+  )
+  const [debouncedQuery] = useDebounce(searchQuery.trim(), 300)
+  // Clearing takes effect immediately; typing waits for the debounce.
+  const activeQuery = searchQuery.trim() ? debouncedQuery : ''
+  const isSearching = activeQuery !== ''
+  const searchResults = useNotebookSourceSearch(notebookId, activeQuery)
+
+  // The search only changes which rows are displayed. Context selection,
+  // bulk actions and counts keep using the notebook's real `sources`.
+  const displaySources = isSearching ? searchResults.sources : sources
+  const displayLoading = isSearching ? searchResults.isLoading : isLoading
+  const pageHasNext = isSearching ? searchResults.hasNextPage : hasNextPage
+  const pageIsFetchingNext = isSearching ? searchResults.isFetchingNextPage : isFetchingNextPage
+  const pageFetchNext = isSearching ? searchResults.fetchNextPage : fetchNextPage
+  const showSearch = (sources?.length ?? 0) > 0 || searchQuery !== ''
+
   // Scroll container ref for infinite scroll
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // A new result set starts at the top
+  useEffect(() => {
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0
+  }, [activeQuery])
 
   // Handle scroll for infinite loading
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current
-    if (!container || !hasNextPage || isFetchingNextPage || !fetchNextPage) return
+    if (!container || !pageHasNext || pageIsFetchingNext || !pageFetchNext) return
 
     const { scrollTop, scrollHeight, clientHeight } = container
     // Load more when user scrolls within 200px of the bottom
     if (scrollHeight - scrollTop - clientHeight < 200) {
-      fetchNextPage()
+      pageFetchNext()
     }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  }, [pageHasNext, pageIsFetchingNext, pageFetchNext])
 
   // Attach scroll listener
   useEffect(() => {
@@ -205,11 +240,15 @@ export function SourcesColumn({
     </>
   )
 
-  const listBody = isLoading ? (
+  const listBody = displayLoading ? (
     <div className="flex items-center justify-center py-8">
       <LoadingSpinner />
     </div>
-  ) : !sources || sources.length === 0 ? (
+  ) : isSearching && displaySources?.length === 0 ? (
+    <p role="status" className="px-3 py-8 text-center text-sm text-muted-foreground">
+      {t('sources.noMatchingSources')}
+    </p>
+  ) : !displaySources || displaySources.length === 0 ? (
     <EmptyState
       icon={FileText}
       title={t('sources.noSourcesYet')}
@@ -217,7 +256,7 @@ export function SourcesColumn({
     />
   ) : (
     <div className={embedded || mobile ? undefined : 'space-y-2'}>
-      {sources.map((source) => (
+      {displaySources.map((source) => (
         <SourceCard
           key={source.id}
           variant={mobile ? 'list' : embedded ? 'row' : 'card'}
@@ -237,7 +276,7 @@ export function SourcesColumn({
         />
       ))}
       {/* Loading indicator for infinite scroll */}
-      {isFetchingNextPage && (
+      {pageIsFetchingNext && (
         <div className="flex items-center justify-center py-4">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
@@ -351,6 +390,11 @@ export function SourcesColumn({
           <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {listBody}
           </div>
+          {showSearch && (
+            <div className="flex-shrink-0 border-t border-border/60 bg-background px-3 py-2">
+              <SourceSearchInput value={searchQuery} onChange={setSearchQuery} />
+            </div>
+          )}
         </div>
         {dialogs}
       </>
@@ -367,6 +411,13 @@ export function SourcesColumn({
           <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
             {listBody}
           </div>
+          {/* Sits at the bottom of the tab body, directly above the panel's
+              Context footer (which ContextPanel renders outside the tabs). */}
+          {showSearch && (
+            <div className="flex-shrink-0 px-3 pb-2">
+              <SourceSearchInput value={searchQuery} onChange={setSearchQuery} />
+            </div>
+          )}
         </div>
         {dialogs}
       </>
@@ -398,6 +449,11 @@ export function SourcesColumn({
           <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
             {listBody}
           </CardContent>
+          {showSearch && (
+            <div className="flex-shrink-0 px-6 pb-4">
+              <SourceSearchInput value={searchQuery} onChange={setSearchQuery} />
+            </div>
+          )}
         </Card>
       </CollapsibleColumn>
 

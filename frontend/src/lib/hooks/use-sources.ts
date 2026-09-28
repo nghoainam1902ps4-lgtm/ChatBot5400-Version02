@@ -26,22 +26,28 @@ export function useSources(notebookId?: string) {
 }
 
 /**
- * Hook for fetching notebook sources with infinite scroll pagination.
- * Returns flattened sources array and pagination controls.
+ * Infinite-scroll pages of a notebook's sources, optionally filtered by a
+ * server-side title/file-name search (`q`). Without `q` this is the notebook's
+ * real source list; with `q` it is a separate, display-only result set cached
+ * under a child key, so mutations that invalidate `sourcesInfinite(notebookId)`
+ * refresh both.
  */
-export function useNotebookSources(notebookId: string) {
+function useNotebookSourcesQuery(notebookId: string, q?: string) {
   const queryClient = useQueryClient()
+  const baseKey = QUERY_KEYS.sourcesInfinite(notebookId)
 
   const query = useInfiniteQuery({
-    queryKey: QUERY_KEYS.sourcesInfinite(notebookId),
-    queryFn: async ({ pageParam = 0 }) => {
+    queryKey: q ? [...baseKey, 'search', q] : baseKey,
+    queryFn: async ({ pageParam = 0, signal }) => {
       const data = await sourcesApi.list({
         notebook_id: notebookId,
         limit: NOTEBOOK_SOURCES_PAGE_SIZE,
         offset: pageParam,
         sort_by: 'updated',
         sort_order: 'desc',
-      })
+        ...(q ? { q } : {}),
+        // Abort a superseded search; the base list keeps its existing behaviour.
+      }, q ? { signal } : undefined)
       return {
         sources: data,
         nextOffset: data.length === NOTEBOOK_SOURCES_PAGE_SIZE ? pageParam + data.length : undefined,
@@ -49,9 +55,10 @@ export function useNotebookSources(notebookId: string) {
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextOffset,
-    enabled: !!notebookId,
+    enabled: !!notebookId && q !== '',
     staleTime: 5 * 1000,
-    refetchOnWindowFocus: true,
+    // Search results are transient; don't add focus refetches for them.
+    refetchOnWindowFocus: !q,
   })
 
   // Flatten all pages into a single array (memoized to prevent infinite re-renders)
@@ -74,6 +81,24 @@ export function useNotebookSources(notebookId: string) {
     refetch,
     error: query.error,
   }
+}
+
+/**
+ * Hook for fetching notebook sources with infinite scroll pagination.
+ * Returns flattened sources array and pagination controls.
+ */
+export function useNotebookSources(notebookId: string) {
+  return useNotebookSourcesQuery(notebookId)
+}
+
+/**
+ * Server-side search within a notebook's sources (title / file name). Only
+ * fetches while `q` is non-empty; the caller debounces `q`. The result feeds
+ * the displayed list only — context selection and counts keep using
+ * `useNotebookSources`.
+ */
+export function useNotebookSourceSearch(notebookId: string, q: string) {
+  return useNotebookSourcesQuery(notebookId, q)
 }
 
 export function useSource(id: string) {

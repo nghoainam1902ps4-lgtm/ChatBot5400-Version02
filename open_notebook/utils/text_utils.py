@@ -149,3 +149,58 @@ def extract_text_content(content) -> str:
                 text_parts.append(part)
         return "".join(text_parts)
     return str(content)
+
+
+# Vietnamese letter families: every accented form of a base letter. Used to
+# build accent-insensitive regexes that run inside SurrealDB (Rust regex), so
+# "quy dinh" matches "Quy định" without a migration or an extra index.
+_VI_LETTER_VARIANTS = {
+    "a": "aàáảãạăằắẳẵặâầấẩẫậ",
+    "d": "dđ",
+    "e": "eèéẻẽẹêềếểễệ",
+    "i": "iìíỉĩị",
+    "o": "oòóỏõọôồốổỗộơờớởỡợ",
+    "u": "uùúủũụưừứửữự",
+    "y": "yỳýỷỹỵ",
+}
+
+# Characters with special meaning in Rust regex syntax; escaping them is
+# always allowed there (unlike arbitrary escapes).
+_REGEX_META = set("\\.+*?()|[]{}^$#&-~")
+
+
+def fold_vietnamese(text: str) -> str:
+    """Lowercase and strip Vietnamese diacritics ("Quy Định" -> "quy dinh")."""
+    decomposed = unicodedata.normalize("NFD", text)
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return stripped.replace("đ", "d").replace("Đ", "D").lower()
+
+
+def build_accent_insensitive_pattern(query: str) -> str | None:
+    """Build a case- and accent-insensitive regex for a plain-text query.
+
+    The query is trimmed, folded (diacritics stripped, lowercased) and each
+    Vietnamese base letter is expanded to a class of all its accented forms,
+    followed by ``\\p{M}*`` so text stored in decomposed (NFD) form matches
+    too. A space in the query matches any run of whitespace, ``_``, ``.`` or
+    ``-`` so "de an" also finds the file name "Đề_án.pdf". Returns ``None`` for an
+    empty/blank query. The output targets Rust regex (SurrealDB
+    ``string::matches``); everything else is escaped and matched literally.
+    """
+    folded = fold_vietnamese(query.strip())
+    if not folded:
+        return None
+
+    parts: list[str] = []
+    for word_index, word in enumerate(folded.split()):
+        if word_index:
+            parts.append(r"[\s_.\-]+")
+        for ch in word:
+            variants = _VI_LETTER_VARIANTS.get(ch)
+            if variants:
+                parts.append(f"[{variants}]" + r"\p{M}*")
+            elif ch in _REGEX_META:
+                parts.append("\\" + ch)
+            else:
+                parts.append(ch)
+    return "(?i)" + "".join(parts)

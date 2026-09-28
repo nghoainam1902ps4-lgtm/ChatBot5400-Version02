@@ -131,6 +131,10 @@ curl 'http://localhost:5055/sources?limit=20&offset=10'
 ```bash
 # Filter by notebook, sort by date
 curl 'http://localhost:5055/sources?notebook_id=notebook:abc&sort_by=created&sort_order=asc'
+
+# Search sources by title / uploaded file name (case- and accent-insensitive,
+# applied before limit/offset; combines with notebook_id and sorting)
+curl 'http://localhost:5055/sources?q=quy%20dinh&limit=30&offset=0'
 ```
 
 ### Async Operations

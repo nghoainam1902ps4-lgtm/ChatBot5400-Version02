@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useDebounce } from 'use-debounce'
 import { sourcesApi, type SourceSortField } from '@/lib/api/sources'
 import { SourceListResponse } from '@/lib/types/api'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
@@ -17,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
+import { SourceSearchInput } from '@/components/sources/SourceSearchInput'
 import { useAuth } from '@/lib/hooks/use-auth'
 
 export default function SourcesPage() {
@@ -31,6 +33,14 @@ export default function SourcesPage() {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [sortBy, setSortBy] = useState<SourceSortField>('updated')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  // Server-side title/file-name search. Typing is debounced; clearing applies
+  // immediately. Local UI state only (not persisted).
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedQuery] = useDebounce(searchQuery.trim(), 300)
+  const activeQuery = searchQuery.trim() ? debouncedQuery : ''
+  const [hasLoaded, setHasLoaded] = useState(false)
+  // The query the currently shown `sources` were fetched with
+  const [loadedQuery, setLoadedQuery] = useState('')
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; source: SourceListResponse | null }>({
     open: false,
     source: null
@@ -41,17 +51,29 @@ export default function SourcesPage() {
   const offsetRef = useRef(0)
   const loadingMoreRef = useRef(false)
   const hasMoreRef = useRef(true)
+  // Identifies the current result set; a response for an older one (superseded
+  // sort/search) is dropped instead of overwriting or appending.
+  const requestIdRef = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
   const PAGE_SIZE = 30
 
   const fetchSources = useCallback(async (reset = false) => {
-    try {
-      // Check flags before proceeding
-      if (!reset && (loadingMoreRef.current || !hasMoreRef.current)) {
-        return
-      }
+    // Check flags before proceeding
+    if (!reset && (loadingMoreRef.current || !hasMoreRef.current)) {
+      return
+    }
+    if (reset) {
+      requestIdRef.current += 1
+      abortRef.current?.abort()
+      abortRef.current = new AbortController()
+    }
+    const requestId = requestIdRef.current
+    const signal = abortRef.current?.signal
 
+    try {
       if (reset) {
         setLoading(true)
+        setError(null)
         offsetRef.current = 0
         setSources([])
         hasMoreRef.current = true
@@ -65,7 +87,9 @@ export default function SourcesPage() {
         offset: offsetRef.current,
         sort_by: sortBy,
         sort_order: sortOrder,
-      })
+        ...(activeQuery ? { q: activeQuery } : {}),
+      }, { signal })
+      if (requestId !== requestIdRef.current) return
 
       if (reset) {
         setSources(data)
@@ -77,26 +101,37 @@ export default function SourcesPage() {
       const hasMoreData = data.length === PAGE_SIZE
       hasMoreRef.current = hasMoreData
       offsetRef.current += data.length
+      setHasLoaded(true)
+      setLoadedQuery(activeQuery)
     } catch (err) {
+      if (requestId !== requestIdRef.current) return
       console.error('Failed to fetch sources:', err)
       setError(failedToLoadMessage)
       toast.error(failedToLoadMessage)
     } finally {
-      setLoading(false)
-      setLoadingMore(false)
-      loadingMoreRef.current = false
+      if (requestId === requestIdRef.current) {
+        setLoading(false)
+        setLoadingMore(false)
+        loadingMoreRef.current = false
+      }
     }
-  }, [sortBy, sortOrder, failedToLoadMessage])
+  }, [sortBy, sortOrder, activeQuery, failedToLoadMessage])
 
-  // Initial load and when sort changes
+  // Initial load and when sort or search changes (back to page 1)
   useEffect(() => {
+    setSelectedIndex(0)
     fetchSources(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortBy, sortOrder])
+  }, [sortBy, sortOrder, activeQuery])
+
+  // Abort an in-flight request on unmount
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   useEffect(() => {
-    // Focus the table when component mounts or sources change
-    if (sources.length > 0 && tableRef.current) {
+    // Focus the table when component mounts or sources change — unless the
+    // user is typing somewhere (e.g. the search box).
+    const active = document.activeElement
+    if (sources.length > 0 && tableRef.current && (!active || active === document.body)) {
       tableRef.current.focus()
     }
   }, [sources])
@@ -104,6 +139,9 @@ export default function SourcesPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (sources.length === 0) return
+      // Leave arrow/Home/End/Enter to text fields (search box)
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
 
       switch (e.key) {
         case 'ArrowDown':
@@ -285,23 +323,29 @@ export default function SourcesPage() {
   }
 
   const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="flex h-full items-center justify-center">
-          <LoadingSpinner />
-        </div>
-      )
+    const isSearching = searchQuery.trim() !== ''
+    // Before the first successful load (and outside a search) keep the
+    // original full-page loading/error states.
+    if (!hasLoaded && !isSearching) {
+      if (loading) {
+        return (
+          <div className="flex h-full items-center justify-center">
+            <LoadingSpinner />
+          </div>
+        )
+      }
+      if (error) {
+        return (
+          <div className="flex h-full items-center justify-center">
+            <p className="text-destructive">{error}</p>
+          </div>
+        )
+      }
     }
 
-    if (error) {
-      return (
-        <div className="flex h-full items-center justify-center">
-          <p className="text-destructive">{error}</p>
-        </div>
-      )
-    }
-
-    if (sources.length === 0) {
+    // "No sources yet" only when an unfiltered fetch came back empty — never
+    // for an empty search result (or the frame right after clearing one).
+    if (sources.length === 0 && !loading && !error && !isSearching && loadedQuery === '') {
       return (
         <EmptyState
           icon={FileText}
@@ -328,6 +372,25 @@ export default function SourcesPage() {
           </p>
         </div>
 
+        <SourceSearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          className="mb-4 flex-shrink-0 lg:max-w-md"
+        />
+
+        {loading ? (
+          <div className="flex flex-1 items-center justify-center rounded-md border">
+            <LoadingSpinner />
+          </div>
+        ) : error ? (
+          <div className="flex flex-1 items-center justify-center rounded-md border">
+            <p className="text-destructive">{error}</p>
+          </div>
+        ) : sources.length === 0 ? (
+          <div className="flex flex-1 items-start justify-center rounded-md border px-4 py-10">
+            <p role="status" className="text-sm text-muted-foreground">{t('sources.noMatchingSources')}</p>
+          </div>
+        ) : (
         <div ref={scrollContainerRef} className="flex-1 rounded-md border overflow-auto">
           <table
             ref={tableRef}
@@ -458,6 +521,7 @@ export default function SourcesPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       <ConfirmDialog
