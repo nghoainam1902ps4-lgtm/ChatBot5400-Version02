@@ -250,3 +250,80 @@ class TestTitleSortUsesAlias:
     def test_invalid_sort_field_returns_400(self, client):
         response = client.get("/api/sources?sort_by=bogus")
         assert response.status_code == 400
+
+
+class TestSourceListSearch:
+    """GET /sources?q= — metadata search applied before LIMIT/START."""
+
+    @pytest.mark.asyncio
+    @patch("api.routers.sources.repo_query", new_callable=AsyncMock)
+    async def test_no_q_keeps_query_unfiltered(self, mock_query, client):
+        mock_query.return_value = []
+        for url in ["/api/sources", "/api/sources?q=", "/api/sources?q=%20%20"]:
+            response = client.get(url)
+            assert response.status_code == 200
+            query, params = mock_query.call_args[0]
+            assert "$q_pattern" not in query
+            assert "q_pattern" not in params
+
+    @pytest.mark.asyncio
+    @patch("api.routers.sources.repo_query", new_callable=AsyncMock)
+    async def test_q_filters_title_and_file_name_before_pagination(
+        self, mock_query, client
+    ):
+        mock_query.return_value = []
+        response = client.get(
+            "/api/sources?q=Quy%20%C4%91%E1%BB%8Bnh&limit=30&offset=30&sort_by=title"
+        )
+        assert response.status_code == 200
+        query, params = mock_query.call_args[0]
+        assert "string::matches(title OR '', $q_pattern)" in query
+        assert "asset.file_path" in query
+        assert query.index("WHERE string::matches") < query.index("ORDER BY") < query.index("LIMIT $limit")
+        assert params["q_pattern"].startswith("(?i)q[uù")
+        assert params["limit"] == 30 and params["offset"] == 30
+
+    @pytest.mark.asyncio
+    @patch("api.routers.sources.Notebook.get", new_callable=AsyncMock)
+    @patch("api.routers.sources.repo_query", new_callable=AsyncMock)
+    async def test_q_combines_with_notebook_scope(
+        self, mock_query, mock_nb_get, client
+    ):
+        mock_nb_get.return_value = MagicMock()
+        mock_query.return_value = []
+        response = client.get("/api/sources?notebook_id=notebook:1&q=641")
+        assert response.status_code == 200
+        query, params = mock_query.call_args[0]
+        assert "out=$notebook_id" in query
+        assert params["q_pattern"] == "(?i)641"
+
+    def test_q_too_long_is_rejected(self, client):
+        response = client.get("/api/sources?q=" + "a" * 201)
+        assert response.status_code == 422
+
+
+class TestAccentInsensitivePattern:
+    def test_blank_query_returns_none(self):
+        from open_notebook.utils.text_utils import build_accent_insensitive_pattern
+
+        assert build_accent_insensitive_pattern("") is None
+        assert build_accent_insensitive_pattern("   ") is None
+
+    def test_accented_and_plain_queries_build_same_pattern(self):
+        from open_notebook.utils.text_utils import build_accent_insensitive_pattern
+
+        plain = build_accent_insensitive_pattern("quy dinh")
+        assert plain is not None
+        assert plain == build_accent_insensitive_pattern("  QUY ĐỊNH ")
+        assert plain == build_accent_insensitive_pattern("Quy định")
+        assert "[dđ]" in plain
+
+    def test_regex_metacharacters_are_escaped(self):
+        from open_notebook.utils.text_utils import build_accent_insensitive_pattern
+
+        assert build_accent_insensitive_pattern("1.2(x)*") == "(?i)1\\.2\\(x\\)\\*"
+
+    def test_fold_vietnamese(self):
+        from open_notebook.utils.text_utils import fold_vietnamese
+
+        assert fold_vietnamese("Hướng Dẫn Đề Án") == "huong dan de an"

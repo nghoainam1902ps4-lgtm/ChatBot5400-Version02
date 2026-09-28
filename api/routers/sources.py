@@ -44,6 +44,7 @@ from open_notebook.exceptions import (
     OpenNotebookError,
     UnsupportedTypeException,
 )
+from open_notebook.utils.text_utils import build_accent_insensitive_pattern
 
 router = APIRouter()
 
@@ -256,8 +257,16 @@ async def get_sources(
         description="Field to sort by (type, title, created, updated, insights_count, or embedded)",
     ),
     sort_order: str = Query("desc", description="Sort order (asc or desc)"),
+    q: Optional[str] = Query(
+        None,
+        max_length=200,
+        description=(
+            "Optional case- and accent-insensitive filter on source title and "
+            "uploaded file name. Applied before limit/offset."
+        ),
+    ),
 ):
-    """Get sources with pagination and sorting support."""
+    """Get sources with pagination, sorting and optional title search."""
     try:
         # Validate sort parameters
         if sort_by not in SOURCE_SORT_FIELDS:
@@ -292,6 +301,20 @@ async def get_sources(
         else:
             from_clause = "source"
 
+        # Optional metadata search: title or uploaded file name only (no
+        # content/chunk/vector search). Filtering happens before LIMIT/START so
+        # pagination walks the matching set.
+        where_clause = ""
+        search_pattern = build_accent_insensitive_pattern(q) if q else None
+        if search_pattern:
+            params["q_pattern"] = search_pattern
+            where_clause = (
+                "WHERE string::matches(title OR '', $q_pattern) "
+                "OR string::matches("
+                "array::last(string::split(asset.file_path OR '', '/')) OR '', "
+                "$q_pattern)"
+            )
+
         # Query sources - include command field with FETCH
         query = f"""
             SELECT id, asset, created, title, updated, topics, command,
@@ -300,6 +323,7 @@ async def get_sources(
             (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
             (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
             FROM {from_clause}
+            {where_clause}
             {order_clause}
             LIMIT $limit START $offset
             FETCH command

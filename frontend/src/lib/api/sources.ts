@@ -19,8 +19,10 @@ export const sourcesApi = {
     offset?: number
     sort_by?: SourceSortField
     sort_order?: 'asc' | 'desc'
-  }) => {
-    const response = await apiClient.get<SourceListResponse[]>('/sources', { params })
+    /** Title / file-name search (case- and accent-insensitive), applied server-side before paging. */
+    q?: string
+  }, options?: { signal?: AbortSignal }) => {
+    const response = await apiClient.get<SourceListResponse[]>('/sources', { params, signal: options?.signal })
     return response.data
   },
 
