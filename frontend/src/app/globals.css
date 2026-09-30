@@ -85,6 +85,9 @@
   --color-clay-tint: var(--clay-tint);
   --color-warn: var(--warn);
   --color-warn-tint: var(--warn-tint);
+  --color-success: var(--success);
+  --color-success-deep: var(--success-deep);
+  --color-success-tint: var(--success-tint);
 
   /* content-type hues — dots, ticks, chips only; never washes */
   --color-type-video: var(--type-video);
@@ -198,6 +201,11 @@
   --danger: #c0392b;
   --danger-deep: #9c2b20;
   --danger-tint: #f7e4e1;
+
+  /* success — confirmation/state only; distinct from the burgundy action hue */
+  --success: #2f6b4f;
+  --success-deep: #245440;
+  --success-tint: #e3efe8;
 
   --warn: var(--clay);
   --warn-deep: var(--clay-deep);
@@ -352,6 +360,10 @@
   --danger: #e07a68;
   --danger-deep: #ea9080;
   --danger-tint: #3a201c;
+
+  --success: #6fb391;
+  --success-deep: #8bc5a7;
+  --success-tint: #172a22;
 
   /* evidence washes */
   --excerpt-wash: #1e2733;
