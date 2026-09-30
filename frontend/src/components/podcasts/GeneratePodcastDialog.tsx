@@ -439,12 +439,9 @@ export function GeneratePodcastDialog({ open, onOpenChange }: GeneratePodcastDia
 
       // mutateAsync resolves only after the mutation's onSuccess handler has
       // awaited the episode list refetch, so it is safe to close immediately.
+      // That handler (useGeneratePodcast) already shows the single INFO toast
+      // for the accepted job, so no second toast here.
       await generatePodcast.mutateAsync(payload)
-
-      toast({
-        title: t('common.success'),
-        description: t('podcasts.podcastTaskStarted'),
-      })
 
       onOpenChange(false)
       resetState()

@@ -617,7 +617,6 @@ export const viVN = {
     noNotes: "Không có ghi chú nào khả dụng trong sổ tay này.",
     selectMode: "Chọn chế độ",
     buildContextFailed: "Không thể xây dựng ngữ cảnh. Vui lòng xem lại các lựa chọn của bạn.",
-    podcastTaskStarted: "Đã bắt đầu tác vụ podcast",
     loadingProfiles: "Đang tải hồ sơ tập...",
     noProfilesFound: "Không tìm thấy hồ sơ tập nào. Hãy tạo một hồ sơ tập trước khi tạo podcast.",
     listTitle: "Podcast",
@@ -862,6 +861,8 @@ export const viVN = {
     updateToastTitle: "Có bản cập nhật mới (v{{version}})",
     updateToastDesc: "Vui lòng kiểm tra trong Công cụ nâng cao.",
     rebuild: {
+      // N2 exception approved by the project owner (outside the original 40-key inventory).
+      submittedToastTitle: "Yêu cầu dựng lại đã được tiếp nhận",
       mode: "Chế độ xây dựng lại",
       existing: "Hiện có",
       all: "Tất cả",

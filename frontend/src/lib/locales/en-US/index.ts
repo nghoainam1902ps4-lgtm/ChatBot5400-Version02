@@ -614,7 +614,6 @@ export const enUS = {
     noNotes: "No notes available in this notebook.",
     selectMode: "Select mode",
     buildContextFailed: "Failed to build context. Please review your selections.",
-    podcastTaskStarted: "Podcast task started",
     loadingProfiles: "Loading episode profiles...",
     noProfilesFound: "No episode profiles found. Create an episode profile before generating a podcast.",
     listTitle: "Podcasts",
@@ -859,6 +858,8 @@ export const enUS = {
     updateToastTitle: "A new update is available (v{{version}})",
     updateToastDesc: "Please check Advanced.",
     rebuild: {
+      // N2 exception approved by the project owner (outside the original 40-key inventory).
+      submittedToastTitle: "Rebuild request received",
       mode: "Rebuild Mode",
       existing: "Existing",
       all: "All",

@@ -19,9 +19,11 @@ import {
 import { embeddingApi } from '@/lib/api/embedding'
 import type { RebuildEmbeddingsRequest, RebuildStatusResponse } from '@/lib/api/embedding'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useToast } from '@/lib/hooks/use-toast'
 
 export function RebuildEmbeddings() {
   const { t } = useTranslation()
+  const { toast } = useToast()
   const [mode, setMode] = useState<'existing' | 'all'>('existing')
   const [includeSources, setIncludeSources] = useState(true)
   const [includeNotes, setIncludeNotes] = useState(true)
@@ -37,6 +39,9 @@ export function RebuildEmbeddings() {
     },
     onSuccess: (data) => {
       setCommandId(data.command_id)
+      // The backend only accepted the job (command_id): INFO, not a completion
+      // claim. Progress and the final state come from the polled status below.
+      toast({ title: t('advanced.rebuild.submittedToastTitle'), variant: 'info' })
       // Start polling for status
       startPolling(data.command_id)
     }
@@ -228,7 +233,7 @@ export function RebuildEmbeddings() {
               <div className="flex items-center gap-2">
                 {status.status === 'queued' && <Clock className="h-5 w-5 text-warn" />}
                 {status.status === 'running' && <Loader2 className="h-5 w-5 text-teal animate-spin" />}
-                {status.status === 'completed' && <CheckCircle2 className="h-5 w-5 text-fern" />}
+                {status.status === 'completed' && <CheckCircle2 className="h-5 w-5 text-success" />}
                 {status.status === 'failed' && <XCircle className="h-5 w-5 text-destructive" />}
                 <div className="flex flex-col">
                   <span className="font-medium">

@@ -153,6 +153,7 @@ export function useCreateSource() {
         toast({
           title: t('sources.sourceQueued'),
           description: t('sources.sourceQueuedDesc'),
+          variant: 'info',
         })
       } else {
         toast({
@@ -302,6 +303,7 @@ export function useRetrySource() {
       toast({
         title: t('sources.sourceRequeued'),
         description: t('sources.sourceRequeuedDesc'),
+        variant: 'info',
       })
     },
     onError: (error: unknown) => {
@@ -358,9 +360,9 @@ export function useAddSourcesToNotebook() {
         })
       } else {
         toast({
-          title: t('common.success'),
+          title: t('common.warning'),
           description: t('sources.partialAddSuccess', { success: result.successes.toString(), failed: result.failures.toString() }),
-          variant: 'default',
+          variant: 'warn',
         })
       }
     },
