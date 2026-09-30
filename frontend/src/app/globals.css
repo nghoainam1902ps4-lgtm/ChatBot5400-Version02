@@ -85,6 +85,9 @@
   --color-clay-tint: var(--clay-tint);
   --color-warn: var(--warn);
   --color-warn-tint: var(--warn-tint);
+  --color-success: var(--success);
+  --color-success-deep: var(--success-deep);
+  --color-success-tint: var(--success-tint);
 
   /* content-type hues — dots, ticks, chips only; never washes */
   --color-type-video: var(--type-video);
