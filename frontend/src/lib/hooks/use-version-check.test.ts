@@ -24,16 +24,21 @@ describe('useVersionCheck', () => {
     fetchLatestVersion.mockReset()
   })
 
-  it('shows a bottom-right toast with title and description when a newer release exists', async () => {
+  it('shows a 15s toast with title, description and the Advanced action when a newer release exists', async () => {
     fetchLatestVersion.mockResolvedValue('0.0.5')
     renderHook(() => useVersionCheck(true))
 
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
     expect(toastInfo.mock.calls[0][0]).toBe('advanced.updateToastTitle:0.0.5')
-    expect(toastInfo.mock.calls[0][1]).toMatchObject({
-      position: 'bottom-right',
+    const options = toastInfo.mock.calls[0][1]
+    expect(options).toMatchObject({
       description: 'advanced.updateToastDesc:',
+      duration: 15000,
+      action: { label: 'navigation.advanced:' },
     })
+    // Placement and styling come from the shared Toaster, not the call site.
+    expect(options).not.toHaveProperty('position')
+    expect(options).not.toHaveProperty('actionButtonStyle')
   })
 
   it('checks only once per app load (no repeat on page navigation)', async () => {
