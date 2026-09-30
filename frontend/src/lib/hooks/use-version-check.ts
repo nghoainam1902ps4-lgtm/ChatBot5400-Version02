@@ -17,7 +17,7 @@ export function resetVersionCheck() {
 
 /**
  * Background update check: once per app load, fetch the latest GitHub release
- * and show a bottom-right toast if it is newer than APP_VERSION.
+ * and show a toast (shared Toaster placement) if it is newer than APP_VERSION.
  * Mounted in the dashboard layout; pass `enabled = false` to skip the check.
  */
 export function useVersionCheck(enabled = true) {
@@ -34,13 +34,11 @@ export function useVersionCheck(enabled = true) {
 
         toast.info(t('advanced.updateToastTitle', { version: latestVersion }), {
           description: t('advanced.updateToastDesc'),
-          position: 'bottom-right',
           duration: 15000,
           action: {
             label: t('navigation.advanced'),
             onClick: () => router.push('/advanced'),
           },
-          actionButtonStyle: { background: '#ffffff', color: '#8B1538' },
         })
       })
       .catch(() => {

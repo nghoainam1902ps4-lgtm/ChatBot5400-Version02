@@ -291,6 +291,20 @@ interface ChatComposerProps {
   contextType?: 'source' | 'notebook'
 }
 
+// Visible composer heights, published as `--composer-h` on <html> so the
+// toaster can sit above the input and send button at every breakpoint. Each
+// mounted composer registers its own border-box height; a hidden twin (the
+// desktop column is only CSS-hidden below lg) measures 0 and is ignored. The
+// variable is removed when no composer is visible, so no stale height remains.
+const composerHeights = new Map<symbol, number>()
+
+function publishComposerHeight() {
+  const height = Math.max(0, ...composerHeights.values())
+  const root = document.documentElement
+  if (height > 0) root.style.setProperty('--composer-h', `${Math.ceil(height)}px`)
+  else root.style.removeProperty('--composer-h')
+}
+
 function ChatComposer({
   onSendMessage,
   isStreaming,
@@ -303,8 +317,25 @@ function ChatComposer({
   const chatInputId = useId()
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const composerRef = useRef<HTMLDivElement>(null)
 
   const isDesktop = useIsDesktop()
+
+  useEffect(() => {
+    const el = composerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const key = Symbol('composer')
+    const observer = new ResizeObserver(([entry]) => {
+      composerHeights.set(key, entry.borderBoxSize?.[0]?.blockSize ?? el.getBoundingClientRect().height)
+      publishComposerHeight()
+    })
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      composerHeights.delete(key)
+      publishComposerHeight()
+    }
+  }, [])
 
   // M1 (< lg): the input grows with its text from 44px up to 148px, then
   // scrolls. Sized from JS (field-sizing is off below lg) so the placeholder
@@ -348,7 +379,7 @@ function ChatComposer({
     // the auto-growing input beside a 44px send button; bottom safe area. The
     // same elements are reflowed with max-lg classes (grid + display:contents),
     // so input state, send/stop and model/context logic are shared with desktop.
-    <div className="flex-shrink-0 border-t px-4 pb-4 pt-3 lg:border-t-0 lg:px-6 lg:pb-6 lg:pt-2 max-lg:bg-card max-lg:px-3 max-lg:pt-1.5 max-lg:pb-[calc(6px+env(safe-area-inset-bottom))] sm:max-lg:px-6">
+    <div ref={composerRef} className="flex-shrink-0 border-t px-4 pb-4 pt-3 lg:border-t-0 lg:px-6 lg:pb-6 lg:pt-2 max-lg:bg-card max-lg:px-3 max-lg:pt-1.5 max-lg:pb-[calc(6px+env(safe-area-inset-bottom))] sm:max-lg:px-6">
       <div className="mx-auto w-full max-w-[760px] sm:max-lg:max-w-[680px]">
         <div className="rounded-2xl border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20 max-lg:grid max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:items-end max-lg:gap-x-2 max-lg:rounded-none max-lg:border-0 max-lg:bg-transparent max-lg:shadow-none max-lg:focus-within:ring-0">
           <Textarea
