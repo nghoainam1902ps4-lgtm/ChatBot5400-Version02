@@ -1,10 +1,17 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 import { EpisodeCard } from './EpisodeCard'
 import type { PodcastEpisode } from '@/lib/types/podcasts'
+import apiClient from '@/lib/api/client'
+import { resolvePodcastAssetUrl } from '@/lib/api/podcasts'
 
-// useTranslation is mocked globally in setup.ts (t returns the key string)
+// t returns the key string, as in the global mock, but with a stable identity
+// like the real hook (the audio effect depends on it).
+vi.mock('@/lib/hooks/use-translation', () => {
+  const t = (key: string) => key
+  return { useTranslation: () => ({ t, language: 'en-US', setLanguage: vi.fn() }) }
+})
 
 vi.mock('@/lib/api/client', () => ({
   default: { get: vi.fn() },
@@ -155,5 +162,59 @@ describe('EpisodeCard status badge', () => {
   ] as const)('status %s keeps its existing group (%s, %s)', (status, label, cls) => {
     render(<EpisodeCard episode={makeEpisode({ job_status: status })} onDelete={vi.fn()} />)
     expect(screen.getByText(label).className).toContain(cls)
+  })
+})
+
+describe('EpisodeCard audio player (P1A)', () => {
+  it('renders exactly one <audio>, also with the details dialog open, from a single fetch', async () => {
+    vi.mocked(resolvePodcastAssetUrl).mockResolvedValueOnce('http://api.test/podcasts/episodes/1/audio')
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: new Blob(['x']) })
+    const createObjectURL = vi.fn(() => 'blob:episode-audio')
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() })
+
+    render(
+      <EpisodeCard
+        episode={makeEpisode({ audio_url: '/api/podcasts/episodes/1/audio' })}
+        onDelete={vi.fn()}
+      />
+    )
+    await waitFor(() => expect(document.querySelectorAll('audio')).toHaveLength(1))
+
+    fireEvent.click(screen.getByText('podcasts.details'))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(document.querySelectorAll('audio')).toHaveLength(1)
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the audio error once (not duplicated in the dialog)', async () => {
+    vi.mocked(resolvePodcastAssetUrl).mockResolvedValueOnce('http://api.test/podcasts/episodes/1/audio')
+    vi.mocked(apiClient.get).mockRejectedValueOnce(new Error('403'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    render(
+      <EpisodeCard
+        episode={makeEpisode({ audio_url: '/api/podcasts/episodes/1/audio' })}
+        onDelete={vi.fn()}
+      />
+    )
+    await screen.findByText('podcasts.audioUnavailable')
+    fireEvent.click(screen.getByText('podcasts.details'))
+    expect(screen.getAllByText('podcasts.audioUnavailable')).toHaveLength(1)
+  })
+
+  it('an episode without a status shows the common.unknown badge', () => {
+    render(<EpisodeCard episode={makeEpisode({ job_status: null })} onDelete={vi.fn()} />)
+    expect(screen.getByText('common.unknown')).toBeInTheDocument()
+  })
+
+  it('an unlisted job status (e.g. "new") falls back to the unknown badge instead of crashing', () => {
+    render(
+      <EpisodeCard
+        episode={makeEpisode({ job_status: 'new' as PodcastEpisode['job_status'] })}
+        onDelete={vi.fn()}
+      />
+    )
+    expect(screen.getByText('common.unknown')).toBeInTheDocument()
   })
 })

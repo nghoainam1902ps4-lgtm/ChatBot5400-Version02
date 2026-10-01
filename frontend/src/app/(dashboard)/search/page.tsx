@@ -11,15 +11,21 @@ import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Search, ChevronDown, AlertCircle, Settings, Save, MessageCircleQuestion } from 'lucide-react'
+import { Search, SearchX, ChevronDown, AlertCircle, Settings, Save, MessageCircleQuestion } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { PageShell } from '@/components/common/PageShell'
+import { PageHeader } from '@/components/common/PageHeader'
+import { ErrorState } from '@/components/common/ErrorState'
+import { EmptyState } from '@/components/common/EmptyState'
+import { cn } from '@/lib/utils'
 import { StreamingResponse } from '@/components/search/StreamingResponse'
 import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
 import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
@@ -61,6 +67,9 @@ export default function SearchPage() {
   // Save to notebooks dialog
   const [showSaveDialog, setShowSaveDialog] = useState(false)
 
+  // Search options disclosure below 640px (not persisted; sm+ always shows them)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+
   // Hooks
   const searchMutation = useSearch()
   const ask = useAsk()
@@ -100,8 +109,10 @@ export default function SearchPage() {
     })
   }, [searchQuery, searchType, searchSources, searchNotes, scopeNotebookIds, searchMutation])
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Skip Enter that confirms an IME composition (e.g. Vietnamese Telex),
+    // which keypress never reported.
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
       handleSearch()
     }
   }
@@ -161,35 +172,45 @@ export default function SearchPage() {
     }
   }, [searchParams])
 
+  // Same warning presentation in both tabs (no embedding model configured).
+  const renderEmbeddingWarning = (message: string) => (
+    <Alert className="border-warn/30 bg-warn-tint text-warn [&>svg]:text-warn">
+      <AlertCircle className="h-4 w-4" />
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
+  )
+
   return (
     <AppShell>
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        <h1 className="font-display text-xl md:text-2xl font-bold tracking-tight mb-4 md:mb-6">{t('searchPage.askAndSearch')}</h1>
+      <div className="flex-1 overflow-y-auto">
+        <PageShell width="reading">
+          <PageHeader title={t('searchPage.askAndSearch')} />
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full space-y-6">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('searchPage.chooseAMode')}</p>
-            <TabsList aria-label={t('common.accessibility.searchKB')} className="w-full max-w-xl">
-              <TabsTrigger value="ask">
-                <MessageCircleQuestion className="h-4 w-4" />
-                {t('searchPage.askBeta')}
-              </TabsTrigger>
-              <TabsTrigger value="search">
-                <Search className="h-4 w-4" />
-                {t('searchPage.search')}
-              </TabsTrigger>
-            </TabsList>
-          </div>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="mt-5 w-full space-y-6 lg:mt-6">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('searchPage.chooseAMode')}</p>
+              <TabsList aria-label={t('common.accessibility.searchKB')} className="w-full max-w-xl">
+                <TabsTrigger value="ask">
+                  <MessageCircleQuestion className="h-4 w-4" />
+                  {t('searchPage.askBeta')}
+                </TabsTrigger>
+                <TabsTrigger value="search">
+                  <Search className="h-4 w-4" />
+                  {t('searchPage.search')}
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-          <TabsContent value="ask" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{t('searchPage.askYourKb')}</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  {t('searchPage.askYourKbDesc')}
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <TabsContent value="ask" className="mt-6 space-y-6">
+              {/* Form: 680px, same left edge as the 880px reading area */}
+              <div data-slot="query-form" className="max-w-[680px] space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold leading-tight">{t('searchPage.askYourKb')}</h2>
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    {t('searchPage.askYourKbDesc')}
+                  </p>
+                </div>
+
                 {/* Question Input */}
                 <div className="space-y-2">
                   <Label htmlFor="ask-question">{t('searchPage.question')}</Label>
@@ -222,10 +243,7 @@ export default function SearchPage() {
 
                 {/* Models Display */}
                 {!hasEmbeddingModel ? (
-                  <div className="flex items-center gap-2 p-3 text-sm text-warn bg-warn-tint rounded-md">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>{t('searchPage.noEmbeddingModel')}</span>
-                  </div>
+                  renderEmbeddingWarning(t('searchPage.noEmbeddingModel'))
                 ) : (
                   <>
                     <div className="space-y-2">
@@ -286,49 +304,49 @@ export default function SearchPage() {
                     </div>
                   </>
                 )}
+              </div>
 
-                {/* Streaming Response */}
-                <StreamingResponse
-                  isStreaming={ask.isStreaming}
-                  strategy={ask.strategy}
-                  answers={ask.answers}
-                  finalAnswer={ask.finalAnswer}
+              {/* Streaming Response (reading area, up to 880px) */}
+              <StreamingResponse
+                isStreaming={ask.isStreaming}
+                strategy={ask.strategy}
+                answers={ask.answers}
+                finalAnswer={ask.finalAnswer}
+              />
+
+              {/* Advanced Models Dialog */}
+              <AdvancedModelsDialog
+                open={showAdvancedModels}
+                onOpenChange={setShowAdvancedModels}
+                defaultModels={{
+                  strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
+                  answer: customModels?.answer || modelDefaults?.default_chat_model || '',
+                  finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
+                }}
+                onSave={setCustomModels}
+              />
+
+              {/* Save to Notebooks Dialog */}
+              {ask.finalAnswer && (
+                <SaveToNotebooksDialog
+                  open={showSaveDialog}
+                  onOpenChange={setShowSaveDialog}
+                  question={askQuestion}
+                  answer={ask.finalAnswer}
                 />
+              )}
+            </TabsContent>
 
-                {/* Advanced Models Dialog */}
-                <AdvancedModelsDialog
-                  open={showAdvancedModels}
-                  onOpenChange={setShowAdvancedModels}
-                  defaultModels={{
-                    strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
-                    answer: customModels?.answer || modelDefaults?.default_chat_model || '',
-                    finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
-                  }}
-                  onSave={setCustomModels}
-                />
+            <TabsContent value="search" className="mt-6 space-y-6">
+              {/* Form: 680px, same left edge as the 880px reading area */}
+              <div data-slot="query-form" className="max-w-[680px] space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold leading-tight">{t('searchPage.search')}</h2>
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    {t('searchPage.searchDesc')}
+                  </p>
+                </div>
 
-                {/* Save to Notebooks Dialog */}
-                {ask.finalAnswer && (
-                  <SaveToNotebooksDialog
-                    open={showSaveDialog}
-                    onOpenChange={setShowSaveDialog}
-                    question={askQuestion}
-                    answer={ask.finalAnswer}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="search" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{t('searchPage.search')}</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  {t('searchPage.searchDesc')}
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
                 {/* Search Input */}
                 <div className="space-y-2">
                   <Label htmlFor="search-query" className="sr-only">
@@ -341,7 +359,7 @@ export default function SearchPage() {
                       placeholder={t('searchPage.enterSearchPlaceholder')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyPress={handleKeyPress}
+                      onKeyDown={handleKeyDown}
                       disabled={searchMutation.isPending}
                       className="flex-1"
                       aria-label={t('common.accessibility.enterSearch')}
@@ -369,8 +387,23 @@ export default function SearchPage() {
                   )}
                 </div>
 
-                {/* Search Options */}
-                <div className="space-y-4">
+                {/* Search Options: collapsed by default below 640px, always
+                    shown from sm. Stays mounted, so its state survives toggling. */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOptionsOpen((open) => !open)}
+                  aria-expanded={optionsOpen}
+                  aria-controls="search-options"
+                  className="h-11 w-full justify-between sm:hidden"
+                >
+                  {t('common.moreOptions')}
+                  <ChevronDown className={cn('h-4 w-4 transition-transform', optionsOpen && 'rotate-180')} />
+                </Button>
+                <div
+                  id="search-options"
+                  className={cn('space-y-4 sm:block', optionsOpen ? 'block' : 'hidden')}
+                >
                   {/* Notebook scope */}
                   <NotebookScopeSelector
                     selectedIds={scopeNotebookIds}
@@ -381,12 +414,7 @@ export default function SearchPage() {
                   {/* Search Type */}
                   <div className="space-y-2" role="group" aria-labelledby="search-type-label">
                     <span id="search-type-label" className="text-sm font-medium leading-none">{t('searchPage.searchType')}</span>
-                    {!hasEmbeddingModel && (
-                      <div className="flex items-center gap-2 text-sm text-warn">
-                        <AlertCircle className="h-4 w-4" />
-                        <span>{t('searchPage.vectorSearchWarning')}</span>
-                      </div>
-                    )}
+                    {!hasEmbeddingModel && renderEmbeddingWarning(t('searchPage.vectorSearchWarning'))}
                     <RadioGroup
                       name="search-type"
                       value={searchType}
@@ -446,72 +474,91 @@ export default function SearchPage() {
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* Search Results */}
-                {searchMutation.data && (
-                  <div className="mt-6 space-y-3">
-                    <div className="flex items-center justify-between">
+              {/* Search error: inline, the query stays in the box (the hook's
+                  toast still fires). */}
+              {searchMutation.isError && (
+                <ErrorState
+                  title={t('apiErrors.searchFailed')}
+                  description={t('searchPage.searchErrorDesc')}
+                  onRetry={handleSearch}
+                  className="rounded-md border"
+                />
+              )}
+
+              {/* Search Results (reading area, up to 880px) */}
+              {searchMutation.data && (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-3">
                       <h3 className="text-sm font-medium">
                         {t('searchPage.resultsFound', { count: searchMutation.data.total_count })}
                       </h3>
                       <Badge variant="outline">{searchMutation.data.search_type === 'text' ? t('searchPage.textSearch') : t('searchPage.vectorSearch')}</Badge>
                     </div>
-
-                    {searchMutation.data.results.length === 0 ? (
-                      <Card>
-                        <CardContent className="pt-6 text-center text-muted-foreground">
-                          {t('searchPage.noResultsFor', { query: searchQuery })}
-                        </CardContent>
-                      </Card>
-                    ) : (
-                      <div className="space-y-2">
-                        {searchMutation.data.results.map((result, index) => {
-                          const [type, id] = result.id.split(':')
-                          const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
-
-                          return (
-                          <Card key={index} className="transition-shadow hover:shadow-lift">
-                            <CardContent className="pt-4">
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                  <button
-                                    onClick={() => openModal(modalType, id)}
-                                    className="text-primary hover:underline font-medium"
-                                  >
-                                    {result.title}
-                                  </button>
-                                  <Badge variant="secondary" className="ml-2 font-mono text-[11px]">
-                                    {result.final_score.toFixed(2)}
-                                  </Badge>
-                                </div>
-                              </div>
-
-                              {result.matches && result.matches.length > 0 && (
-                                <Collapsible className="mt-3">
-                                  <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-                                    <ChevronDown className="h-4 w-4" />
-                                    {t('searchPage.matches', { count: result.matches.length })}
-                                  </CollapsibleTrigger>
-                                  <CollapsibleContent className="mt-2 space-y-1">
-                                    {result.matches.map((match, i) => (
-                                      <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted">
-                                        {match}
-                                      </div>
-                                    ))}
-                                  </CollapsibleContent>
-                                </Collapsible>
-                              )}
-                            </CardContent>
-                          </Card>
-                        )})}
-                      </div>
+                    {searchMutation.data.results.length > 0 && (
+                      <p className="text-xs text-muted-foreground">{t('searchPage.resultLimitNote')}</p>
                     )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+
+                  {searchMutation.data.results.length === 0 ? (
+                    <div role="status" className="rounded-md border">
+                      <EmptyState
+                        variant="search"
+                        icon={SearchX}
+                        title={t('searchPage.noResultsFor', { query: searchQuery })}
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {searchMutation.data.results.map((result, index) => {
+                        const [type, id] = result.id.split(':')
+                        const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
+
+                        return (
+                        <Card key={index} className="transition-shadow hover:shadow-lift">
+                          <CardContent className="pt-4">
+                            <div className="flex items-start justify-between gap-4">
+                              <button
+                                onClick={() => openModal(modalType, id)}
+                                className="min-w-0 flex-1 break-words text-left font-medium text-primary hover:underline"
+                              >
+                                {result.title}
+                              </button>
+                              <Badge
+                                variant="secondary"
+                                className="shrink-0 font-mono text-[11px] text-muted-foreground"
+                              >
+                                {result.final_score.toFixed(2)}
+                              </Badge>
+                            </div>
+
+                            {result.matches && result.matches.length > 0 && (
+                              <Collapsible className="mt-3">
+                                <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+                                  <ChevronDown className="h-4 w-4" />
+                                  {t('searchPage.matches', { count: result.matches.length })}
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="mt-2 space-y-1">
+                                  {result.matches.map((match, i) => (
+                                    <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted">
+                                      {match}
+                                    </div>
+                                  ))}
+                                </CollapsibleContent>
+                              </Collapsible>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )})}
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </PageShell>
       </div>
     </AppShell>
   )

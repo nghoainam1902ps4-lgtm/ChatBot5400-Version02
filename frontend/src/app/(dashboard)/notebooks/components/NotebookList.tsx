@@ -4,7 +4,7 @@ import { NotebookResponse } from '@/lib/types/api'
 import { NotebookCard } from './NotebookCard'
 import { NotebookRow } from './NotebookRow'
 import { useNotebookViewStore } from '@/lib/stores/notebook-view-store'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { LoadingSkeleton } from '@/components/common/LoadingSkeleton'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Book, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -37,10 +37,15 @@ export function NotebookList({
   const [isExpanded, setIsExpanded] = useState(!collapsible)
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <LoadingSpinner size="lg" />
-      </div>
+    return viewMode === 'list' ? (
+      <LoadingSkeleton variant="list" items={6} aria-label={t('common.loading')} />
+    ) : (
+      <LoadingSkeleton
+        variant="card"
+        items={6}
+        aria-label={t('common.loading')}
+        className="grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+      />
     )
   }
 
@@ -80,7 +85,7 @@ export function NotebookList({
         <span className="text-sm text-muted-foreground">({notebooks.length})</span>
       </div>
 
-      {isExpanded && (
+      {(!collapsible || isExpanded) && (
         viewMode === 'list' ? (
           <div className="flex flex-col gap-2">
             {notebooks.map((notebook) => (

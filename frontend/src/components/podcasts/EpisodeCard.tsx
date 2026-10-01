@@ -86,7 +86,10 @@ const getSTATUS_META = (t: TFunction): Record<
 
 function StatusBadge({ status }: { status?: EpisodeStatus | null }) {
   const { t } = useTranslation()
-  const meta = getSTATUS_META(t)[status ?? 'unknown']
+  const statusMeta = getSTATUS_META(t)
+  // A status outside the known list (e.g. a just-submitted job reported as
+  // "new") falls back to the unknown badge instead of crashing the page.
+  const meta = statusMeta[status ?? 'unknown'] ?? statusMeta.unknown
   return (
     <Badge
       variant="outline"
@@ -255,14 +258,8 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                 {/* Tabs own the scroll (per-tab ScrollArea); the 60vh tab height
                     shrinks on short viewports so the dialog never overflows. */}
                 <DialogBody className="flex flex-col gap-4 overflow-hidden">
-                  {audioSrc ? (
-                    <div className="rounded-md border bg-card p-2">
-                      <audio controls preload="none" src={audioSrc} className="w-full" />
-                    </div>
-                  ) : audioError ? (
-                    <p className="text-sm text-destructive">{audioError}</p>
-                  ) : null}
-
+                  {/* No player here: the card's own player (below) is the only
+                      one, sharing a single audio fetch / object URL. */}
                   <Tabs defaultValue="summary" className="h-[60vh] min-h-0 flex flex-col">
                     <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="summary">{t('podcasts.summaryTab')}</TabsTrigger>
