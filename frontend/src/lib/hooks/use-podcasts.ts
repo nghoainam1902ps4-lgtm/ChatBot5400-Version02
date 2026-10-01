@@ -100,6 +100,7 @@ export function useRetryPodcastEpisode() {
       toast({
         title: t('podcasts.retryStarted'),
         description: t('podcasts.retryStartedDesc'),
+        variant: 'info',
       })
     },
     onError: (error: unknown) => {
@@ -402,6 +403,7 @@ export function useGeneratePodcast() {
       toast({
         title: t('podcasts.generationStarted'),
         description: t('podcasts.generationStartedDesc', { name: response.episode_name }),
+        variant: 'info',
       })
     },
     onError: (error: unknown) => {

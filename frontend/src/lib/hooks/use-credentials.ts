@@ -307,8 +307,9 @@ export function useMigrateFromEnv() {
         })
       } else if (migratedCount > 0 && errorCount > 0) {
         toast({
-          title: t('common.success'),
+          title: t('common.warning'),
           description: `${t('apiKeys.migrationSuccess', { count: migratedCount })}. ${t('apiKeys.migrationErrors', { count: errorCount })}`,
+          variant: 'warn',
         })
       } else if (migratedCount > 0) {
         toast({
@@ -360,8 +361,9 @@ export function useMigrateFromProviderConfig() {
         })
       } else if (migratedCount > 0 && errorCount > 0) {
         toast({
-          title: t('common.success'),
+          title: t('common.warning'),
           description: `${t('apiKeys.migrationSuccess', { count: migratedCount })}. ${t('apiKeys.migrationErrors', { count: errorCount })}`,
+          variant: 'warn',
         })
       } else if (migratedCount > 0) {
         toast({
