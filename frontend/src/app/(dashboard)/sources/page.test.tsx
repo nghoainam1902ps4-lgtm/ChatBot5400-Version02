@@ -225,4 +225,20 @@ describe('SourcesPage (P1A)', () => {
     fireEvent.click(item)
     expect(push).toHaveBeenLastCalledWith('/sources/source:1')
   })
+
+  it('keeps 7 columns / min 920 and lets the narrow trailing headers wrap instead of overlapping', async () => {
+    list.mockResolvedValue([makeSource(1)])
+    render(<SourcesPage />)
+    await waitFor(() => expect(rows()).toHaveLength(1))
+
+    const cols = Array.from(document.querySelectorAll('[data-slot="data-table"] col')).map((c) => c.className)
+    expect(cols).toEqual(['w-[120px]', 'w-auto', 'w-[140px]', 'w-[140px]', 'w-[136px]', 'w-[120px]', 'w-[64px]'])
+    const heads = Array.from(document.querySelectorAll('[data-slot="data-table-head"]'))
+    expect(heads).toHaveLength(7)
+    for (const name of ['sources.insights', 'sources.embedded']) {
+      const btn = screen.getByRole('button', { name })
+      expect(btn.className).toContain('whitespace-normal')
+      expect(btn.className).toContain('max-w-full')
+    }
+  })
 })

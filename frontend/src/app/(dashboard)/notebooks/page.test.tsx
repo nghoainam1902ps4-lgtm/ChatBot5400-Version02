@@ -52,9 +52,9 @@ function setup(active: QueryState, archived: QueryState = { data: [] }) {
 
 const searchBox = () => screen.getByRole('textbox', { name: 'notebooks.searchPlaceholder' })
 const names = () => screen.queryAllByTestId('nb').map((el) => el.textContent)
-// The archived group is collapsible (collapsed by default, unchanged)
-const expandArchived = () =>
-  fireEvent.click(within(screen.getByText('notebooks.archivedNotebooks').parentElement as HTMLElement).getByRole('button'))
+// Toggle button of the archived group header (only present when collapsible)
+const archivedToggle = () =>
+  within(screen.getByText('notebooks.archivedNotebooks').parentElement as HTMLElement).queryByRole('button')
 
 function expectHeaderAndToolbar() {
   expect(screen.getByRole('heading', { level: 1, name: 'notebooks.title' })).toBeInTheDocument()
@@ -82,7 +82,6 @@ describe('NotebooksPage (P1A)', () => {
     )
 
     fireEvent.change(searchBox(), { target: { value: 'credit' } })
-    expandArchived()
     expect(names()).toEqual(['Beta', 'Old credit notes'])
   })
 
@@ -90,7 +89,6 @@ describe('NotebooksPage (P1A)', () => {
     setup({ data: [nb('n1', 'Alpha')] }, { data: [nb('a1', 'Zeta', '', true)] })
 
     fireEvent.change(searchBox(), { target: { value: 'zeta' } })
-    expandArchived()
     expect(names()).toEqual(['Zeta'])
     expect(screen.queryByText('notebooks.activeNotebooks')).toBeNull()
     expect(screen.getByText('notebooks.archivedNotebooks')).toBeInTheDocument()
@@ -156,5 +154,33 @@ describe('NotebooksPage (P1A)', () => {
     fireEvent.change(searchBox(), { target: { value: 'x' } })
     expect(document.querySelector('[data-slot="empty-state"]')).toBeNull()
     expect(document.querySelector('[data-slot="loading-skeleton"]')).toBeInTheDocument()
+  })
+
+  it('archived-only match is shown expanded while searching (no extra click)', () => {
+    setup({ data: [nb('n1', 'Alpha')] }, { data: [nb('a1', 'Zeta', 'Old archive', true)] })
+
+    // Default (no query): archived group collapsed, toggle present
+    expect(names()).toEqual(['Alpha'])
+    expect(archivedToggle()).not.toBeNull()
+
+    fireEvent.change(searchBox(), { target: { value: 'old archive' } })
+    expect(names()).toEqual(['Zeta'])
+    expect(archivedToggle()).toBeNull()
+  })
+
+  it('clearing the query returns the archived group to its normal collapsed state', () => {
+    setup({ data: [nb('n1', 'Alpha')] }, { data: [nb('a1', 'Zeta', '', true)] })
+
+    fireEvent.change(searchBox(), { target: { value: 'zeta' } })
+    expect(names()).toEqual(['Zeta'])
+
+    fireEvent.keyDown(searchBox(), { key: 'Escape' })
+    expect(names()).toEqual(['Alpha'])
+    expect(archivedToggle()).not.toBeNull()
+    expect(screen.queryByText('Zeta')).toBeNull()
+
+    // Still the regular collapsible behaviour
+    fireEvent.click(archivedToggle() as HTMLElement)
+    expect(names()).toEqual(['Alpha', 'Zeta'])
   })
 })

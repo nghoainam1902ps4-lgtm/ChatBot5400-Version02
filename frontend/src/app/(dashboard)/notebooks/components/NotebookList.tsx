@@ -85,7 +85,7 @@ export function NotebookList({
         <span className="text-sm text-muted-foreground">({notebooks.length})</span>
       </div>
 
-      {isExpanded && (
+      {(!collapsible || isExpanded) && (
         viewMode === 'list' ? (
           <div className="flex flex-col gap-2">
             {notebooks.map((notebook) => (

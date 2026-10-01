@@ -102,7 +102,9 @@ export default function NotebooksPage() {
             notebooks={filteredArchived}
             isLoading={false}
             title={t('notebooks.archivedNotebooks')}
-            collapsible
+            // Search results are shown expanded; without a query the group
+            // is collapsible (collapsed by default) as before.
+            collapsible={!isSearching}
           />
         )}
       </>

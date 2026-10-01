@@ -292,12 +292,14 @@ export default function SourcesPage() {
         onClick={() => toggleSort(field)}
         className={cn(
           "h-8 px-2 hover:bg-muted",
-          align === 'center' && "mx-auto"
+          // Narrow trailing columns: the label may wrap to two lines inside
+          // the 48px header instead of spilling over the next column.
+          align === 'center' && "mx-auto h-auto min-h-8 max-w-full whitespace-normal px-1 py-1 leading-tight"
         )}
       >
         {label}
         <SortIcon className={cn(
-          "ml-2 h-3 w-3",
+          "h-3 w-3",
           active ? 'opacity-100' : 'opacity-30'
         )} />
       </Button>
@@ -453,31 +455,31 @@ export default function SourcesPage() {
             <col className="w-auto" />
             <col className="w-[140px]" />
             <col className="w-[140px]" />
-            <col className="w-[100px]" />
-            <col className="w-[100px]" />
-            <col className="w-[100px]" />
+            <col className="w-[136px]" />
+            <col className="w-[120px]" />
+            <col className="w-[64px]" />
           </colgroup>
           <DataTableHeader className="sticky top-0 z-10 bg-background">
             <tr className="border-b">
-              <DataTableHead>
+              <DataTableHead className="px-2">
                 {renderSortableHeader('type', t('common.type'))}
               </DataTableHead>
-              <DataTableHead>
+              <DataTableHead className="px-2">
                 {renderSortableHeader('title', t('common.title'))}
               </DataTableHead>
-              <DataTableHead>
+              <DataTableHead className="px-2">
                 {renderSortableHeader('created', t('common.created_label'))}
               </DataTableHead>
-              <DataTableHead>
+              <DataTableHead className="px-2">
                 {renderSortableHeader('updated', t('common.updated_label'))}
               </DataTableHead>
-              <DataTableHead className="text-center">
+              <DataTableHead className="px-2 text-center">
                 {renderSortableHeader('insights_count', t('sources.insights'), 'center')}
               </DataTableHead>
-              <DataTableHead className="text-center">
+              <DataTableHead className="px-2 text-center">
                 {renderSortableHeader('embedded', t('sources.embedded'), 'center')}
               </DataTableHead>
-              <DataTableHead className="text-right">
+              <DataTableHead className="px-2 text-right">
                 {t('common.actions')}
               </DataTableHead>
             </tr>
@@ -534,7 +536,7 @@ export default function SourcesPage() {
                     {source.embedded ? t('sources.yes') : t('sources.no')}
                   </span>
                 </DataTableCell>
-                <DataTableCell className="text-right">
+                <DataTableCell className="px-2 text-right">
                   {renderRowActions(source)}
                 </DataTableCell>
               </DataTableRow>
