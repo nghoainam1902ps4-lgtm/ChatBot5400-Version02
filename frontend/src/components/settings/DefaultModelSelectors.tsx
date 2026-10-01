@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Loader2, X, AlertCircle, Wand2 } from 'lucide-react'
+import { Loader2, X, AlertTriangle, Wand2 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useUpdateModelDefaults, useAutoAssignDefaults } from '@/lib/hooks/use-models'
 import { Model, ModelDefaults } from '@/lib/types/models'
@@ -64,7 +64,8 @@ function DefaultModelSelect({
   })()
 
   return (
-    <div className="space-y-1">
+    // min-w-0: a grid item may shrink below its longest option label
+    <div className="min-w-0 space-y-1">
       <Label htmlFor={config.id} className="text-xs">
         {config.label}
         {config.required && <span className="text-destructive ml-0.5">*</span>}
@@ -76,7 +77,7 @@ function DefaultModelSelect({
         >
           <SelectTrigger
             id={config.id}
-            className={`h-8 text-xs ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
+            className={`h-8 w-full min-w-0 text-xs ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
           >
             <SelectValue placeholder={
               config.required && !isValid && available.length > 0
@@ -201,9 +202,9 @@ export function DefaultModelSelectors({
       </CardHeader>
       <CardContent className="space-y-6">
         {missingRequired.length > 0 && (
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="flex items-center justify-between gap-4">
+          <Alert className="border-warn/30 bg-warn-tint text-warn [&>svg]:text-warn">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <span>{t('models.missingRequiredModels', { models: missingRequired.join(', ') })}</span>
               <Button
                 variant="outline" size="sm"
@@ -234,7 +235,7 @@ export function DefaultModelSelectors({
 
         {/* Advanced models: Transformation, Tools, Large Context */}
         <div className="border-t pt-3">
-          <p className="text-xs text-muted-foreground mb-3">{t('navigation.advanced')}</p>
+          <p className="text-xs text-muted-foreground mb-3">{t('models.advancedGroup')}</p>
             <div className="grid gap-3 sm:grid-cols-3">
               {advancedConfigs.map(config => (
                 <DefaultModelSelect

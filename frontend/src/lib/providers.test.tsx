@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { getTypeIcon, getTypeColor, getTypeLabel } from './providers'
 
 describe('model type presentation helpers', () => {
@@ -25,6 +25,22 @@ describe('model type presentation helpers', () => {
   it('falls back to the raw modality name as label', () => {
     expect(getTypeLabel('language')).toBe('Language')
     expect(getTypeLabel('holograms')).toBe('holograms')
+  })
+
+  it('translates the four known modalities when given a translator', () => {
+    const t = (key: string) => `T(${key})`
+    expect(getTypeLabel('language', t)).toBe('T(models.type.language)')
+    expect(getTypeLabel('embedding', t)).toBe('T(models.type.embedding)')
+    expect(getTypeLabel('text_to_speech', t)).toBe('T(models.type.textToSpeech)')
+    expect(getTypeLabel('speech_to_text', t)).toBe('T(models.type.speechToText)')
+  })
+
+  it('never translates an unknown modality: raw name, not a raw i18n key, no throw', () => {
+    const t = vi.fn((key: string) => key)
+    expect(getTypeLabel('holograms', t)).toBe('holograms')
+    expect(getTypeLabel('constructor', t)).toBe('constructor')
+    expect(getTypeLabel('toString', t)).toBe('toString')
+    expect(t).not.toHaveBeenCalled()
   })
 
   it('falls back to a neutral color for unknown modalities', () => {

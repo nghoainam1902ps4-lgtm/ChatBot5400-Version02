@@ -49,7 +49,7 @@ export function ProviderSection({
   const activeTypes = new Set<string>(providerModels.map(m => m.type))
 
   return (
-    <Card className={hasCredentials ? 'border-l-2 border-l-fern' : undefined}>
+    <Card className={hasCredentials ? 'border-l-2 border-l-teal' : undefined}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 flex-wrap">
@@ -62,14 +62,14 @@ export function ProviderSection({
                   className={`text-xs gap-1 ${activeTypes.has(type) ? getTypeColor(type) : TYPE_COLOR_INACTIVE}`}
                 >
                   {getTypeIcon(type)}
-                  <span className="hidden sm:inline">{getTypeLabel(type)}</span>
+                  <span className="hidden sm:inline">{getTypeLabel(type, t)}</span>
                 </Badge>
               ))}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {hasCredentials ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-fern">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-teal">
                 <Check className="h-3 w-3" />
                 {t('apiKeys.configured')}
               </span>

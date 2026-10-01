@@ -19,13 +19,13 @@ export function MigrationBanner({ providersToMigrate }: MigrationBannerProps) {
   }
 
   return (
-    <Alert className="border-warn/30 bg-warn-tint">
-      <AlertTriangle className="h-4 w-4 text-warn" />
-      <AlertTitle className="text-warn">
+    <Alert className="border-warn/30 bg-warn-tint text-warn [&>svg]:text-warn">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertTitle>
         {t('apiKeys.migrationAvailable')}
       </AlertTitle>
       <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-warn">
+        <span>
           {t('apiKeys.migrationDescription', { count: providersToMigrate.length })}
         </span>
         <Button

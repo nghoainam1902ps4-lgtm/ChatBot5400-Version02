@@ -938,6 +938,9 @@ export const enUS = {
     createTitle: "New transformation",
     editorDesc: "The prompt runs on source content to produce insights.",
     deleteTitle: "Delete transformation",
+    selectLabel: "Transformation",
+    loadErrorTitle: "Could not load transformations",
+    loadErrorDesc: "The server did not respond. Try again shortly.",
   },
   models: {
     embedding: "Embedding Models",
@@ -998,6 +1001,22 @@ export const enUS = {
     testModelFailed: "Model Test Failed",
     searchOrAddModel: "Search or type a model name...",
     addCustomModel: "Add \"{{name}}\"",
+    advancedGroup: "Advanced",
+    type: {
+      language: "Language",
+      embedding: "Embedding",
+      textToSpeech: "TTS",
+      speechToText: "STT",
+    },
+    slot: {
+      chat: "Chat",
+      transform: "Transform",
+      tools: "Tools",
+      largeContext: "Large ctx",
+      embedding: "Embedding",
+      tts: "TTS",
+      stt: "STT",
+    },
   },
   apiKeys: {
     linkedModelsCount: "This credential has {{count}} linked model(s).",

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { TransformationCard } from './TransformationCard'
 import { EmptyState } from '@/components/common/EmptyState'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { LoadingSkeleton } from '@/components/common/LoadingSkeleton'
 import { Wand2 } from 'lucide-react'
 import { Transformation } from '@/lib/types/transformations'
 import { TransformationEditorDialog } from './TransformationEditorDialog'
@@ -29,9 +29,7 @@ export function TransformationsList({ transformations, isLoading, onPlayground }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <LoadingSpinner size="lg" />
-      </div>
+      <LoadingSkeleton variant="card" items={3} aria-label={t('common.loading')} />
     )
   }
 

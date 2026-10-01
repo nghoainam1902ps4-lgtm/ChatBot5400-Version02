@@ -45,8 +45,9 @@ describe('ProviderSection', () => {
 
   it('renders one modality badge per registry modality', () => {
     renderSection(makeProvider())
-    expect(screen.getByText('Language')).toBeInTheDocument()
-    expect(screen.getByText('Embedding')).toBeInTheDocument()
+    // Known modalities are localized (global t mock returns the key)
+    expect(screen.getByText('models.type.language')).toBeInTheDocument()
+    expect(screen.getByText('models.type.embedding')).toBeInTheDocument()
   })
 
   it('renders providers the frontend has never seen, with a fallback icon', () => {
@@ -64,5 +65,31 @@ describe('ProviderSection', () => {
     // The unknown modality badge still carries an icon (the fallback one)
     const badges = container.querySelectorAll('svg')
     expect(badges.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('marks a configured provider with the teal (configured/ready) hue, not fern', () => {
+    const { container } = render(
+      <ProviderSection
+        provider={makeProvider()}
+        credentials={[{ id: 'credential:1', name: 'Prod', provider: 'openai', modalities: ['language'], has_api_key: true, created: '', updated: '', model_count: 0 }]}
+        models={[]}
+        defaults={null}
+        allCredentials={[]}
+        encryptionReady={true}
+      />
+    )
+    const card = container.querySelector('[data-slot="card"]') as HTMLElement
+    expect(card.className).toContain('border-l-teal')
+    expect(card.className).not.toMatch(/fern/)
+    const configured = screen.getByText('apiKeys.configured')
+    expect(configured.className).toContain('text-teal')
+    expect(configured.className).not.toMatch(/fern|success/)
+  })
+
+  it('keeps the four modality colors', () => {
+    const { container } = renderSection(makeProvider({ modalities: ['language', 'embedding', 'text_to_speech', 'speech_to_text'] }))
+    expect(container.innerHTML).not.toMatch(/fern/)
+    expect(screen.getByText('models.type.textToSpeech')).toBeInTheDocument()
+    expect(screen.getByText('models.type.speechToText')).toBeInTheDocument()
   })
 })

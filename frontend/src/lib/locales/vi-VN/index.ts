@@ -941,6 +941,9 @@ export const viVN = {
     createTitle: "Chuyển đổi mới",
     editorDesc: "Prompt sẽ chạy trên nội dung nguồn để tạo thông tin chi tiết.",
     deleteTitle: "Xóa chuyển đổi",
+    selectLabel: "Phép chuyển đổi",
+    loadErrorTitle: "Không tải được danh sách chuyển đổi",
+    loadErrorDesc: "Máy chủ không phản hồi. Thử lại sau giây lát.",
   },
   models: {
     embedding: "Mô hình embedding",
@@ -1001,6 +1004,22 @@ export const viVN = {
     testModelFailed: "Kiểm tra mô hình thất bại",
     searchOrAddModel: "Tìm kiếm hoặc nhập tên mô hình...",
     addCustomModel: "Thêm \"{{name}}\"",
+    advancedGroup: "Nâng cao",
+    type: {
+      language: "Ngôn ngữ",
+      embedding: "Embedding",
+      textToSpeech: "Đọc thành tiếng",
+      speechToText: "Nhận dạng giọng nói",
+    },
+    slot: {
+      chat: "Trò chuyện",
+      transform: "Chuyển đổi",
+      tools: "Công cụ",
+      largeContext: "Ngữ cảnh lớn",
+      embedding: "Embedding",
+      tts: "Đọc thành tiếng",
+      stt: "Nhận dạng giọng nói",
+    },
   },
   apiKeys: {
     linkedModelsCount: "Cấu hình này có {{count}} mô hình liên kết.",
