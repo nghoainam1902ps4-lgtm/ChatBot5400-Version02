@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { BellRing } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { AdminArea } from '@/components/common/AdminArea'
 import { Badge } from '@/components/ui/badge'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { APP_VERSION } from '@/lib/constants/app'
@@ -38,10 +38,7 @@ export function SystemInfo() {
   }, [currentVersion])
 
   return (
-    <Card className="p-6">
-      <div className="space-y-4">
-        <h2 className="font-display text-xl font-semibold tracking-tight">{t('advanced.systemInfo')}</h2>
-
+    <AdminArea level="readonly" title={t('advanced.systemInfo')}>
         <div className="space-y-3">
           {/* Current Version (from frontend/package.json) */}
           <div className="flex items-center justify-between">
@@ -87,13 +84,13 @@ export function SystemInfo() {
                 {t('advanced.connectionError')}
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-fern border-fern/30">
+              // Up to date: informational / ready state (teal), not a completion event
+              <Badge variant="outline" className="border-teal/30 bg-teal-tint text-teal">
                 {t('advanced.upToDate')}
               </Badge>
             )}
           </div>
         </div>
-      </div>
-    </Card>
+    </AdminArea>
   )
 }

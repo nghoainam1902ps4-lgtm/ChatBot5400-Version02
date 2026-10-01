@@ -239,6 +239,12 @@ export const enUS = {
     passwordResetDone: "Password reset successfully",
     saveError: "Failed to save user",
     deleteError: "Failed to delete user",
+    cannotDeleteSelf: "You cannot delete your own account",
+    cannotRemoveLastAdmin: "Cannot remove the last remaining admin",
+    you: "You",
+    searchPlaceholder: "Search by username…",
+    loadErrorTitle: "Could not load accounts",
+    loadErrorDesc: "The server did not respond. Try again shortly.",
   },
   navigation: {
     collect: "Collect",
@@ -854,6 +860,10 @@ export const enUS = {
     autoDeletePlaceholder: "Select auto delete option",
     filesHelp: "Once your files are uploaded and processed, they are not required anymore. Most users should allow Open Notebook to delete uploaded files from the upload folder automatically.",
     loadFailed: "Failed to load settings",
+    pageTitle: "Settings",
+    pageDesc: "How the system processes documents, embeddings and attached files.",
+    loadFailedDesc: "The server did not return the configuration. Nothing can be changed until it reloads.",
+    undoChanges: "Undo changes",
   },
   advanced: {
     title: "AdvancedTools",
@@ -898,6 +908,7 @@ export const enUS = {
       howLongAns: "Processing time depends on item count, model speed, and API rate limits. Local models are usually very fast.",
       isSafe: "Is it safe to rebuild while using the app?",
       isSafeAns: "Yes, rebuilding is safe! It doesn't delete content, only replaces embeddings, and handles errors gracefully.",
+      includeSources: "Sources",
     },
   },
   transformations: {

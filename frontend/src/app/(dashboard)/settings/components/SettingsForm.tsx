@@ -6,15 +6,16 @@ import { z } from 'zod'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { LoadingSkeleton } from '@/components/common/LoadingSkeleton'
+import { ErrorState } from '@/components/common/ErrorState'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { useSettings, useUpdateSettings } from '@/lib/hooks/use-settings'
 import { useCapabilities } from '@/lib/hooks/use-capabilities'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { ChevronDownIcon } from 'lucide-react'
+import type { SettingsResponse } from '@/lib/types/api'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
 const settingsSchema = z.object({
@@ -29,9 +30,39 @@ const settingsSchema = z.object({
 
 type SettingsFormData = z.infer<typeof settingsSchema>
 
+// Form values for the settings as currently stored on the server (also the
+// target of "Undo changes").
+function toFormData(settings: SettingsResponse): SettingsFormData {
+  return {
+    default_content_processing_engine_doc: settings.default_content_processing_engine_doc as 'auto' | 'docling' | 'simple',
+    default_content_processing_engine_url: settings.default_content_processing_engine_url as 'auto' | 'firecrawl' | 'jina' | 'crawl4ai' | 'simple',
+    default_embedding_option: settings.default_embedding_option as 'ask' | 'always' | 'never',
+    auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
+    docling_ocr: settings.docling_ocr ?? true,
+    docling_formulas: settings.docling_formulas ?? false,
+    docling_vision: settings.docling_vision ?? false,
+  }
+}
+
+/** One "Help me choose" disclosure (shared by the four setting blocks). */
+function SettingsHelp({ open, onToggle, children }: { open: boolean; onToggle: () => void; children: ReactNode }) {
+  const { t } = useTranslation()
+  return (
+    <Collapsible open={open} onOpenChange={onToggle}>
+      <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <ChevronDownIcon className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {t('settings.helpMeChoose')}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
+        <p>{children}</p>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
 export function SettingsForm() {
   const { t } = useTranslation()
-  const { data: settings, isLoading, error } = useSettings()
+  const { data: settings, isLoading, error, refetch } = useSettings()
   const { data: capabilities, isError: capabilitiesError } = useCapabilities()
   const updateSettings = useUpdateSettings()
   // Opt-in heavy runtimes are installed on demand at container startup, so an
@@ -76,40 +107,41 @@ export function SettingsForm() {
 
   useEffect(() => {
     if (settings && settings.default_content_processing_engine_doc && !hasResetForm) {
-      const formData = {
-        default_content_processing_engine_doc: settings.default_content_processing_engine_doc as 'auto' | 'docling' | 'simple',
-        default_content_processing_engine_url: settings.default_content_processing_engine_url as 'auto' | 'firecrawl' | 'jina' | 'crawl4ai' | 'simple',
-        default_embedding_option: settings.default_embedding_option as 'ask' | 'always' | 'never',
-        auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
-        docling_ocr: settings.docling_ocr ?? true,
-        docling_formulas: settings.docling_formulas ?? false,
-        docling_vision: settings.docling_vision ?? false,
-      }
-      reset(formData)
+      reset(toFormData(settings))
       setHasResetForm(true)
     }
   }, [hasResetForm, reset, settings])
 
   const onSubmit = async (data: SettingsFormData) => {
-    await updateSettings.mutateAsync(data)
+    try {
+      await updateSettings.mutateAsync(data)
+    } catch {
+      // The hook already shows the error toast; keep the unsaved edits.
+      return
+    }
+    // Saved: these values are now the server state, so the form is clean.
+    reset(data)
+  }
+
+  // Undo = drop unsaved edits and go back to the settings loaded from the server
+  // (not the product defaults).
+  const handleUndo = () => {
+    if (settings) reset(toFormData(settings))
   }
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <LoadingSkeleton variant="card" items={3} lines={3} aria-label={t('common.loading')} />
   }
 
   if (error) {
+    // Readable copy only; the raw error message is never shown.
     return (
-      <Alert variant="destructive">
-        <AlertTitle>{t('settings.loadFailed')}</AlertTitle>
-        <AlertDescription>
-          {error instanceof Error ? error.message : t('common.error')}
-        </AlertDescription>
-      </Alert>
+      <ErrorState
+        title={t('settings.loadFailed')}
+        description={t('settings.loadFailedDesc')}
+        onRetry={() => void refetch()}
+        className="rounded-lg border"
+      />
     )
   }
 
@@ -150,15 +182,9 @@ export function SettingsForm() {
             {!doclingAvailable && (
               <p className="text-sm text-muted-foreground">{t('settings.enableDoclingHint')}</p>
             )}
-            <Collapsible open={expandedSections.doc} onOpenChange={() => toggleSection('doc')}>
-              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.doc ? 'rotate-180' : ''}`} />
-                {t('settings.helpMeChoose')}
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
-                <p>{t('settings.docHelp')}</p>
-              </CollapsibleContent>
-            </Collapsible>
+            <SettingsHelp open={expandedSections.doc} onToggle={() => toggleSection('doc')}>
+              {t('settings.docHelp')}
+            </SettingsHelp>
           </div>
 
           <div className="space-y-2">
@@ -247,15 +273,9 @@ export function SettingsForm() {
             {!crawl4aiAvailable && (
               <p className="text-sm text-muted-foreground">{t('settings.enableCrawl4aiHint')}</p>
             )}
-             <Collapsible open={expandedSections.url} onOpenChange={() => toggleSection('url')}>
-              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.url ? 'rotate-180' : ''}`} />
-                {t('settings.helpMeChoose')}
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
-                <p>{t('settings.urlHelp')}</p>
-              </CollapsibleContent>
-            </Collapsible>
+            <SettingsHelp open={expandedSections.url} onToggle={() => toggleSection('url')}>
+              {t('settings.urlHelp')}
+            </SettingsHelp>
           </div>
         </CardContent>
       </Card>
@@ -292,15 +312,9 @@ export function SettingsForm() {
                 </Select>
               )}
             />
-             <Collapsible open={expandedSections.embedding} onOpenChange={() => toggleSection('embedding')}>
-              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.embedding ? 'rotate-180' : ''}`} />
-                {t('settings.helpMeChoose')}
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
-                <p>{t('settings.embeddingHelp')}</p>
-              </CollapsibleContent>
-            </Collapsible>
+            <SettingsHelp open={expandedSections.embedding} onToggle={() => toggleSection('embedding')}>
+              {t('settings.embeddingHelp')}
+            </SettingsHelp>
           </div>
         </CardContent>
       </Card>
@@ -336,27 +350,38 @@ export function SettingsForm() {
                 </Select>
               )}
             />
-             <Collapsible open={expandedSections.files} onOpenChange={() => toggleSection('files')}>
-              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.files ? 'rotate-180' : ''}`} />
-                {t('settings.helpMeChoose')}
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
-                <p>{t('settings.filesHelp')}</p>
-              </CollapsibleContent>
-            </Collapsible>
+            <SettingsHelp open={expandedSections.files} onToggle={() => toggleSection('files')}>
+              {t('settings.filesHelp')}
+            </SettingsHelp>
           </div>
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
-         <Button 
-          type="submit" 
-          disabled={!isDirty || updateSettings.isPending}
+      {/* Unsaved changes: sticky (within the page scroll) so Save is always
+          reachable; in normal flow at the end, so it never hides the last card. */}
+      {isDirty && (
+        <div
+          data-slot="settings-save-bar"
+          className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-2 rounded-lg border bg-background/95 px-3 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80"
         >
-          {updateSettings.isPending ? t('common.saving') : t('common.save')}
-        </Button>
-      </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleUndo}
+            disabled={updateSettings.isPending}
+            className="h-11 sm:h-10 lg:h-9"
+          >
+            {t('settings.undoChanges')}
+          </Button>
+          <Button
+            type="submit"
+            disabled={updateSettings.isPending}
+            className="h-11 sm:h-10 lg:h-9"
+          >
+            {updateSettings.isPending ? t('common.saving') : t('common.save')}
+          </Button>
+        </div>
+      )}
     </form>
   )
 }

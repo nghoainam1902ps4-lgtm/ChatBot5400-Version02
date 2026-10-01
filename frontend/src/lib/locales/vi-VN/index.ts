@@ -242,6 +242,12 @@ export const viVN = {
     passwordResetDone: "Đã đặt lại mật khẩu thành công",
     saveError: "Không thể lưu người dùng",
     deleteError: "Không thể xóa người dùng",
+    cannotDeleteSelf: "Không xoá được tài khoản của chính bạn",
+    cannotRemoveLastAdmin: "Không xoá hoặc hạ quyền quản trị viên cuối cùng",
+    you: "Bạn",
+    searchPlaceholder: "Tìm theo tên đăng nhập…",
+    loadErrorTitle: "Không tải được danh sách tài khoản",
+    loadErrorDesc: "Máy chủ không phản hồi. Thử lại sau giây lát.",
   },
   navigation: {
     collect: "Thu thập",
@@ -857,6 +863,10 @@ export const viVN = {
     autoDeletePlaceholder: "Chọn tùy chọn tự động xóa",
     filesHelp: "Sau khi các tệp của bạn được tải lên và xử lý, chúng không còn cần thiết nữa. Hầu hết người dùng nên cho phép Open Notebook tự động xóa các tệp đã tải lên khỏi thư mục tải lên.",
     loadFailed: "Không thể tải cài đặt",
+    pageTitle: "Cài đặt",
+    pageDesc: "Cách hệ thống xử lý tài liệu, nhúng và tệp đính kèm.",
+    loadFailedDesc: "Máy chủ không trả về cấu hình. Không thay đổi được gì cho tới khi tải lại.",
+    undoChanges: "Hoàn tác",
   },
   advanced: {
     title: "Công cụ nâng cao",
@@ -901,6 +911,7 @@ export const viVN = {
       howLongAns: "Thời gian xử lý phụ thuộc vào số lượng mục, tốc độ mô hình và giới hạn tần suất API. Các mô hình cục bộ thường rất nhanh.",
       isSafe: "Xây dựng lại trong khi đang sử dụng ứng dụng có an toàn không?",
       isSafeAns: "Có, xây dựng lại là an toàn! Nó không xóa nội dung, chỉ thay thế embedding, và xử lý lỗi một cách mượt mà.",
+      includeSources: "Nguồn",
     },
   },
   transformations: {
