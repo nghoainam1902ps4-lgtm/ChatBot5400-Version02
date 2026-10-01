@@ -60,7 +60,7 @@ const getSTATUS_META = (t: TFunction): Record<
   },
   completed: {
     label: t('podcasts.completedLabel'),
-    className: 'bg-fern-tint text-fern border-fern/30',
+    className: 'bg-success-tint text-success border-success/30',
   },
   failed: {
     label: t('podcasts.failedLabel'),
@@ -86,11 +86,6 @@ const getSTATUS_META = (t: TFunction): Record<
 
 function StatusBadge({ status }: { status?: EpisodeStatus | null }) {
   const { t } = useTranslation()
-  // Don't show badge for completed episodes
-  if (status === 'completed') {
-    return null
-  }
-
   const meta = getSTATUS_META(t)[status ?? 'unknown']
   return (
     <Badge

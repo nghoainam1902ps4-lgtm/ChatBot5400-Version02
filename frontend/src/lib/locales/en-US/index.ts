@@ -132,6 +132,11 @@ export const enUS = {
       clickToCycle: "Click to cycle",
     },
     clickToEdit: "Click to edit",
+    accessDenied: {
+      title: "This page is for administrators",
+      desc: "Your account does not have permission to view this. Contact your branch administrator if you need access.",
+      backToNotebooks: "Back to notebooks",
+    },
   },
   apiErrors: {
     notebookNotFound: "Notebook not found",

@@ -135,6 +135,11 @@ export const viVN = {
       clickToCycle: "Nhấn để chuyển đổi",
     },
     clickToEdit: "Nhấn để chỉnh sửa",
+    accessDenied: {
+      title: "Trang này dành cho quản trị viên",
+      desc: "Tài khoản của bạn không có quyền xem nội dung này. Liên hệ quản trị viên chi nhánh nếu bạn cần truy cập.",
+      backToNotebooks: "Về Sổ tay",
+    },
   },
   apiErrors: {
     notebookNotFound: "Không tìm thấy sổ tay",

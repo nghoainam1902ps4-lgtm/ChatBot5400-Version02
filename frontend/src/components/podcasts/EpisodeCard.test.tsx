@@ -135,3 +135,25 @@ describe('EpisodeCard model details', () => {
     expect(screen.getAllByText('— / —')).toHaveLength(3)
   })
 })
+
+describe('EpisodeCard status badge', () => {
+  it('renders a completed badge with success semantics (not fern)', () => {
+    render(<EpisodeCard episode={makeEpisode({ job_status: 'completed' })} onDelete={vi.fn()} />)
+    const badge = screen.getByText('podcasts.completedLabel')
+    expect(badge.className).toContain('bg-success-tint')
+    expect(badge.className).toContain('text-success')
+    expect(badge.className).toContain('border-success/30')
+    expect(badge.className).not.toMatch(/fern/)
+  })
+
+  it.each([
+    ['pending', 'podcasts.pendingLabel', 'text-teal'],
+    ['running', 'podcasts.processingLabel', 'text-warn'],
+    ['processing', 'podcasts.processingLabel', 'text-warn'],
+    ['failed', 'podcasts.failedLabel', 'text-destructive'],
+    ['error', 'podcasts.failedLabel', 'text-destructive'],
+  ] as const)('status %s keeps its existing group (%s, %s)', (status, label, cls) => {
+    render(<EpisodeCard episode={makeEpisode({ job_status: status })} onDelete={vi.fn()} />)
+    expect(screen.getByText(label).className).toContain(cls)
+  })
+})
