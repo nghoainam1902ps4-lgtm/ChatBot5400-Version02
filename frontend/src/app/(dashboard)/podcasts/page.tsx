@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { PageShell } from '@/components/common/PageShell'
+import { PageHeader } from '@/components/common/PageHeader'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { EpisodesTab } from '@/components/podcasts/EpisodesTab'
@@ -27,13 +29,8 @@ export default function PodcastsPage() {
   return (
     <AppShell>
       <div className="flex-1 overflow-y-auto">
-        <div className="px-6 py-6 space-y-6">
-          <header className="space-y-1">
-            <h1 className="font-display text-2xl font-bold tracking-tight">{t('podcasts.listTitle')}</h1>
-            <p className="text-muted-foreground">
-              {t('podcasts.listDesc')}
-            </p>
-          </header>
+        <PageShell width="wide" className="space-y-6">
+          <PageHeader title={t('podcasts.listTitle')} description={t('podcasts.listDesc')} />
 
           {hasUnconfiguredProfiles ? (
             <Alert className="bg-warn-tint text-warn border-warn/30">
@@ -72,7 +69,7 @@ export default function PodcastsPage() {
               <TemplatesTab />
             </TabsContent>
           </Tabs>
-        </div>
+        </PageShell>
       </div>
     </AppShell>
   )

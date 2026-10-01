@@ -5,13 +5,34 @@ import { useRouter } from 'next/navigation'
 import { useDebounce } from 'use-debounce'
 import { sourcesApi, type SourceSortField } from '@/lib/api/sources'
 import { SourceListResponse } from '@/lib/types/api'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AppShell } from '@/components/layout/AppShell'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
-import { FileText, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Plus } from 'lucide-react'
+import { PageShell } from '@/components/common/PageShell'
+import { PageHeader } from '@/components/common/PageHeader'
+import { Toolbar } from '@/components/common/Toolbar'
+import { PrimaryAction } from '@/components/common/PrimaryAction'
+import {
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from '@/components/common/DataTable'
+import { DataList, DataListItem } from '@/components/common/DataList'
+import { LoadingSkeleton } from '@/components/common/LoadingSkeleton'
+import { ErrorState } from '@/components/common/ErrorState'
+import { InfiniteIndicator } from '@/components/common/Pagination'
+import { FileText, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Plus, MoreHorizontal, SearchX } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { cn } from '@/lib/utils'
@@ -38,7 +59,6 @@ export default function SourcesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery] = useDebounce(searchQuery.trim(), 300)
   const activeQuery = searchQuery.trim() ? debouncedQuery : ''
-  const [hasLoaded, setHasLoaded] = useState(false)
   // The query the currently shown `sources` were fetched with
   const [loadedQuery, setLoadedQuery] = useState('')
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; source: SourceListResponse | null }>({
@@ -101,7 +121,6 @@ export default function SourcesPage() {
       const hasMoreData = data.length === PAGE_SIZE
       hasMoreRef.current = hasMoreData
       offsetRef.current += data.length
-      setHasLoaded(true)
       setLoadedQuery(activeQuery)
     } catch (err) {
       if (requestId !== requestIdRef.current) return
@@ -142,6 +161,8 @@ export default function SourcesPage() {
       // Leave arrow/Home/End/Enter to text fields (search box)
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      // ...and to the row action menu / delete dialog (Radix handles its own keys)
+      if (e.defaultPrevented || target?.closest?.('[role="menu"], [role="dialog"], [role="alertdialog"]')) return
 
       switch (e.key) {
         case 'ArrowDown':
@@ -301,10 +322,41 @@ export default function SourcesPage() {
     router.push(`/sources/${sourceId}`)
   }, [router])
 
-  const handleDeleteClick = useCallback((e: React.MouseEvent, source: SourceListResponse) => {
-    e.stopPropagation() // Prevent row click
-    setDeleteDialog({ open: true, source })
-  }, [])
+  // Row actions (admin): delete lives in a "..." menu instead of a permanent
+  // red trash button. Clicks inside never reach the row (no navigation).
+  const renderRowActions = (source: SourceListResponse) => {
+    if (!isAdmin) return null
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t('common.actions')}
+            onClick={(e) => e.stopPropagation()}
+            className="relative size-11 sm:size-8"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenuItem
+            variant="destructive"
+            onSelect={() => setDeleteDialog({ open: true, source })}
+          >
+            <Trash2 className="h-4 w-4" />
+            {t('common.delete')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
+  const formatRelative = (value: string) =>
+    formatDistanceToNow(new Date(value), {
+      addSuffix: true,
+      locale: getDateLocale(language),
+    })
 
   const handleDeleteConfirm = async () => {
     if (!deleteDialog.source) return
@@ -324,205 +376,231 @@ export default function SourcesPage() {
 
   const renderContent = () => {
     const isSearching = searchQuery.trim() !== ''
-    // Before the first successful load (and outside a search) keep the
-    // original full-page loading/error states.
-    if (!hasLoaded && !isSearching) {
-      if (loading) {
-        return (
-          <div className="flex h-full items-center justify-center">
-            <LoadingSpinner />
-          </div>
-        )
-      }
-      if (error) {
-        return (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-destructive">{error}</p>
-          </div>
-        )
-      }
-    }
 
-    // "No sources yet" only when an unfiltered fetch came back empty — never
-    // for an empty search result (or the frame right after clearing one).
-    if (sources.length === 0 && !loading && !error && !isSearching && loadedQuery === '') {
+    // Initial load / reload (sort, search, retry): geometry-preserving
+    // skeleton — a table from 640px, a list below.
+    if (loading) {
       return (
-        <EmptyState
-          icon={FileText}
-          title={t('sources.noSourcesYet')}
-          description={t('sources.allSourcesDescShort')}
-          action={
-            isAdmin ? (
-              <Button onClick={() => setSourceDialogOpen(true)} variant="outline" className="mt-4">
-                <Plus className="h-4 w-4 mr-2" />
-                {t('sources.newSource')}
-              </Button>
-            ) : undefined
-          }
-        />
+        <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
+          <LoadingSkeleton
+            variant="table"
+            rows={8}
+            columns={7}
+            aria-label={t('common.loading')}
+            className="hidden sm:block"
+          />
+          <LoadingSkeleton
+            variant="list"
+            items={8}
+            aria-label={t('common.loading')}
+            className="px-3 sm:hidden"
+          />
+        </div>
       )
     }
 
-    return (<>
-      <div className="flex flex-col h-full w-full max-w-none px-6 py-6">
-        <div className="mb-6 flex-shrink-0">
-          <h1 className="font-display text-2xl font-bold tracking-tight">{t('sources.allSources')}</h1>
-          <p className="mt-2 text-muted-foreground">
-            {t('sources.allSourcesDesc')}
-          </p>
+    if (error) {
+      return (
+        <div className="rounded-md border">
+          <ErrorState title={error} onRetry={() => fetchSources(true)} />
         </div>
+      )
+    }
 
-        <SourceSearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          className="mb-4 flex-shrink-0 lg:max-w-md"
+    if (sources.length === 0) {
+      // "No sources yet" only when an unfiltered fetch came back empty — never
+      // for an empty search result (or the frame right after clearing one).
+      if (!isSearching && loadedQuery === '') {
+        return (
+          <EmptyState
+            icon={FileText}
+            title={t('sources.noSourcesYet')}
+            description={t('sources.allSourcesDescShort')}
+            action={
+              isAdmin ? (
+                <Button onClick={() => setSourceDialogOpen(true)} variant="outline" className="mt-4">
+                  <Plus className="h-4 w-4 mr-2" />
+                  {t('sources.newSource')}
+                </Button>
+              ) : undefined
+            }
+          />
+        )
+      }
+      return (
+        <div role="status" className="rounded-md border">
+          <EmptyState
+            variant="search"
+            icon={SearchX}
+            title={t('sources.noMatchingSources')}
+            description={t('sources.noMatchingSourcesDesc')}
+          />
+        </div>
+      )
+    }
+
+    // One scroll container (infinite scroll + keyboard scrollIntoView) holding
+    // the table (>=640px) and the equivalent list (<640px).
+    return (
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-auto rounded-md border">
+        <DataTable
+          ref={tableRef}
+          tabIndex={0}
+          className="group/table hidden min-w-[920px] table-fixed outline-none sm:table"
+        >
+          <colgroup>
+            <col className="w-[120px]" />
+            <col className="w-auto" />
+            <col className="w-[140px]" />
+            <col className="w-[140px]" />
+            <col className="w-[100px]" />
+            <col className="w-[100px]" />
+            <col className="w-[100px]" />
+          </colgroup>
+          <DataTableHeader className="sticky top-0 z-10 bg-background">
+            <tr className="border-b">
+              <DataTableHead>
+                {renderSortableHeader('type', t('common.type'))}
+              </DataTableHead>
+              <DataTableHead>
+                {renderSortableHeader('title', t('common.title'))}
+              </DataTableHead>
+              <DataTableHead>
+                {renderSortableHeader('created', t('common.created_label'))}
+              </DataTableHead>
+              <DataTableHead>
+                {renderSortableHeader('updated', t('common.updated_label'))}
+              </DataTableHead>
+              <DataTableHead className="text-center">
+                {renderSortableHeader('insights_count', t('sources.insights'), 'center')}
+              </DataTableHead>
+              <DataTableHead className="text-center">
+                {renderSortableHeader('embedded', t('sources.embedded'), 'center')}
+              </DataTableHead>
+              <DataTableHead className="text-right">
+                {t('common.actions')}
+              </DataTableHead>
+            </tr>
+          </DataTableHeader>
+          <DataTableBody>
+            {sources.map((source, index) => (
+              <DataTableRow
+                key={source.id}
+                selected={selectedIndex === index}
+                onClick={() => handleRowClick(index, source.id)}
+                className="cursor-pointer group-focus-visible/table:data-[selected=true]:outline-2 group-focus-visible/table:data-[selected=true]:-outline-offset-2 group-focus-visible/table:data-[selected=true]:outline-ring"
+              >
+                <DataTableCell>
+                  <div className="flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className={cn('h-2 w-2 shrink-0 rounded-full', getSourceTypeDotClass(source))}
+                    />
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {getSourceType(source)}
+                    </span>
+                  </div>
+                </DataTableCell>
+                <DataTableCell>
+                  <div className="flex flex-col overflow-hidden">
+                    <span className="font-medium truncate">
+                      {source.title || t('sources.untitledSource')}
+                    </span>
+                    {source.asset?.url && (
+                      <span className="text-xs text-muted-foreground truncate">
+                        {source.asset.url}
+                      </span>
+                    )}
+                  </div>
+                </DataTableCell>
+                <DataTableCell className="text-muted-foreground">
+                  {formatRelative(source.created)}
+                </DataTableCell>
+                <DataTableCell className="text-muted-foreground">
+                  {formatRelative(source.updated)}
+                </DataTableCell>
+                <DataTableCell className="text-center">
+                  <span className="font-medium">{source.insights_count || 0}</span>
+                </DataTableCell>
+                <DataTableCell className="text-center">
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium",
+                      source.embedded
+                        ? "bg-teal-tint text-teal"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {source.embedded ? t('sources.yes') : t('sources.no')}
+                  </span>
+                </DataTableCell>
+                <DataTableCell className="text-right">
+                  {renderRowActions(source)}
+                </DataTableCell>
+              </DataTableRow>
+            ))}
+          </DataTableBody>
+        </DataTable>
+
+        <DataList className="sm:hidden">
+          {sources.map((source, index) => (
+            <DataListItem
+              key={source.id}
+              className="relative px-3 hover:bg-muted"
+              title={
+                <button
+                  type="button"
+                  onClick={() => handleRowClick(index, source.id)}
+                  className="block w-full truncate text-left before:absolute before:inset-0 before:content-[''] focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-ring"
+                >
+                  {source.title || t('sources.untitledSource')}
+                </button>
+              }
+              meta={
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className={cn('h-2 w-2 shrink-0 rounded-full', getSourceTypeDotClass(source))}
+                  />
+                  <span className="truncate">
+                    {getSourceType(source)} · {formatRelative(source.updated)}
+                  </span>
+                </span>
+              }
+              actions={renderRowActions(source)}
+            />
+          ))}
+        </DataList>
+
+        <InfiniteIndicator loading={loadingMore} loadingLabel={t('sources.loadingMore')} />
+      </div>
+    )
+  }
+
+  return (
+    <AppShell>
+      <PageShell width="full" className="flex min-h-0 flex-1 flex-col">
+        <PageHeader
+          title={t('sources.allSources')}
+          description={t('sources.allSourcesDesc')}
+          className="flex-shrink-0"
         />
 
-        {loading ? (
-          <div className="flex flex-1 items-center justify-center rounded-md border">
-            <LoadingSpinner />
-          </div>
-        ) : error ? (
-          <div className="flex flex-1 items-center justify-center rounded-md border">
-            <p className="text-destructive">{error}</p>
-          </div>
-        ) : sources.length === 0 ? (
-          <div className="flex flex-1 items-start justify-center rounded-md border px-4 py-10">
-            <p role="status" className="text-sm text-muted-foreground">{t('sources.noMatchingSources')}</p>
-          </div>
-        ) : (
-        <div ref={scrollContainerRef} className="flex-1 rounded-md border overflow-auto">
-          <table
-            ref={tableRef}
-            tabIndex={0}
-            className="w-full min-w-[920px] outline-none table-fixed"
-          >
-            <colgroup>
-              <col className="w-[120px]" />
-              <col className="w-auto" />
-              <col className="w-[140px]" />
-              <col className="w-[140px]" />
-              <col className="w-[100px]" />
-              <col className="w-[100px]" />
-              <col className="w-[100px]" />
-            </colgroup>
-            <thead className="sticky top-0 bg-background z-10">
-              <tr className="border-b">
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                  {renderSortableHeader('type', t('common.type'))}
-                </th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                  {renderSortableHeader('title', t('common.title'))}
-                </th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">
-                  {renderSortableHeader('created', t('common.created_label'))}
-                </th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">
-                  {renderSortableHeader('updated', t('common.updated_label'))}
-                </th>
-                <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden md:table-cell">
-                  {renderSortableHeader('insights_count', t('sources.insights'), 'center')}
-                </th>
-                <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden lg:table-cell">
-                  {renderSortableHeader('embedded', t('sources.embedded'), 'center')}
-                </th>
-                <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                  {t('common.actions')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sources.map((source, index) => (
-                <tr
-                  key={source.id}
-                  onClick={() => handleRowClick(index, source.id)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  className={cn(
-                    "border-b transition-colors cursor-pointer",
-                    selectedIndex === index
-                      ? "bg-accent"
-                      : "hover:bg-[var(--surface-raised)]"
-                  )}
-                >
-                  <td className="h-12 px-4">
-                    <div className="flex items-center gap-2">
-                      <span
-                        aria-hidden
-                        className={cn('h-2 w-2 shrink-0 rounded-full', getSourceTypeDotClass(source))}
-                      />
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        {getSourceType(source)}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="h-12 px-4">
-                    <div className="flex flex-col overflow-hidden">
-                      <span className="font-medium truncate">
-                        {source.title || t('sources.untitledSource')}
-                      </span>
-                      {source.asset?.url && (
-                        <span className="text-xs text-muted-foreground truncate">
-                          {source.asset.url}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="h-12 px-4 text-muted-foreground text-sm hidden sm:table-cell">
-                    {formatDistanceToNow(new Date(source.created), { 
-                      addSuffix: true,
-                      locale: getDateLocale(language)
-                    })}
-                  </td>
-                  <td className="h-12 px-4 text-muted-foreground text-sm hidden sm:table-cell">
-                    {formatDistanceToNow(new Date(source.updated), {
-                      addSuffix: true,
-                      locale: getDateLocale(language)
-                    })}
-                  </td>
-                  <td className="h-12 px-4 text-center hidden md:table-cell">
-                    <span className="text-sm font-medium">{source.insights_count || 0}</span>
-                  </td>
-                  <td className="h-12 px-4 text-center hidden lg:table-cell">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium",
-                        source.embedded
-                          ? "bg-fern-tint text-fern-deep dark:text-fern"
-                          : "bg-muted text-muted-foreground"
-                      )}
-                    >
-                      {source.embedded ? t('sources.yes') : t('sources.no')}
-                    </span>
-                  </td>
-                  <td className="h-12 px-4 text-right">
-                    {isAdmin && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => handleDeleteClick(e, source)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {loadingMore && (
-                <tr>
-                  <td colSpan={7} className="h-16 text-center">
-                    <div className="flex items-center justify-center">
-                      <LoadingSpinner />
-                      <span className="ml-2 text-muted-foreground">{t('sources.loadingMore')}</span>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        )}
-      </div>
+        <Toolbar className="flex-shrink-0">
+          <SourceSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            className="flex-1 basis-60 lg:max-w-md"
+          />
+          {isAdmin && (
+            <PrimaryAction icon={Plus} onClick={() => setSourceDialogOpen(true)} className="sm:ml-auto">
+              {t('sources.addSource')}
+            </PrimaryAction>
+          )}
+        </Toolbar>
+
+        {renderContent()}
+      </PageShell>
 
       <ConfirmDialog
         open={deleteDialog.open}
@@ -533,12 +611,6 @@ export default function SourcesPage() {
         confirmVariant="destructive"
         onConfirm={handleDeleteConfirm}
       />
-    </>)
-  }
-
-  return (
-    <AppShell>
-      {renderContent()}
       <AddSourceDialog
         open={sourceDialogOpen}
         onOpenChange={(open) => {

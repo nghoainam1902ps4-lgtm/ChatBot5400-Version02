@@ -1,41 +1,54 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { AlertCircle, Loader2, RefreshCcw } from 'lucide-react'
+import { Loader2, Mic, RefreshCcw } from 'lucide-react'
 
 import { useDeletePodcastEpisode, usePodcastEpisodes, useRetryPodcastEpisode } from '@/lib/hooks/use-podcasts'
 import { EpisodeCard } from '@/components/podcasts/EpisodeCard'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { ErrorState } from '@/components/common/ErrorState'
+import { EmptyState } from '@/components/common/EmptyState'
+import { LoadingSkeleton } from '@/components/common/LoadingSkeleton'
 import { GeneratePodcastDialog } from '@/components/podcasts/GeneratePodcastDialog'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import type { TFunction } from 'i18next'
 
+// One order everywhere (summary badges after Total, then the sections):
+// pending → processing → completed → failed. Unknown statuses stay in the
+// pending group (see statusPendingNote).
 const getSTATUS_ORDER = (t: TFunction): Array<{
   key: 'running' | 'completed' | 'failed' | 'pending'
   title: string
+  badgeLabel: string
   description?: string
+  note?: string
 }> => [
-  {
-    key: 'running',
-    title: t('podcasts.statusRunningTitle'),
-    description: t('podcasts.statusRunningDesc'),
-  },
   {
     key: 'pending',
     title: t('podcasts.statusPendingTitle'),
+    badgeLabel: t('podcasts.pendingLabel'),
     description: t('podcasts.statusPendingDesc'),
+    note: t('podcasts.statusPendingNote'),
+  },
+  {
+    key: 'running',
+    title: t('podcasts.statusRunningTitle'),
+    badgeLabel: t('podcasts.processingLabel'),
+    description: t('podcasts.statusRunningDesc'),
   },
   {
     key: 'completed',
     title: t('podcasts.statusCompletedTitle'),
+    badgeLabel: t('podcasts.completedLabel'),
     description: t('podcasts.statusCompletedDesc'),
+    note: t('podcasts.statusCompletedNote'),
   },
   {
     key: 'failed',
     title: t('podcasts.statusFailedTitle'),
+    badgeLabel: t('podcasts.failedLabel'),
     description: t('podcasts.statusFailedDesc'),
   },
 ]
@@ -78,7 +91,8 @@ export function EpisodesTab() {
     [retryEpisode]
   )
 
-  const emptyState = !isLoading && episodes.length === 0
+  const emptyState = !isLoading && !isError && episodes.length === 0
+  const statusOrder = getSTATUS_ORDER(t)
 
   return (
     <div className="space-y-6">
@@ -111,49 +125,45 @@ export function EpisodesTab() {
 
       <div className="flex flex-wrap gap-2">
         <SummaryBadge label={t('podcasts.total')} value={statusCounts.total} />
-        <SummaryBadge label={t('podcasts.processingLabel')} value={statusCounts.running} />
-        <SummaryBadge label={t('podcasts.completedLabel')} value={statusCounts.completed} />
-        <SummaryBadge label={t('podcasts.failedLabel')} value={statusCounts.failed} />
-        <SummaryBadge label={t('podcasts.pendingLabel')} value={statusCounts.pending} />
+        {statusOrder.map(({ key, badgeLabel }) => (
+          <SummaryBadge key={key} label={badgeLabel} value={statusCounts[key]} />
+        ))}
       </div>
 
       {isError ? (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>{t('podcasts.loadErrorTitle')}</AlertTitle>
-          <AlertDescription>
-            {t('podcasts.loadErrorDesc')}
-          </AlertDescription>
-        </Alert>
+        <ErrorState
+          title={t('podcasts.loadErrorTitle')}
+          description={t('podcasts.loadErrorDesc')}
+          onRetry={handleRefresh}
+          className="rounded-md border"
+        />
       ) : null}
 
       {isLoading ? (
-        <div className="flex items-center gap-3 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {t('podcasts.loadingEpisodes')}
-        </div>
+        <LoadingSkeleton variant="card" items={3} aria-label={t('podcasts.loadingEpisodes')} />
       ) : null}
 
       {emptyState ? (
-        <div className="rounded-md border border-dashed p-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            {t('podcasts.noEpisodesYet')}
-          </p>
+        <div className="rounded-md border border-dashed">
+          <EmptyState icon={Mic} title={t('podcasts.noEpisodesYet')} />
         </div>
       ) : null}
 
-      {getSTATUS_ORDER(t).map(({ key, title, description }) => {
+      {statusOrder.map(({ key, title, description, note }) => {
         const data = statusGroups[key]
         if (!data || data.length === 0) {
           return null
         }
 
         return (
-          <section key={key} className="space-y-4">
+          <section key={key} data-status-group={key} className="space-y-4">
             <div>
               <h3 className="text-lg font-semibold leading-tight">{title}</h3>
               {description ? (
                 <p className="text-sm text-muted-foreground">{description}</p>
+              ) : null}
+              {note ? (
+                <p className="mt-1 text-xs text-muted-foreground">{note}</p>
               ) : null}
             </div>
             <Separator />

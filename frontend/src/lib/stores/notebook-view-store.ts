@@ -11,7 +11,7 @@ interface NotebookViewState {
 export const useNotebookViewStore = create<NotebookViewState>()(
   persist(
     (set) => ({
-      viewMode: 'tile',
+      viewMode: 'list',
       setViewMode: (mode) => set({ viewMode: mode }),
     }),
     {
