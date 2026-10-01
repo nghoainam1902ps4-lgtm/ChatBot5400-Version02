@@ -3,6 +3,12 @@
 import { useState } from 'react'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import {
   Key,
@@ -14,6 +20,7 @@ import {
   Check,
   X,
   Bot,
+  MoreHorizontal,
 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useDeleteModel, useTestModel } from '@/lib/hooks/use-models'
@@ -59,17 +66,17 @@ export function CredentialItem({
   const activeTypes = new Set<string>(linkedModels.map(m => m.type))
   const testResult = testResults[credential.id]
 
-  // Check which models are defaults
+  // Check which models are defaults (model id → slot label i18n key)
   const defaultSlots: Record<string, string> = {}
   if (defaults) {
     const slotMap: Record<string, string | null | undefined> = {
-      'Chat': defaults.default_chat_model,
-      'Transform': defaults.default_transformation_model,
-      'Tools': defaults.default_tools_model,
-      'Large Ctx': defaults.large_context_model,
-      'Embedding': defaults.default_embedding_model,
-      'TTS': defaults.default_text_to_speech_model,
-      'STT': defaults.default_speech_to_text_model,
+      'models.slot.chat': defaults.default_chat_model,
+      'models.slot.transform': defaults.default_transformation_model,
+      'models.slot.tools': defaults.default_tools_model,
+      'models.slot.largeContext': defaults.large_context_model,
+      'models.slot.embedding': defaults.default_embedding_model,
+      'models.slot.tts': defaults.default_text_to_speech_model,
+      'models.slot.stt': defaults.default_speech_to_text_model,
     }
     for (const [slot, modelId] of Object.entries(slotMap)) {
       if (modelId) defaultSlots[modelId] = slot
@@ -90,7 +97,7 @@ export function CredentialItem({
                   className={`text-[10px] gap-0.5 px-1 py-0 ${activeTypes.has(mod) ? getTypeColor(mod) : TYPE_COLOR_INACTIVE}`}
                 >
                   {getTypeIcon(mod)}
-                  <span className="hidden sm:inline">{getTypeLabel(mod)}</span>
+                  <span className="hidden sm:inline">{getTypeLabel(mod, t)}</span>
                 </Badge>
               ))}
             </div>
@@ -104,7 +111,7 @@ export function CredentialItem({
           <div className="flex items-center gap-1 shrink-0">
             {testResult && (
               testResult.success
-                ? <Check className="h-4 w-4 text-fern" />
+                ? <Check className="h-4 w-4 text-success" />
                 : <X className="h-4 w-4 text-destructive" />
             )}
             <Button
@@ -114,7 +121,7 @@ export function CredentialItem({
               title={t('apiKeys.testConnection')}
             >
               {isTestPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
-              <span className="hidden sm:inline text-xs">Test</span>
+              <span className="hidden sm:inline text-xs">{t('apiKeys.testConnection')}</span>
             </Button>
             <Button
               variant="ghost" size="sm"
@@ -123,28 +130,40 @@ export function CredentialItem({
               title={t('apiKeys.syncModels')}
             >
               <Bot className="h-4 w-4" />
-              <span className="hidden sm:inline text-xs">Models</span>
+              <span className="hidden sm:inline text-xs">{t('apiKeys.syncModels')}</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)} disabled={!!credential.decryption_error} title={t('common.edit')}>
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost" size="sm"
-              onClick={() => setDeleteOpen(true)}
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              title={t('common.delete')}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            {/* Edit / Delete live in the "..." menu; same guards and dialogs.
+                Non-modal so the dialog it opens does not inherit the menu's
+                body pointer-events lock. */}
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" aria-label={t('common.actions')} title={t('common.actions')}>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={() => setEditOpen(true)}
+                  disabled={!!credential.decryption_error}
+                >
+                  <Edit className="h-4 w-4" />
+                  {t('common.edit')}
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                  <Trash2 className="h-4 w-4" />
+                  {t('common.delete')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
         {/* Decryption error warning */}
         {credential.decryption_error && (
-          <Alert className="border-warn/30 bg-warn-tint">
-            <AlertTriangle className="h-4 w-4 text-warn" />
-            <AlertTitle className="text-warn">{t('apiKeys.decryptionError')}</AlertTitle>
-            <AlertDescription className="text-warn text-sm">
+          <Alert className="border-warn/30 bg-warn-tint text-warn [&>svg]:text-warn">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>{t('apiKeys.decryptionError')}</AlertTitle>
+            <AlertDescription className="text-sm">
               {t('apiKeys.decryptionErrorDescription')}
             </AlertDescription>
           </Alert>
@@ -162,7 +181,7 @@ export function CredentialItem({
                     className={`text-[10px] gap-0.5 px-1 py-0 shrink-0 mt-0.5 ${getTypeColor(type)}`}
                   >
                     {getTypeIcon(type)}
-                    {getTypeLabel(type)}
+                    {getTypeLabel(type, t)}
                   </Badge>
                   <div className="flex flex-wrap gap-1">
                     {linkedModels.filter(m => m.type === type).map(model => {
@@ -174,7 +193,7 @@ export function CredentialItem({
                           className="font-mono text-[11px] gap-1 pr-0.5 group/model"
                         >
                           {model.name}
-                          {defaultSlot && <span className="ml-0.5 opacity-75">({defaultSlot})</span>}
+                          {defaultSlot && <span className="ml-0.5 opacity-75">({t(defaultSlot)})</span>}
                           <button
                             className="ml-0.5 opacity-0 group-hover/model:opacity-60 hover:!opacity-100 transition-opacity"
                             onClick={() => testModel(model.id, model.name)}

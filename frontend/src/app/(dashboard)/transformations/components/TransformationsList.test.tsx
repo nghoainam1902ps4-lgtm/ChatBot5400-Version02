@@ -42,4 +42,10 @@ describe('TransformationsList', () => {
 
     expect(screen.getByTestId('transformation-editor-dialog')).toBeInTheDocument()
   })
+
+  it('shows a skeleton (not a full-area spinner) while loading', () => {
+    render(<TransformationsList transformations={undefined} isLoading={true} />)
+    expect(document.querySelector('[data-slot="loading-skeleton"]')).toBeInTheDocument()
+    expect(screen.queryByText('transformations.createNew')).toBeNull()
+  })
 })

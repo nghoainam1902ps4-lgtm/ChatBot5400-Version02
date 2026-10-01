@@ -3,11 +3,15 @@
 import { useMemo, useState } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
 import { AiProvidersGuideModal } from '@/components/settings/AiProvidersGuideModal'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { PageShell } from '@/components/common/PageShell'
+import { PageHeader } from '@/components/common/PageHeader'
+import { LoadingSkeleton } from '@/components/common/LoadingSkeleton'
+import { ErrorState } from '@/components/common/ErrorState'
+import { AccessDenied } from '@/components/common/AccessDenied'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
-import { Key, ShieldAlert, AlertCircle } from 'lucide-react'
+import { Key, ShieldAlert } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { useAdminGuard } from '@/lib/hooks/use-admin-guard'
+import { useAuth } from '@/lib/hooks/use-auth'
 import { useModels, useModelDefaults } from '@/lib/hooks/use-models'
 import {
   useCredentials,
@@ -24,7 +28,8 @@ import {
 
 export default function ApiKeysPage() {
   const { t } = useTranslation()
-  const { isAdmin, isLoading: authLoading } = useAdminGuard()
+  // Access is shown in place (AccessDenied), never by redirecting.
+  const { isAdmin, isLoading: authLoading } = useAuth()
   const [guideOpen, setGuideOpen] = useState(false)
 
   // Data
@@ -37,6 +42,7 @@ export default function ApiKeysPage() {
     data: providers,
     isLoading: providersLoading,
     isError: providersError,
+    refetch: refetchProviders,
   } = useProviders()
 
   const encryptionReady = credentialStatus?.encryption_configured ?? true
@@ -79,88 +85,92 @@ export default function ApiKeysPage() {
 
   const isLoading = credentialsLoading || modelsLoading || defaultsLoading || providersLoading
 
-  if (isLoading) {
-    return (
-      <AppShell>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <LoadingSpinner size="lg" />
-        </div>
-      </AppShell>
-    )
-  }
+  const renderBody = () => {
+    // Auth still resolving, or admin data still loading: keep the geometry.
+    if (authLoading || (isAdmin && isLoading)) {
+      return <LoadingSkeleton variant="card" items={4} lines={3} aria-label={t('common.loading')} />
+    }
 
-  if (authLoading || !isAdmin) {
-    return null
+    if (!isAdmin) {
+      return <AccessDenied />
+    }
+
+    return (
+      <>
+        {/* Encryption required: blocks credential management (destructive) */}
+        {!encryptionReady && (
+          <Alert variant="destructive" className="bg-destructive-tint">
+            <ShieldAlert className="h-4 w-4" />
+            <AlertTitle>{t('apiKeys.encryptionRequired')}</AlertTitle>
+            <AlertDescription>
+              <code className="text-xs bg-destructive-tint px-1 py-0.5 rounded">
+                {t('apiKeys.encryptionRequiredDescription')}
+              </code>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Migration banner */}
+        {encryptionReady && <MigrationBanner providersToMigrate={providersToMigrate} />}
+
+        {/* Default Model Selectors */}
+        {models && defaults && (
+          <DefaultModelSelectors models={models} defaults={defaults} />
+        )}
+
+        {/* Provider Cards */}
+        {providersError ? (
+          <ErrorState
+            title={t('apiKeys.providersLoadFailed')}
+            description={t('apiKeys.providersLoadFailedDescription')}
+            onRetry={() => void refetchProviders()}
+            className="rounded-lg border"
+          />
+        ) : (
+          <div className="grid gap-4">
+            {sortedProviders.map(provider => (
+              <ProviderSection
+                key={provider.name}
+                provider={provider}
+                credentials={credentialsByProvider[provider.name] || []}
+                models={models || []}
+                defaults={defaults || null}
+                allCredentials={credentials || []}
+                encryptionReady={encryptionReady}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Help link — opens the in-app guide modal instead of GitHub */}
+        <div className="border-t pt-4">
+          <button
+            type="button"
+            onClick={() => setGuideOpen(true)}
+            className="text-sm text-primary hover:underline"
+          >
+            {t('apiKeys.learnMore')}
+          </button>
+        </div>
+      </>
+    )
   }
 
   return (
     <AppShell>
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-6">
-          {/* Header */}
-          <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight flex items-center gap-2">
-              <Key className="h-5 w-5 text-muted-foreground" />
-              {t('apiKeys.title')}
-            </h1>
-            <p className="text-muted-foreground mt-1">{t('apiKeys.description')}</p>
-          </div>
-
-          {/* Encryption warning */}
-          {!encryptionReady && (
-            <Alert className="border-destructive/30 bg-destructive-tint">
-              <ShieldAlert className="h-4 w-4 text-destructive" />
-              <AlertTitle className="text-destructive">{t('apiKeys.encryptionRequired')}</AlertTitle>
-              <AlertDescription className="text-destructive">
-                <code className="text-xs bg-destructive-tint px-1 py-0.5 rounded">
-                  {t('apiKeys.encryptionRequiredDescription')}
-                </code>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Migration banner */}
-          {encryptionReady && <MigrationBanner providersToMigrate={providersToMigrate} />}
-
-          {/* Default Model Selectors */}
-          {models && defaults && (
-            <DefaultModelSelectors models={models} defaults={defaults} />
-          )}
-
-          {/* Provider Cards */}
-          {providersError ? (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{t('apiKeys.providersLoadFailed')}</AlertTitle>
-              <AlertDescription>{t('apiKeys.providersLoadFailedDescription')}</AlertDescription>
-            </Alert>
-          ) : (
-            <div className="grid gap-4">
-              {sortedProviders.map(provider => (
-                <ProviderSection
-                  key={provider.name}
-                  provider={provider}
-                  credentials={credentialsByProvider[provider.name] || []}
-                  models={models || []}
-                  defaults={defaults || null}
-                  allCredentials={credentials || []}
-                  encryptionReady={encryptionReady}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Help link — opens the in-app guide modal instead of GitHub */}
-          <div className="border-t pt-4">
-            <button
-              type="button"
-              onClick={() => setGuideOpen(true)}
-              className="text-sm text-primary hover:underline"
-            >
-              {t('apiKeys.learnMore')}
-            </button>
-          </div>
-        </div>
+        <PageShell width="config" className="space-y-6">
+          <PageHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Key aria-hidden className="h-5 w-5 text-muted-foreground" />
+                {t('apiKeys.title')}
+              </span>
+            }
+            description={t('apiKeys.description')}
+          />
+          {renderBody()}
+        </PageShell>
       </div>
 
       <AiProvidersGuideModal open={guideOpen} onOpenChange={setGuideOpen} />

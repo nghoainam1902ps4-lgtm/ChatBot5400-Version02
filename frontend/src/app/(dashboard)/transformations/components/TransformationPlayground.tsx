@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Play, Loader2 } from 'lucide-react'
 import { Transformation } from '@/lib/types/transformations'
 import { useExecuteTransformation } from '@/lib/hooks/use-transformations'
@@ -59,7 +58,7 @@ export function TransformationPlayground({ transformations, selectedTransformati
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="transformation">{t('navigation.transformation')}</Label>
+              <Label htmlFor="transformation">{t('transformations.selectLabel')}</Label>
               <Select name="transformation" value={selectedId} onValueChange={setSelectedId}>
                 <SelectTrigger id="transformation">
                   <SelectValue placeholder={t('transformations.selectToStart')} />
@@ -99,11 +98,12 @@ export function TransformationPlayground({ transformations, selectedTransformati
             />
           </div>
 
-          <div className="flex justify-center">
-            <Button 
+          <div>
+            <Button
               onClick={handleExecute}
               disabled={!canExecute}
               size="lg"
+              className="w-full"
             >
               {executeTransformation.isPending ? (
                 <>
@@ -122,32 +122,29 @@ export function TransformationPlayground({ transformations, selectedTransformati
           {output && (
             <div className="space-y-2">
               <span className="text-sm font-medium leading-none">{t('transformations.outputLabel')}</span>
-              <Card>
-                <ScrollArea className="h-[400px]">
-                  <CardContent className="pt-6">
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm, remarkMath]}
-                        rehypePlugins={[rehypeKatex]}
-                        components={{
-                          table: ({ children }) => (
-                            <div className="my-4 overflow-x-auto">
-                              <table className="min-w-full border-collapse border border-border">{children}</table>
-                            </div>
-                          ),
-                          thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
-                          tbody: ({ children }) => <tbody>{children}</tbody>,
-                          tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
-                          th: ({ children }) => <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>,
-                          td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
-                        }}
-                      >
-                        {output}
-                      </ReactMarkdown>
-                    </div>
-                  </CardContent>
-                </ScrollArea>
-              </Card>
+              {/* One result surface: grows with the content, capped at 400px */}
+              <div data-slot="playground-output" className="max-h-[400px] overflow-auto rounded-md border bg-card p-4">
+                <div className="prose prose-sm max-w-none dark:prose-invert">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={{
+                      table: ({ children }) => (
+                        <div className="my-4 overflow-x-auto">
+                          <table className="min-w-full border-collapse border border-border">{children}</table>
+                        </div>
+                      ),
+                      thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+                      tbody: ({ children }) => <tbody>{children}</tbody>,
+                      tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
+                      th: ({ children }) => <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>,
+                      td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
+                    }}
+                  >
+                    {output}
+                  </ReactMarkdown>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

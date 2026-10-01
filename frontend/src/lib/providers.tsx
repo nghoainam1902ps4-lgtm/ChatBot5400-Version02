@@ -40,11 +40,20 @@ export const TYPE_COLOR_INACTIVE = 'bg-muted text-muted-foreground opacity-50'
 
 const TYPE_COLOR_FALLBACK = 'bg-muted text-muted-foreground'
 
+// Legacy English labels: used when no translator is passed (e.g. callers
+// outside the P1B surfaces such as DiscoverModelsDialog).
 const TYPE_LABELS: Record<ModelType, string> = {
   language: 'Language',
   embedding: 'Embedding',
   text_to_speech: 'TTS',
   speech_to_text: 'STT',
+}
+
+const TYPE_LABEL_KEYS: Record<ModelType, string> = {
+  language: 'models.type.language',
+  embedding: 'models.type.embedding',
+  text_to_speech: 'models.type.textToSpeech',
+  speech_to_text: 'models.type.speechToText',
 }
 
 export function getTypeIcon(type: string): React.ReactNode {
@@ -55,6 +64,13 @@ export function getTypeColor(type: string): string {
   return TYPE_COLORS[type as ModelType] ?? TYPE_COLOR_FALLBACK
 }
 
-export function getTypeLabel(type: string): string {
-  return TYPE_LABELS[type as ModelType] ?? type
+/**
+ * Label for a modality. With a translator, known modalities are localized;
+ * an unknown modality always falls back to its raw name (never a raw i18n
+ * key), so a new backend modality needs no frontend edit.
+ */
+export function getTypeLabel(type: string, t?: (key: string) => string): string {
+  if (!Object.prototype.hasOwnProperty.call(TYPE_LABELS, type)) return type
+  const known = type as ModelType
+  return t ? t(TYPE_LABEL_KEYS[known]) : TYPE_LABELS[known]
 }
