@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 // Radix Select measures its trigger via ResizeObserver, which jsdom lacks.
 class ResizeObserverStub {
@@ -14,9 +14,10 @@ import { SettingsForm } from './SettingsForm'
 // useTranslation is mocked globally in setup.ts (t returns the key string),
 // so hint keys render as their literal key names below.
 
+const mutateAsync = vi.fn()
 vi.mock('@/lib/hooks/use-settings', () => ({
   useSettings: vi.fn(),
-  useUpdateSettings: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+  useUpdateSettings: vi.fn(() => ({ mutateAsync, isPending: false })),
 }))
 
 vi.mock('@/lib/hooks/use-capabilities', () => ({
@@ -103,5 +104,116 @@ describe('SettingsForm engine gating', () => {
     expect(
       screen.getByRole('checkbox', { name: 'settings.ocrEnabled' })
     ).toBeDisabled()
+  })
+})
+
+const available = { docling_available: true, crawl4ai_available: true, crawl4ai_remote_configured: false }
+const saveBar = () => document.querySelector('[data-slot="settings-save-bar"]')
+const ocr = () => screen.getByRole('checkbox', { name: 'settings.ocrEnabled' })
+
+describe('SettingsForm (P1C)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('loading: skeleton instead of a full-area spinner', () => {
+    ;(useSettings as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ data: undefined, isLoading: true, error: null })
+    ;(useCapabilities as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ data: available, isError: false })
+    render(<SettingsForm />)
+    expect(document.querySelector('[data-slot="loading-skeleton"]')).toBeInTheDocument()
+  })
+
+  it('error: readable ErrorState (never the raw error message) whose retry refetches', () => {
+    const refetch = vi.fn()
+    ;(useSettings as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Request failed with status code 500 at axios'),
+      refetch,
+    })
+    ;(useCapabilities as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ data: available, isError: false })
+    render(<SettingsForm />)
+    expect(screen.getByText('settings.loadFailed')).toBeInTheDocument()
+    expect(screen.getByText('settings.loadFailedDesc')).toBeInTheDocument()
+    expect(screen.queryByText(/status code 500/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'common.retry' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders the four "Help me choose" blocks through one helper, each independently toggled', () => {
+    mockCapabilities(available)
+    render(<SettingsForm />)
+    const triggers = screen.getAllByRole('button', { name: 'settings.helpMeChoose' })
+    expect(triggers).toHaveLength(4)
+    expect(screen.queryByText('settings.urlHelp')).toBeNull()
+    fireEvent.click(triggers[1])
+    expect(screen.getByText('settings.urlHelp')).toBeInTheDocument()
+    expect(screen.queryByText('settings.docHelp')).toBeNull()
+  })
+
+  it('no save bar while clean; a sticky bar with Undo + Save appears once dirty', async () => {
+    mockCapabilities(available)
+    render(<SettingsForm />)
+    await waitFor(() => expect(ocr()).toBeChecked())
+    expect(saveBar()).toBeNull()
+
+    fireEvent.click(ocr())
+    await waitFor(() => expect(saveBar()).not.toBeNull())
+    expect((saveBar() as HTMLElement).className).toContain('sticky')
+    expect((saveBar() as HTMLElement).className).toContain('bottom-0')
+    expect(screen.getByRole('button', { name: 'settings.undoChanges' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'common.save' })).toBeInTheDocument()
+  })
+
+  it('Undo restores the values loaded from the server (not product defaults) and clears dirty', async () => {
+    mockCapabilities(available)
+    render(<SettingsForm />)
+    await waitFor(() => expect(ocr()).toBeChecked())
+
+    fireEvent.click(ocr())
+    await waitFor(() => expect(ocr()).not.toBeChecked())
+    fireEvent.click(screen.getByRole('button', { name: 'settings.undoChanges' }))
+
+    await waitFor(() => expect(saveBar()).toBeNull())
+    expect(ocr()).toBeChecked()
+    expect(mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('a successful save sends the same 7-field payload and clears the dirty bar', async () => {
+    mutateAsync.mockResolvedValue({})
+    mockCapabilities(available)
+    render(<SettingsForm />)
+    await waitFor(() => expect(ocr()).toBeChecked())
+
+    fireEvent.click(ocr())
+    await waitFor(() => expect(saveBar()).not.toBeNull())
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'common.save' }))
+    })
+
+    await waitFor(() => expect(saveBar()).toBeNull())
+    expect(mutateAsync).toHaveBeenCalledTimes(1)
+    expect(mutateAsync.mock.calls[0][0]).toEqual({
+      default_content_processing_engine_doc: 'auto',
+      default_content_processing_engine_url: 'auto',
+      default_embedding_option: 'ask',
+      auto_delete_files: 'no',
+      docling_ocr: false,
+      docling_formulas: false,
+      docling_vision: false,
+    })
+  })
+
+  it('a failed save keeps the unsaved changes (bar stays)', async () => {
+    mutateAsync.mockRejectedValue(new Error('boom'))
+    mockCapabilities(available)
+    render(<SettingsForm />)
+    await waitFor(() => expect(ocr()).toBeChecked())
+    fireEvent.click(ocr())
+    await waitFor(() => expect(saveBar()).not.toBeNull())
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'common.save' }))
+    })
+    expect(saveBar()).not.toBeNull()
   })
 })

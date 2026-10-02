@@ -1,15 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { AdminArea } from '@/components/common/AdminArea'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, AlertCircle, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import { Loader2, AlertCircle, AlertTriangle, CheckCircle2, XCircle, Clock } from 'lucide-react'
 import {
   Accordion,
   AccordionContent,
@@ -30,7 +30,9 @@ export function RebuildEmbeddings() {
   const [includeInsights, setIncludeInsights] = useState(true)
   const [commandId, setCommandId] = useState<string | null>(null)
   const [status, setStatus] = useState<RebuildStatusResponse | null>(null)
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
+  // A ref (not state): the interval callback must see the current id, or the
+  // stop on completed/failed would clear a stale `null` and keep polling.
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Rebuild mutation
   const rebuildMutation = useMutation({
@@ -49,8 +51,8 @@ export function RebuildEmbeddings() {
 
   // Start polling for rebuild status
   const startPolling = (cmdId: string) => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval)
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
     }
 
     const interval = setInterval(async () => {
@@ -67,16 +69,16 @@ export function RebuildEmbeddings() {
       }
     }, 5000) // Poll every 5 seconds
 
-    setPollingInterval(interval)
+    pollingIntervalRef.current = interval
   }
 
   // Stop polling
   const stopPolling = useCallback(() => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval)
-      setPollingInterval(null)
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
     }
-  }, [pollingInterval])
+  }, [])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -124,17 +126,18 @@ export function RebuildEmbeddings() {
     : undefined
   const processingTimeSeconds = stats?.processing_time ?? computedDuration
 
+  // Completed with failed items is ONE warning result (never success + warn).
+  const completedWithFailures = status?.status === 'completed' && failedItems > 0
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {t('advanced.rebuildEmbeddings')}
-        </CardTitle>
-        <CardDescription>
-          {t('advanced.rebuildEmbeddingsDesc')}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    // Maintenance (re-embeds; never deletes sources, notes, insights or
+    // notebooks), so it is not a danger zone. Real errors stay destructive.
+    <AdminArea
+      level="maintenance"
+      title={t('advanced.rebuildEmbeddings')}
+      description={t('advanced.rebuildEmbeddingsDesc')}
+    >
+      <div className="space-y-6">
         {/* Configuration Form */}
         {!isRebuildActive && (
           <div className="space-y-6">
@@ -166,7 +169,7 @@ export function RebuildEmbeddings() {
                     onCheckedChange={(checked) => setIncludeSources(checked === true)}
                   />
                   <Label htmlFor="sources" className="font-normal cursor-pointer">
-                    {t('navigation.sources')}
+                    {t('advanced.rebuild.includeSources')}
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -231,17 +234,23 @@ export function RebuildEmbeddings() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {status.status === 'queued' && <Clock className="h-5 w-5 text-warn" />}
-                {status.status === 'running' && <Loader2 className="h-5 w-5 text-teal animate-spin" />}
-                {status.status === 'completed' && <CheckCircle2 className="h-5 w-5 text-success" />}
-                {status.status === 'failed' && <XCircle className="h-5 w-5 text-destructive" />}
+                {status.status === 'queued' && <Clock data-tone="info" className="h-5 w-5 text-teal" />}
+                {status.status === 'running' && <Loader2 data-tone="info" className="h-5 w-5 text-teal animate-spin" />}
+                {status.status === 'completed' && !completedWithFailures && <CheckCircle2 data-tone="success" className="h-5 w-5 text-success" />}
+                {completedWithFailures && <AlertTriangle data-tone="warn" className="h-5 w-5 text-warn" />}
+                {status.status === 'failed' && <XCircle data-tone="destructive" className="h-5 w-5 text-destructive" />}
                 <div className="flex flex-col">
-                  <span className="font-medium">
+                  <span data-slot="rebuild-result" className={completedWithFailures ? 'font-medium text-warn' : 'font-medium'}>
                     {status.status === 'queued' && t('advanced.rebuild.queued')}
                     {status.status === 'running' && t('advanced.rebuild.running')}
                     {status.status === 'completed' && t('advanced.rebuild.completed')}
                     {status.status === 'failed' && t('advanced.rebuild.failed')}
                   </span>
+                  {completedWithFailures && (
+                    <span className="text-sm text-warn">
+                      {t('advanced.rebuild.failedItems', { count: failedItems })}
+                    </span>
+                  )}
                   {status.status === 'running' && (
                     <span className="text-sm text-muted-foreground">
                       {t('advanced.rebuild.leavePageHint')}
@@ -265,31 +274,31 @@ export function RebuildEmbeddings() {
                   </span>
                 </div>
                 <Progress value={progressPercent} className="h-2" />
-                {failedItems > 0 && (
+                {failedItems > 0 && !completedWithFailures && (
                   <p className="text-sm text-warn">
-                    ⚠️ {t('advanced.rebuild.failedItems', { count: failedItems })}
+                    {t('advanced.rebuild.failedItems', { count: failedItems })}
                   </p>
                 )}
               </div>
             )}
 
              {stats && (
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">{t('navigation.sources')}</p>
-                  <p className="font-mono text-2xl font-bold">{sourcesProcessed}</p>
+                  <p className="text-sm text-muted-foreground">{t('advanced.rebuild.includeSources')}</p>
+                  <p className="font-mono text-[17px] font-semibold">{sourcesProcessed}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">{t('common.notes')}</p>
-                  <p className="font-mono text-2xl font-bold">{notesProcessed}</p>
+                  <p className="font-mono text-[17px] font-semibold">{notesProcessed}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">{t('common.insights')}</p>
-                  <p className="font-mono text-2xl font-bold">{insightsProcessed}</p>
+                  <p className="font-mono text-[17px] font-semibold">{insightsProcessed}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">{t('advanced.rebuild.time')}</p>
-                  <p className="font-mono text-2xl font-bold">
+                  <p className="font-mono text-[17px] font-semibold">
                     {processingTimeSeconds !== undefined ? `${processingTimeSeconds.toFixed(1)}s` : '—'}
                   </p>
                 </div>
@@ -337,7 +346,7 @@ export function RebuildEmbeddings() {
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-      </CardContent>
-    </Card>
+      </div>
+    </AdminArea>
   )
 }
