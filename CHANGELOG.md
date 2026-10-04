@@ -2,6 +2,44 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.0.1] - 2026-10-04
+
+Làm mới toàn bộ lớp giao diện cho chín trang chính trên nền "hệ trang dùng
+chung" (SPS) và chuẩn hoá hệ thông báo theo màu ngữ nghĩa. Chỉ thay lớp trình
+bày phía frontend; không đổi API, backend, cơ sở dữ liệu, RAG/GraphRAG, embedding
+hay cách nạp nguồn, và không có migration mới.
+
+### Thông báo và màu ngữ nghĩa
+- Thông báo (toast) hiện ở góc dưới bên phải, có nút đóng, và không che ô soạn
+  tin khi đang chat (kể cả trên điện thoại khi bàn phím ảo bật lên).
+- Màu trạng thái thống nhất: thành công (xanh lá), thông tin/sẵn sàng (xanh
+  teal), cảnh báo (vàng đất), lỗi (đỏ). Bỏ việc dùng màu đỏ đô thương hiệu cho
+  trạng thái.
+- Tạo podcast và dựng lại embedding báo "đã nhận yêu cầu" ở dạng thông tin, không
+  còn báo nhầm là đã hoàn tất.
+
+### Chín trang trên hệ trang dùng chung
+- Tiêu đề trang, thanh công cụ, bảng/danh sách, trạng thái đang tải, trống, lỗi
+  và kết quả rỗng dùng chung một bộ thành phần; tiêu đề trang luôn hiển thị ở mọi
+  trạng thái.
+- Nguồn: tìm kiếm giữ nguyên hành vi máy chủ; bảng có đủ cột, trên điện thoại
+  chuyển sang danh sách; xoá nằm trong menu "…".
+- Sổ tay: tìm theo tên hoặc mô tả; mặc định xem dạng danh sách.
+- Tìm kiếm: bố cục vùng đọc gọn hơn, ô tuỳ chọn thu gọn trên điện thoại; giữ
+  nguyên giới hạn và ngưỡng điểm.
+- Podcast: thống nhất thứ tự trạng thái; sửa lỗi khiến trang treo khi tập có
+  trạng thái lạ.
+- Mô hình / Chuyển đổi: gom thao tác vào menu "…"; trình bày kết quả gọn lại.
+- Cài đặt: thanh Lưu/Hoàn tác dính đáy khi có thay đổi chưa lưu.
+- Nâng cao: khu hệ thống và khu bảo trì tách bạch, không có "vùng nguy hiểm";
+  sửa lỗi tiến trình dựng lại embedding không tự dừng khi đã xong.
+- Người dùng: tìm theo tên đăng nhập, gom thao tác vào menu "…", chặn xoá/hạ
+  quyền quản trị viên cuối cùng và tài khoản của chính mình.
+
+### Quyền truy cập
+- Trang chỉ dành cho quản trị viên hiển thị thông báo "không có quyền" ngay trong
+  trang thay vì chuyển hướng im lặng.
+
 ## [1.0.0] - 2026-09-28
 
 Tìm kiếm nguồn (SOURCE_SEARCH_V1) ở trang "Tất cả nguồn" và tab Nguồn của từng
