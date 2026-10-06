@@ -15,11 +15,13 @@ vi.mock('@/lib/hooks/use-notes', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+const fb = vi.hoisted(() => ({
+  data: [{ message_id: 'uuid-ai', reaction: 'like', reported: false }] as unknown,
+  isSuccess: true,
+}))
 const setReactionMutate = vi.fn()
 vi.mock('@/lib/hooks/use-feedback', () => ({
-  useSessionFeedback: () => ({
-    data: [{ message_id: 'uuid-ai', reaction: 'like', reported: false }],
-  }),
+  useSessionFeedback: () => ({ data: fb.data, isSuccess: fb.isSuccess }),
   useSetReaction: () => ({ mutate: setReactionMutate, isPending: false }),
   useReportMessage: () => ({ mutate: vi.fn(), isPending: false }),
 }))
@@ -46,6 +48,8 @@ function renderPanel(isStreaming = false) {
 describe('ChatPanel feedback wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    fb.data = [{ message_id: 'uuid-ai', reaction: 'like', reported: false }]
+    fb.isSuccess = true
     window.HTMLElement.prototype.scrollIntoView = vi.fn()
   })
   afterEach(cleanup)
@@ -77,5 +81,19 @@ describe('ChatPanel feedback wiring', () => {
     for (const btn of screen.getAllByRole('button', { name: 'feedback.report' })) {
       expect(btn).toBeDisabled()
     }
+  })
+
+  it('disables feedback until the batch feedback state has loaded (isSuccess)', () => {
+    // batch query still loading -> actions must be disabled to avoid acting on
+    // unknown current state (R3)
+    fb.data = undefined
+    fb.isSuccess = false
+    renderPanel(false)
+    for (const btn of screen.getAllByRole('button', { name: 'feedback.report' })) {
+      expect(btn).toBeDisabled()
+    }
+    // and no reaction state is assumed: the persisted AI shows "like" (default), disabled
+    const likeButtons = screen.getAllByRole('button', { name: 'feedback.like' })
+    expect(likeButtons.every((b) => (b as HTMLButtonElement).disabled)).toBe(true)
   })
 })

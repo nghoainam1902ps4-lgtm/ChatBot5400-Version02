@@ -90,4 +90,44 @@ describe('useSetReaction optimistic update', () => {
     expect(reactionAt0(qc)).toBeNull()
     expect(h.toastError).toHaveBeenCalledWith('feedback.failed')
   })
+
+  it('leaves no optimistic ghost when the cache was empty and the mutation fails', async () => {
+    const d = deferred<FeedbackState>()
+    h.setReaction.mockReturnValue(d.promise)
+    // wrapper with NO seeded data for the key (undefined cache)
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useSetReaction(SESSION), { wrapper })
+
+    await act(async () => {
+      result.current.mutate({ messageId: 'm1', reaction: 'like' })
+    })
+    // optimistic entry exists transiently
+    expect(qc.getQueryData<FeedbackState[]>(KEY)?.[0]?.reaction).toBe('like')
+
+    await act(async () => {
+      d.reject(new Error('boom'))
+      await d.promise.catch(() => {})
+    })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    // no ghost: the optimistic data is fully removed (back to undefined)
+    expect(qc.getQueryData<FeedbackState[]>(KEY)).toBeUndefined()
+  })
+
+  it('removes the cache entry when the server deletes the row (reaction null, not reported)', async () => {
+    h.setReaction.mockResolvedValue({ message_id: 'm1', reaction: null, reported: false })
+    const { qc, wrapper } = makeWrapper()
+    const { result } = renderHook(() => useSetReaction(SESSION), { wrapper })
+
+    act(() => {
+      result.current.mutate({ messageId: 'm1', reaction: null })
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const list = qc.getQueryData<FeedbackState[]>(KEY) ?? []
+    expect(list.find((f) => f.message_id === 'm1')).toBeUndefined() // no {null,false} ghost
+  })
 })

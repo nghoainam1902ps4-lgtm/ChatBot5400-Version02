@@ -65,6 +65,19 @@ SET user_id = $user,
     answer_snapshot = $a
 """
 
+# Clearing a reaction must not race a concurrent report. Both statements run in
+# one transaction and the DELETE is guarded by `reported = false` evaluated
+# atomically at delete time (never a stale read), so a report that lands
+# concurrently is always preserved: either the DELETE sees reported=true and
+# keeps the row, or the report re-creates the row afterwards. Verified on the
+# SurrealDB 2.x engine (see migration gate); true multi-client concurrency
+# cannot be exercised on the embedded engine, but the transactional/conditional
+# semantics are tested deterministically.
+_CLEAR_REACTION_TX = (
+    f"BEGIN TRANSACTION; UPDATE {_ID} SET reaction = NONE; "
+    f"DELETE {_ID} WHERE reaction = NONE AND reported = false; COMMIT TRANSACTION;"
+)
+
 
 # --- ownership & helpers --------------------------------------------------
 def _owned_session(session: ChatSession, current: TokenUser) -> ChatSession:
@@ -115,12 +128,19 @@ async def _context_title(context_type: str, context_id: str) -> Optional[str]:
         return None
 
 
-async def _display_name(user_id: str) -> Optional[str]:
+async def _user_snapshot(current: TokenUser) -> tuple[str, Optional[str]]:
+    """Resolve the username + display name to snapshot from the CURRENT user
+    record in the DB (the JWT username can be stale after a rename). Falls back
+    to the token username (and no display name) only when the record genuinely
+    cannot be loaded — a feedback action must never fail over a name lookup."""
     try:
-        user = await User.get(user_id)
-        return getattr(user, "name", None)
-    except Exception:  # noqa: BLE001 - name snapshot is best-effort (e.g. dev user)
-        return None
+        user = await User.get(str(current.id))
+        if user is not None:
+            username = getattr(user, "username", None) or current.username
+            return username, getattr(user, "name", None)
+    except Exception:  # noqa: BLE001 - snapshot is best-effort (e.g. dev user)
+        pass
+    return current.username, None
 
 
 async def _ai_question_answer(full_session_id: str, message_id: str, graph) -> tuple[str, str]:
@@ -175,12 +195,13 @@ async def _build_snapshot(
     _owned_session(session, current)
     context_type, context_id, graph = await _resolve_context(full_session_id)
     question, answer = await _ai_question_answer(full_session_id, message_id, graph)
+    username, name = await _user_snapshot(current)
     return {
         "full_session_id": full_session_id,
         "uid": str(current.id),
         "user_rid": ensure_record_id(current.id),
-        "username": current.username,
-        "name": await _display_name(current.id),
+        "username": username,
+        "name": name,
         "context_type": context_type,
         "context_id": context_id,
         "context_title": await _context_title(context_type, context_id),
@@ -259,14 +280,18 @@ async def set_reaction(
     }
 
     if reaction is None:
-        existing = await repo_query(
-            f"SELECT reported FROM {_ID}", id_params
-        )
-        reported = bool(existing[0]["reported"]) if existing else False
-        if reported:
-            await repo_query(f"UPDATE {_ID} SET reaction = NONE", id_params)
-            return {"message_id": message_id, "reaction": None, "reported": True}
-        await repo_query(f"DELETE {_ID}", id_params)
+        # Atomic clear: inside one transaction, drop the reaction and delete the
+        # row only if it carries no report. No TOCTOU — a concurrent report is
+        # always preserved (see _CLEAR_REACTION_TX). We then read the row back
+        # to report the actual final state; the invariant holds regardless.
+        await repo_query(_CLEAR_REACTION_TX, id_params)
+        final = await repo_query(f"SELECT reaction, reported FROM {_ID}", id_params)
+        if final:
+            return {
+                "message_id": message_id,
+                "reaction": final[0].get("reaction"),
+                "reported": bool(final[0].get("reported")),
+            }
         return {"message_id": message_id, "reaction": None, "reported": False}
 
     params = _snapshot_params(snap, message_id)
@@ -286,9 +311,17 @@ async def set_reaction(
 async def set_report(
     session_id: str, message_id: str, reason: Optional[str], current: TokenUser
 ) -> Dict[str, Any]:
-    """Idempotent report. Independent of the reaction (a row may be
-    reported and liked/disliked at once). Reason is required, trimmed,
-    1..2000 chars. Re-reporting the same answer updates the same row."""
+    """Report an AI answer — immutable and idempotent.
+
+    Independent of the reaction (a row may be reported and liked/disliked at
+    once). Reason is required, trimmed, 1..2000 chars. A report is write-once:
+    the FIRST report sets `report_reason` and `reported_at`; any later report on
+    the same answer is a no-op for those fields (normal users cannot edit or
+    unreport in P2A v1). This is done in a single atomic UPSERT using null-
+    coalescing on the current row values — `report_reason = (report_reason ??
+    $reason)` and `reported_at = (reported_at ?? time::now())` — so there is no
+    read-then-write race. Verified on the SurrealDB 2.x engine.
+    """
     reason = (reason or "").strip()
     if not reason:
         raise HTTPException(status_code=422, detail="Report reason is required")
@@ -303,7 +336,9 @@ async def set_report(
     params["reason"] = reason
     rows = await repo_query(
         f"UPSERT {_ID} {_UPSERT_SNAPSHOT}, "
-        "reported = true, report_reason = $reason, reported_at = time::now()",
+        "report_reason = (report_reason ?? $reason), "
+        "reported_at = (reported_at ?? time::now()), "
+        "reported = true",
         params,
     )
     row = rows[0] if rows else {}

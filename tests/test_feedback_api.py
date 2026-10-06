@@ -160,14 +160,21 @@ async def test_report_too_long_rejected(embedded):
 
 
 @pytest.mark.asyncio
-async def test_report_persisted_and_idempotent(embedded):
+async def test_report_is_write_once_immutable(embedded):
+    """R1: the first report wins; a second report never overwrites the reason
+    or reported_at, and never creates a duplicate row."""
     with _patch_common(MESSAGES):
-        await fs.set_report("chat_session:s1", AI_ID, "  offensive  ", _user())
-        await fs.set_report("chat_session:s1", AI_ID, "offensive again", _user())
-        rows = await embedded("SELECT * FROM ai_feedback")
-        assert len(rows) == 1
+        await fs.set_report("chat_session:s1", AI_ID, "  reason A  ", _user())
+        first = (await embedded("SELECT report_reason, reported_at FROM ai_feedback"))[0]
+        assert first["report_reason"] == "reason A"  # trimmed
+        reported_at_1 = str(first["reported_at"])
+
+        await fs.set_report("chat_session:s1", AI_ID, "reason B", _user())
+        rows = await embedded("SELECT report_reason, reported, reported_at FROM ai_feedback")
+        assert len(rows) == 1  # no duplicate
         assert rows[0]["reported"] is True
-        assert rows[0]["report_reason"] == "offensive again"  # trimmed, updated in place
+        assert rows[0]["report_reason"] == "reason A"  # NOT overwritten
+        assert str(rows[0]["reported_at"]) == reported_at_1  # timestamp unchanged
 
 
 @pytest.mark.asyncio
@@ -371,3 +378,77 @@ def test_admin_endpoints_require_admin(client, monkeypatch):
     headers = {"Authorization": f"Bearer {token}"}
     assert client.get("/api/feedback/admin/stats", headers=headers).status_code == 403
     assert client.get("/api/feedback/admin", headers=headers).status_code == 403
+
+
+def test_user_endpoint_requires_auth(client, monkeypatch):
+    """R7.1: with auth enforced, an unauthenticated request is rejected (401)."""
+    monkeypatch.setenv("OPEN_NOTEBOOK_DISABLE_AUTH", "false")
+    assert client.get("/api/feedback/sessions/chat_session:s1").status_code == 401
+    assert (
+        client.put(
+            f"/api/feedback/messages/{AI_ID}/reaction",
+            json={"session_id": "chat_session:s1", "reaction": "like"},
+        ).status_code
+        == 401
+    )
+
+
+@pytest.mark.asyncio
+async def test_admin_does_not_bypass_owner_on_user_endpoint(embedded):
+    """R7.2: an admin caller still cannot act on another user's session via the
+    user endpoint — ownership is enforced, admin role is irrelevant here."""
+    other = _session(user_id="user:alice")
+    with patch.object(fs, "auth_disabled", lambda: False), patch.multiple(
+        fs,
+        get_session_or_404=AsyncMock(return_value=("chat_session:s1", other)),
+        chat_graph=MagicMock(get_state=MagicMock(return_value=_state(MESSAGES))),
+        source_chat_graph=MagicMock(get_state=MagicMock(return_value=_state(MESSAGES))),
+        Notebook=MagicMock(get=AsyncMock(return_value=SimpleNamespace(name="NB"))),
+        Source=MagicMock(get=AsyncMock(return_value=SimpleNamespace(title="S"))),
+        User=MagicMock(get=AsyncMock(return_value=SimpleNamespace(username="admin", name="Admin"))),
+    ):
+        admin = _user(current_id="user:admin", username="admin", role="admin")
+        with pytest.raises(Exception) as exc:
+            await fs.set_reaction("chat_session:s1", AI_ID, "like", admin)
+        assert getattr(exc.value, "status_code", None) == 404
+        with pytest.raises(Exception) as exc2:
+            await fs.set_report("chat_session:s1", AI_ID, "x", admin)
+        assert getattr(exc2.value, "status_code", None) == 404
+
+
+@pytest.mark.asyncio
+async def test_report_then_clear_reaction_preserves_report(embedded):
+    """R2 invariant (deterministic): if a row is reported and then its reaction
+    is cleared, the atomic conditional-delete keeps the reported row. Embedded
+    engine cannot exercise true multi-client concurrency; the transactional /
+    conditional semantics are what guarantee a concurrent report is preserved."""
+    with _patch_common(MESSAGES):
+        # report first (no reaction), then add + clear a reaction
+        await fs.set_report("chat_session:s1", AI_ID, "bad", _user())
+        await fs.set_reaction("chat_session:s1", AI_ID, "dislike", _user())
+        r = await fs.set_reaction("chat_session:s1", AI_ID, None, _user())
+        assert r["reported"] is True and r["reaction"] is None
+        rows = await embedded("SELECT reaction, reported, report_reason FROM ai_feedback")
+        assert len(rows) == 1
+        assert rows[0]["reported"] is True and rows[0]["reaction"] is None
+        assert rows[0]["report_reason"] == "bad"  # report content intact
+
+
+@pytest.mark.asyncio
+async def test_user_snapshot_uses_current_db_user_not_stale_jwt(embedded):
+    """R5: the username snapshot comes from the current User record, not the
+    (possibly stale) JWT username."""
+    with patch.multiple(
+        fs,
+        get_session_or_404=AsyncMock(return_value=("chat_session:s1", _session())),
+        chat_graph=MagicMock(get_state=MagicMock(return_value=_state(MESSAGES))),
+        source_chat_graph=MagicMock(get_state=MagicMock(return_value=_state(MESSAGES))),
+        Notebook=MagicMock(get=AsyncMock(return_value=SimpleNamespace(name="NB"))),
+        Source=MagicMock(get=AsyncMock(return_value=SimpleNamespace(title="S"))),
+        User=MagicMock(get=AsyncMock(return_value=SimpleNamespace(username="newname", name="New Name"))),
+    ):
+        stale = _user(current_id="user:dev", username="oldname")
+        await fs.set_reaction("chat_session:s1", AI_ID, "like", stale)
+        row = (await embedded("SELECT username_snapshot, user_name_snapshot FROM ai_feedback"))[0]
+        assert row["username_snapshot"] == "newname"
+        assert row["user_name_snapshot"] == "New Name"

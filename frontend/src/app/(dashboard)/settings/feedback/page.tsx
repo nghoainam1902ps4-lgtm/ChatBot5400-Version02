@@ -144,22 +144,34 @@ export default function FeedbackPage() {
   )
 
   const statCards = (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {[
-        { label: t('feedback.statTotal'), value: stats.data?.total },
-        { label: t('feedback.statLikes'), value: stats.data?.likes },
-        { label: t('feedback.statDislikes'), value: stats.data?.dislikes },
-        { label: t('feedback.statReports'), value: stats.data?.reports },
-      ].map((card) => (
-        <div key={card.label} className="rounded-lg border bg-card px-4 py-3">
-          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {card.label}
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: t('feedback.statTotal'), value: stats.data?.total },
+          { label: t('feedback.statLikes'), value: stats.data?.likes },
+          { label: t('feedback.statDislikes'), value: stats.data?.dislikes },
+          { label: t('feedback.statReports'), value: stats.data?.reports },
+        ].map((card) => (
+          <div key={card.label} className="rounded-lg border bg-card px-4 py-3">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {card.label}
+            </div>
+            {/* Never render a misleading 0 when stats are loading or errored:
+                only show a real number once stats.data has loaded. */}
+            <div className="mt-1 font-mono text-2xl font-semibold text-foreground">
+              {stats.data ? card.value ?? 0 : '—'}
+            </div>
           </div>
-          <div className="mt-1 font-mono text-2xl font-semibold text-foreground">
-            {stats.isLoading ? '—' : card.value ?? 0}
-          </div>
+        ))}
+      </div>
+      {stats.isError && (
+        <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>{t('feedback.loadError')}</span>
+          <Button variant="outline" size="sm" onClick={() => void stats.refetch()}>
+            {t('common.retry')}
+          </Button>
         </div>
-      ))}
+      )}
     </div>
   )
 

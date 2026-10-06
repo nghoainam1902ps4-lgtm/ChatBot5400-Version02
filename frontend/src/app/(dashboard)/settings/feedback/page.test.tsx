@@ -11,7 +11,7 @@ vi.mock('@/components/layout/AppShell', () => ({
 }))
 
 const h = vi.hoisted(() => ({
-  stats: { data: { total: 3, likes: 1, dislikes: 1, reports: 1 }, isLoading: false },
+  stats: { data: { total: 3, likes: 1, dislikes: 1, reports: 1 } as { total: number; likes: number; dislikes: number; reports: number } | undefined, isLoading: false, isError: false, refetch: vi.fn() },
   list: {
     data: { items: [] as AdminFeedbackItem[], page: 1, page_size: 30, total: 0, total_pages: 0 },
     isLoading: false,
@@ -54,7 +54,7 @@ describe('Admin AI Feedback page', () => {
       isLoading: false,
       logout: vi.fn(),
     } as unknown as ReturnType<typeof useAuth>)
-    h.stats = { data: { total: 3, likes: 1, dislikes: 1, reports: 1 }, isLoading: false }
+    h.stats = { data: { total: 3, likes: 1, dislikes: 1, reports: 1 }, isLoading: false, isError: false, refetch: vi.fn() }
     h.list = {
       data: { items: [], page: 1, page_size: 30, total: 0, total_pages: 0 },
       isLoading: false,
@@ -83,6 +83,15 @@ describe('Admin AI Feedback page', () => {
     expect(screen.getByText('feedback.statTotal')).toBeInTheDocument()
     // total value 3 rendered
     expect(screen.getByText('3')).toBeInTheDocument()
+  })
+
+  it('does not render a misleading 0 when stats fail to load; shows retry', () => {
+    h.stats = { data: undefined, isLoading: false, isError: true, refetch: vi.fn() }
+    render(<FeedbackPage />)
+    // stat values show the em dash placeholder, never a fake 0
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(4)
+    expect(screen.getByText('feedback.loadError')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'common.retry' })).toBeInTheDocument()
   })
 
   it('renders an empty state when there is no feedback', () => {

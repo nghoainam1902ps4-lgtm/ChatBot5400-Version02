@@ -247,7 +247,11 @@ export function MessageActions({
                     'h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground max-lg:h-11 max-lg:w-11 max-lg:px-0',
                     reported && 'text-destructive hover:text-destructive'
                   )}
-                  onClick={() => setReportOpen(true)}
+                  onClick={() => {
+                    // Reports are write-once in P2A v1: once reported, the Flag
+                    // stays active but opens no dialog (no edit / re-report).
+                    if (!reported) setReportOpen(true)
+                  }}
                   disabled={!feedbackEnabled}
                 >
                   <Flag className={cn('h-3.5 w-3.5', reported && 'fill-current')} />

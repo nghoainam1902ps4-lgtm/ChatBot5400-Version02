@@ -50,6 +50,7 @@ export function useSetReaction(sessionId: string | null) {
     onMutate: async ({ messageId, reaction }: ReactionVars) => {
       await queryClient.cancelQueries({ queryKey: key })
       const previous = queryClient.getQueryData<FeedbackState[]>(key)
+      const hadPrevious = previous !== undefined
       queryClient.setQueryData<FeedbackState[]>(key, (old) => {
         const list = old ? [...old] : []
         const idx = list.findIndex((f) => f.message_id === messageId)
@@ -60,20 +61,30 @@ export function useSetReaction(sessionId: string | null) {
         }
         return list
       })
-      return { previous }
+      return { previous, hadPrevious }
     },
     onError: (_err, _vars, context) => {
-      // Roll back to the exact previous state.
-      if (context?.previous !== undefined) {
+      // Roll back to the exact pre-mutation state. If the cache held nothing
+      // before (hadPrevious === false), drop the optimistic data entirely so no
+      // ghost entry survives a failed mutation.
+      if (context?.hadPrevious) {
         queryClient.setQueryData(key, context.previous)
+      } else {
+        queryClient.removeQueries({ queryKey: key, exact: true })
       }
       toast.error(t('feedback.failed'))
     },
     onSuccess: (data) => {
-      // Reconcile with server truth (authoritative reaction + reported).
+      // Reconcile with server truth. When the server reports no reaction AND no
+      // report, the row was deleted server-side — remove the entry instead of
+      // keeping a {reaction:null, reported:false} ghost.
+      const deleted = data.reaction === null && data.reported === false
       queryClient.setQueryData<FeedbackState[]>(key, (old) => {
         const list = old ? [...old] : []
         const idx = list.findIndex((f) => f.message_id === data.message_id)
+        if (deleted) {
+          return idx >= 0 ? list.filter((f) => f.message_id !== data.message_id) : list
+        }
         if (idx >= 0) list[idx] = data
         else list.push(data)
         return list

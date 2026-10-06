@@ -112,6 +112,12 @@ export function ChatPanel({
   const isPersistedId = (id: string) =>
     !id.startsWith('temp-') && !id.startsWith('ai-')
 
+  // Never allow a toggle until the current feedback state for the session has
+  // actually loaded: acting on unknown state would send the wrong action (e.g.
+  // "like" on an answer that is already liked). On query error we also keep the
+  // actions disabled rather than assuming "no feedback".
+  const feedbackReady = feedbackQuery.isSuccess
+
   // Stable reference-click handler so memoized messages don't re-render on
   // composer keystrokes (which no longer re-render this component at all, since
   // the input state lives in the ChatComposer child).
@@ -274,7 +280,10 @@ export function ChatPanel({
                     reaction={fb?.reaction ?? null}
                     reported={fb?.reported ?? false}
                     feedbackEnabled={
-                      !isStreaming && Boolean(currentSessionId) && isPersistedId(message.id)
+                      !isStreaming &&
+                      Boolean(currentSessionId) &&
+                      isPersistedId(message.id) &&
+                      feedbackReady
                     }
                   />
                 )
