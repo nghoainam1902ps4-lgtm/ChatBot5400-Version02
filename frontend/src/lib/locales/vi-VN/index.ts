@@ -1113,6 +1113,7 @@ export const viVN = {
     // admin page
     adminTitle: "Phản hồi AI",
     adminDescription: "Theo dõi chất lượng câu trả lời AI qua đánh giá và báo cáo của người dùng.",
+    refresh: "Làm mới",
     statTotal: "Tổng phản hồi",
     statLikes: "Thích",
     statDislikes: "Không thích",

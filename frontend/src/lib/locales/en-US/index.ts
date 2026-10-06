@@ -1110,6 +1110,7 @@ export const enUS = {
     // admin page
     adminTitle: "AI Feedback",
     adminDescription: "Track AI answer quality through user likes, dislikes and reports.",
+    refresh: "Refresh",
     statTotal: "Total feedback",
     statLikes: "Likes",
     statDislikes: "Dislikes",
