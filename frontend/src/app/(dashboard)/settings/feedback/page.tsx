@@ -48,10 +48,12 @@ import {
   ChevronRight,
   Flag,
   MessageSquareWarning,
+  RefreshCw,
   SearchX,
   ThumbsDown,
   ThumbsUp,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 30
 
@@ -95,6 +97,14 @@ export default function FeedbackPage() {
 
   const stats = useAdminFeedbackStats(isAdmin)
   const list = useAdminFeedbackList(params, isAdmin)
+
+  // Manual refresh of the currently displayed data (both the aggregate stats
+  // and the current paginated/filtered list) — in place, without touching
+  // search, filters, page, the detail dialog or any query params.
+  const refreshing = stats.isFetching || list.isFetching
+  const handleRefresh = () => {
+    void Promise.all([stats.refetch(), list.refetch()])
+  }
 
   const items = list.data?.items ?? []
   const totalPages = list.data?.total_pages ?? 0
@@ -325,6 +335,16 @@ export default function FeedbackPage() {
               <SelectItem value="source">{t('feedback.contextSource')}</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            aria-label={t('feedback.refresh')}
+            title={t('feedback.refresh')}
+          >
+            <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
+            {t('feedback.refresh')}
+          </Button>
         </Toolbar>
 
         {renderData()}
