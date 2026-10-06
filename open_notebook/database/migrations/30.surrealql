@@ -1,0 +1,38 @@
+-- Migration 30: AI answer feedback — Like / Dislike / Report (ChatBot5400 P2A).
+--
+-- One row per (user, chat_session, AI message), keyed by a deterministic
+-- composite record id `ai_feedback:[user_id, session_id, message_id]`, so
+-- repeat actions on the same answer UPSERT in place and can never create a
+-- duplicate row (same technique as `recently_viewed` in migration 29).
+--
+-- Question/answer, username/name and context title are server-side SNAPSHOTS
+-- stored as plain values (never record links to chat history), so the admin
+-- statistics keep working after the underlying chat_session or user is deleted,
+-- and reading them never exposes live private chat state. `reaction` is an open
+-- `option<string>`; its `like`|`dislike` domain is enforced at the API layer
+-- (Pydantic Literal), not a field ASSERT — ASSERT on an optional field is not
+-- reliably enforced, so the schema does not depend on it.
+DEFINE TABLE IF NOT EXISTS ai_feedback SCHEMAFULL;
+
+DEFINE FIELD IF NOT EXISTS user_id ON ai_feedback TYPE option<record<user>>;
+DEFINE FIELD IF NOT EXISTS username_snapshot ON ai_feedback TYPE string;
+DEFINE FIELD IF NOT EXISTS user_name_snapshot ON ai_feedback TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS session_id ON ai_feedback TYPE string;
+DEFINE FIELD IF NOT EXISTS message_id ON ai_feedback TYPE string;
+DEFINE FIELD IF NOT EXISTS context_type ON ai_feedback TYPE string ASSERT $value IN ['notebook', 'source'];
+DEFINE FIELD IF NOT EXISTS context_id ON ai_feedback TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS context_title_snapshot ON ai_feedback TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS question_snapshot ON ai_feedback TYPE string;
+DEFINE FIELD IF NOT EXISTS answer_snapshot ON ai_feedback TYPE string;
+DEFINE FIELD IF NOT EXISTS reaction ON ai_feedback TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS reported ON ai_feedback TYPE bool DEFAULT false;
+DEFINE FIELD IF NOT EXISTS report_reason ON ai_feedback TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS reported_at ON ai_feedback TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS created ON ai_feedback DEFAULT time::now() VALUE $before OR time::now();
+DEFINE FIELD IF NOT EXISTS updated ON ai_feedback DEFAULT time::now() VALUE time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_ai_feedback_user ON ai_feedback FIELDS user_id;
+DEFINE INDEX IF NOT EXISTS idx_ai_feedback_reaction ON ai_feedback FIELDS reaction;
+DEFINE INDEX IF NOT EXISTS idx_ai_feedback_reported ON ai_feedback FIELDS reported;
+DEFINE INDEX IF NOT EXISTS idx_ai_feedback_created ON ai_feedback FIELDS created;
+DEFINE INDEX IF NOT EXISTS idx_ai_feedback_ctype ON ai_feedback FIELDS context_type;

@@ -255,3 +255,66 @@ export interface RecentlyViewedResponse {
   title: string
   last_viewed_at: string
 }
+
+// AI Feedback (P2A)
+export type FeedbackReaction = 'like' | 'dislike' | null
+
+export interface FeedbackState {
+  message_id: string
+  reaction: FeedbackReaction
+  reported: boolean
+}
+
+export interface SetReactionRequest {
+  session_id: string
+  reaction: FeedbackReaction
+}
+
+export interface ReportMessageRequest {
+  session_id: string
+  reason: string
+}
+
+export interface AdminFeedbackStats {
+  total: number
+  likes: number
+  dislikes: number
+  reports: number
+}
+
+export interface AdminFeedbackItem {
+  id: string
+  username_snapshot: string
+  user_name_snapshot: string | null
+  session_id: string
+  message_id: string
+  context_type: 'notebook' | 'source'
+  context_id: string | null
+  context_title_snapshot: string | null
+  question_snapshot: string
+  answer_snapshot: string
+  reaction: FeedbackReaction
+  reported: boolean
+  report_reason: string | null
+  reported_at: string | null
+  created: string | null
+  updated: string | null
+}
+
+export interface AdminFeedbackListResponse {
+  items: AdminFeedbackItem[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
+export interface AdminFeedbackListParams {
+  page?: number
+  page_size?: number
+  q?: string
+  type?: 'like' | 'dislike' | 'report'
+  context?: 'notebook' | 'source'
+  sort?: string
+  direction?: 'asc' | 'desc'
+}

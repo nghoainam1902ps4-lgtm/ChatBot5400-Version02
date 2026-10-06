@@ -31,6 +31,7 @@ from api.routers import (
     embedding,
     embedding_rebuild,
     episode_profiles,
+    feedback,
     insights,
     languages,
     models,
@@ -429,6 +430,7 @@ app.include_router(episode_profiles.router, prefix="/api", tags=["episode-profil
 app.include_router(speaker_profiles.router, prefix="/api", tags=["speaker-profiles"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
+app.include_router(feedback.router, prefix="/api", tags=["feedback"])
 app.include_router(credentials.router, prefix="/api", tags=["credentials"])
 app.include_router(providers.router, prefix="/api", tags=["providers"])
 app.include_router(capabilities.router, prefix="/api", tags=["capabilities"])

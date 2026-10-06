@@ -13,6 +13,12 @@ vi.mock('@/components/sources/MessageActions', () => ({
   MessageActions: () => null,
 }))
 
+// ChatPanel fetches batch feedback state via useSessionFeedback; stub it so
+// these composer tests don't need a QueryClientProvider.
+vi.mock('@/lib/hooks/use-feedback', () => ({
+  useSessionFeedback: () => ({ data: [] }),
+}))
+
 describe('ChatPanel composer', () => {
   beforeEach(() => {
     vi.clearAllMocks()

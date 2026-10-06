@@ -13,8 +13,10 @@ import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import {
   SourceChatMessage,
   SourceChatContextIndicator,
-  BaseChatSession
+  BaseChatSession,
+  FeedbackReaction
 } from '@/lib/types/api'
+import { useSessionFeedback } from '@/lib/hooks/use-feedback'
 import { ModelSelector } from './ModelSelector'
 import { ContextIndicator } from '@/components/common/ContextIndicator'
 import { SessionManager } from '@/components/sources/SessionManager'
@@ -88,6 +90,33 @@ export function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { openModal } = useModalManager()
   const canManageSessions = Boolean(onSelectSession && onCreateSession && onDeleteSession)
+
+  // Batch feedback state for every AI message in the current session (one
+  // request — no N+1). Disabled while streaming; the key is per session so a
+  // session switch refetches the right state. Shared by notebook and source
+  // chat, which both render through this panel.
+  const feedbackQuery = useSessionFeedback(
+    currentSessionId ?? null,
+    Boolean(currentSessionId) && !isStreaming
+  )
+  const feedbackByMessage = useMemo(() => {
+    const map = new Map<string, { reaction: FeedbackReaction; reported: boolean }>()
+    for (const f of feedbackQuery.data ?? []) {
+      map.set(f.message_id, { reaction: f.reaction, reported: f.reported })
+    }
+    return map
+  }, [feedbackQuery.data])
+
+  // A message can receive feedback only once it is a persisted AI message:
+  // not while streaming, not a temporary optimistic/stream id.
+  const isPersistedId = (id: string) =>
+    !id.startsWith('temp-') && !id.startsWith('ai-')
+
+  // Never allow a toggle until the current feedback state for the session has
+  // actually loaded: acting on unknown state would send the wrong action (e.g.
+  // "like" on an answer that is already liked). On query error we also keep the
+  // actions disabled rather than assuming "no feedback".
+  const feedbackReady = feedbackQuery.isSuccess
 
   // Stable reference-click handler so memoized messages don't re-render on
   // composer keystrokes (which no longer re-render this component at all, since
@@ -239,14 +268,26 @@ export function ChatPanel({
                 <p className="text-xs mt-2">{t('chat.askQuestions')}</p>
               </div>
             ) : (
-              messages.map((message) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  notebookId={notebookId}
-                  onReferenceClick={handleReferenceClick}
-                />
-              ))
+              messages.map((message) => {
+                const fb = feedbackByMessage.get(message.id)
+                return (
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    notebookId={notebookId}
+                    onReferenceClick={handleReferenceClick}
+                    sessionId={currentSessionId ?? null}
+                    reaction={fb?.reaction ?? null}
+                    reported={fb?.reported ?? false}
+                    feedbackEnabled={
+                      !isStreaming &&
+                      Boolean(currentSessionId) &&
+                      isPersistedId(message.id) &&
+                      feedbackReady
+                    }
+                  />
+                )
+              })
             )}
             {isStreaming && (
               <div className="flex gap-3 justify-start">
@@ -439,12 +480,20 @@ interface ChatMessageProps {
   message: SourceChatMessage
   notebookId?: string
   onReferenceClick: (type: string, id: string) => void
+  sessionId?: string | null
+  reaction?: FeedbackReaction
+  reported?: boolean
+  feedbackEnabled?: boolean
 }
 
 const ChatMessage = memo(function ChatMessage({
   message,
   notebookId,
-  onReferenceClick
+  onReferenceClick,
+  sessionId,
+  reaction = null,
+  reported = false,
+  feedbackEnabled = false
 }: ChatMessageProps) {
   if (message.type === 'ai') {
     // AI answer: no bubble, full width of the reading column.
@@ -463,6 +512,11 @@ const ChatMessage = memo(function ChatMessage({
           <MessageActions
             content={message.content}
             notebookId={notebookId}
+            sessionId={sessionId}
+            messageId={message.id}
+            reaction={reaction}
+            reported={reported}
+            feedbackEnabled={feedbackEnabled}
           />
         </div>
       </div>
