@@ -109,20 +109,28 @@ export function MessageActions({
     }
   }
 
+  // R2 defense-in-depth: a reaction and a report must never run at once.
+  // Guard both the buttons' disabled state AND the handlers (not only the UI),
+  // so an overlapping action is impossible even if a click slips through.
   const reactionPending = setReaction.isPending
+  const reportPending = reportMessage.isPending
+  const feedbackMutationPending = reactionPending || reportPending
   const handleLike = () => {
-    if (!messageId) return
+    if (!messageId || feedbackMutationPending) return
     setReaction.mutate({ messageId, reaction: reaction === 'like' ? null : 'like' })
   }
   const handleDislike = () => {
-    if (!messageId) return
+    if (!messageId || feedbackMutationPending) return
     setReaction.mutate({ messageId, reaction: reaction === 'dislike' ? null : 'dislike' })
   }
 
   const trimmedReason = reportReason.trim()
   const reasonValid = trimmedReason.length > 0 && trimmedReason.length <= REPORT_REASON_MAX
   const submitReport = () => {
-    if (!messageId || !reasonValid) return
+    // reportPending only becomes true AFTER mutate starts, so checking it here
+    // does not block the first submit; it blocks a second overlapping submit and
+    // a submit while a reaction mutation is in flight.
+    if (!messageId || !reasonValid || feedbackMutationPending) return
     reportMessage.mutate(
       { messageId, reason: trimmedReason },
       {
@@ -198,7 +206,7 @@ export function MessageActions({
                     reaction === 'like' && 'text-teal hover:text-teal'
                   )}
                   onClick={handleLike}
-                  disabled={!feedbackEnabled || reactionPending}
+                  disabled={!feedbackEnabled || feedbackMutationPending}
                 >
                   <ThumbsUp className={cn('h-3.5 w-3.5', reaction === 'like' && 'fill-current')} />
                   <span className="max-lg:hidden">{t('feedback.like')}</span>
@@ -223,7 +231,7 @@ export function MessageActions({
                     reaction === 'dislike' && 'text-warn hover:text-warn'
                   )}
                   onClick={handleDislike}
-                  disabled={!feedbackEnabled || reactionPending}
+                  disabled={!feedbackEnabled || feedbackMutationPending}
                 >
                   <ThumbsDown className={cn('h-3.5 w-3.5', reaction === 'dislike' && 'fill-current')} />
                   <span className="max-lg:hidden">{t('feedback.dislike')}</span>
@@ -250,9 +258,10 @@ export function MessageActions({
                   onClick={() => {
                     // Reports are write-once in P2A v1: once reported, the Flag
                     // stays active but opens no dialog (no edit / re-report).
-                    if (!reported) setReportOpen(true)
+                    // Also never open while another feedback mutation is pending.
+                    if (!reported && !feedbackMutationPending) setReportOpen(true)
                   }}
-                  disabled={!feedbackEnabled}
+                  disabled={!feedbackEnabled || feedbackMutationPending}
                 >
                   <Flag className={cn('h-3.5 w-3.5', reported && 'fill-current')} />
                   <span className="max-lg:hidden">{t('feedback.report')}</span>
@@ -307,7 +316,7 @@ export function MessageActions({
               <Button
                 variant="destructive"
                 onClick={submitReport}
-                disabled={!reasonValid || reportMessage.isPending}
+                disabled={!reasonValid || feedbackMutationPending}
               >
                 {reportMessage.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 {t('feedback.submitReport')}

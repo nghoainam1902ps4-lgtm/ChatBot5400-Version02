@@ -127,11 +127,33 @@ describe('MessageActions', () => {
     await waitFor(() => expect(screen.queryByText('feedback.reportTitle')).toBeNull())
   })
 
-  it('disables the submit button while a report is pending', async () => {
+  it('cross-guards: a pending report disables like/dislike/report (R2)', () => {
     h.reportPending = true
     render(<MessageActions {...baseProps} />)
+    expect(screen.getByRole('button', { name: 'feedback.like' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'feedback.dislike' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'feedback.report' })).toBeDisabled()
+  })
+
+  it('cross-guards: a pending reaction disables like/dislike/report (R2)', () => {
+    h.reactionPending = true
+    render(<MessageActions {...baseProps} />)
+    expect(screen.getByRole('button', { name: 'feedback.like' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'feedback.dislike' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'feedback.report' })).toBeDisabled()
+  })
+
+  it('a pending reaction prevents the report dialog from opening', () => {
+    h.reactionPending = true
+    render(<MessageActions {...baseProps} />)
     fireEvent.click(screen.getByRole('button', { name: 'feedback.report' }))
-    const submit = await screen.findByRole('button', { name: 'feedback.submitReport' })
-    expect(submit).toBeDisabled()
+    expect(screen.queryByText('feedback.reportTitle')).toBeNull()
+  })
+
+  it('no mutation pending: all feedback actions are enabled', () => {
+    render(<MessageActions {...baseProps} />)
+    expect(screen.getByRole('button', { name: 'feedback.like' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'feedback.dislike' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'feedback.report' })).toBeEnabled()
   })
 })
