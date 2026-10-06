@@ -2,21 +2,62 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Save, Copy, Loader2, Check } from 'lucide-react'
+import { Save, Copy, Loader2, Check, ThumbsUp, ThumbsDown, Flag } from 'lucide-react'
 import { useCreateNote } from '@/lib/hooks/use-notes'
+import { useSetReaction, useReportMessage } from '@/lib/hooks/use-feedback'
+import type { FeedbackReaction } from '@/lib/types/api'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { cn } from '@/lib/utils'
+
+const REPORT_REASON_MAX = 2000
 
 interface MessageActionsProps {
   content: string
   notebookId?: string
+  /** Feedback is available only for persisted AI messages. When sessionId and
+   * messageId are both present the three feedback actions are shown. */
+  sessionId?: string | null
+  messageId?: string
+  reaction?: FeedbackReaction
+  reported?: boolean
+  /** False while streaming / for temporary (unpersisted) message ids — the
+   * feedback buttons render but are disabled so no request is made with an
+   * unverified identity. */
+  feedbackEnabled?: boolean
 }
 
-export function MessageActions({ content, notebookId }: MessageActionsProps) {
+export function MessageActions({
+  content,
+  notebookId,
+  sessionId,
+  messageId,
+  reaction = null,
+  reported = false,
+  feedbackEnabled = false,
+}: MessageActionsProps) {
   const { t } = useTranslation()
   const [copySuccess, setCopySuccess] = useState(false)
   const createNote = useCreateNote()
+
+  const showFeedback = Boolean(sessionId && messageId)
+  const setReaction = useSetReaction(sessionId ?? null)
+  const reportMessage = useReportMessage(sessionId ?? null)
+
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportReason, setReportReason] = useState('')
 
   const handleSaveToNote = () => {
     if (!notebookId) {
@@ -68,9 +109,34 @@ export function MessageActions({ content, notebookId }: MessageActionsProps) {
     }
   }
 
+  const reactionPending = setReaction.isPending
+  const handleLike = () => {
+    if (!messageId) return
+    setReaction.mutate({ messageId, reaction: reaction === 'like' ? null : 'like' })
+  }
+  const handleDislike = () => {
+    if (!messageId) return
+    setReaction.mutate({ messageId, reaction: reaction === 'dislike' ? null : 'dislike' })
+  }
+
+  const trimmedReason = reportReason.trim()
+  const reasonValid = trimmedReason.length > 0 && trimmedReason.length <= REPORT_REASON_MAX
+  const submitReport = () => {
+    if (!messageId || !reasonValid) return
+    reportMessage.mutate(
+      { messageId, reason: trimmedReason },
+      {
+        onSuccess: () => {
+          setReportOpen(false)
+          setReportReason('')
+        },
+      }
+    )
+  }
+
   return (
     <TooltipProvider>
-      <div className="flex gap-1 max-lg:-ml-3 max-lg:gap-0.5">
+      <div className="flex flex-wrap items-center gap-1 max-lg:-ml-3 max-lg:gap-0.5">
         {notebookId && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -115,7 +181,137 @@ export function MessageActions({ content, notebookId }: MessageActionsProps) {
             <p>{t('common.copyToClipboard')}</p>
           </TooltipContent>
         </Tooltip>
+
+        {showFeedback && (
+          <>
+            {/* Like */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={reaction === 'like'}
+                  aria-label={reaction === 'like' ? t('feedback.removeLike') : t('feedback.like')}
+                  title={reaction === 'like' ? t('feedback.removeLike') : t('feedback.like')}
+                  className={cn(
+                    'h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground max-lg:h-11 max-lg:w-11 max-lg:px-0',
+                    reaction === 'like' && 'text-teal hover:text-teal'
+                  )}
+                  onClick={handleLike}
+                  disabled={!feedbackEnabled || reactionPending}
+                >
+                  <ThumbsUp className={cn('h-3.5 w-3.5', reaction === 'like' && 'fill-current')} />
+                  <span className="max-lg:hidden">{t('feedback.like')}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{reaction === 'like' ? t('feedback.removeLike') : t('feedback.like')}</p>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Dislike */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={reaction === 'dislike'}
+                  aria-label={reaction === 'dislike' ? t('feedback.removeDislike') : t('feedback.dislike')}
+                  title={reaction === 'dislike' ? t('feedback.removeDislike') : t('feedback.dislike')}
+                  className={cn(
+                    'h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground max-lg:h-11 max-lg:w-11 max-lg:px-0',
+                    reaction === 'dislike' && 'text-warn hover:text-warn'
+                  )}
+                  onClick={handleDislike}
+                  disabled={!feedbackEnabled || reactionPending}
+                >
+                  <ThumbsDown className={cn('h-3.5 w-3.5', reaction === 'dislike' && 'fill-current')} />
+                  <span className="max-lg:hidden">{t('feedback.dislike')}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{reaction === 'dislike' ? t('feedback.removeDislike') : t('feedback.dislike')}</p>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Report */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={reported}
+                  aria-label={reported ? t('feedback.reported') : t('feedback.report')}
+                  title={reported ? t('feedback.reported') : t('feedback.report')}
+                  className={cn(
+                    'h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground max-lg:h-11 max-lg:w-11 max-lg:px-0',
+                    reported && 'text-destructive hover:text-destructive'
+                  )}
+                  onClick={() => setReportOpen(true)}
+                  disabled={!feedbackEnabled}
+                >
+                  <Flag className={cn('h-3.5 w-3.5', reported && 'fill-current')} />
+                  <span className="max-lg:hidden">{t('feedback.report')}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{reported ? t('feedback.reported') : t('feedback.report')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
       </div>
+
+      {/* Report dialog (design-system Dialog — never a browser prompt/confirm) */}
+      {showFeedback && (
+        <Dialog
+          open={reportOpen}
+          onOpenChange={(open) => {
+            if (!open && reportMessage.isPending) return
+            setReportOpen(open)
+            if (!open) setReportReason('')
+          }}
+        >
+          <DialogContent size="md">
+            <DialogHeader>
+              <DialogTitle>{t('feedback.reportTitle')}</DialogTitle>
+              <DialogDescription>{t('feedback.reportDescription')}</DialogDescription>
+            </DialogHeader>
+            <DialogBody className="space-y-1.5">
+              <Label htmlFor="report-reason">{t('feedback.reportReasonLabel')}</Label>
+              <Textarea
+                id="report-reason"
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                placeholder={t('feedback.reportPlaceholder')}
+                maxLength={REPORT_REASON_MAX}
+                rows={5}
+                className="resize-none"
+              />
+              <p className="text-right text-xs text-muted-foreground tabular-nums">
+                {trimmedReason.length}/{REPORT_REASON_MAX}
+              </p>
+            </DialogBody>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setReportOpen(false)}
+                disabled={reportMessage.isPending}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={submitReport}
+                disabled={!reasonValid || reportMessage.isPending}
+              >
+                {reportMessage.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {t('feedback.submitReport')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </TooltipProvider>
   )
 }

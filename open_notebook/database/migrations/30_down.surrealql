@@ -1,0 +1,2 @@
+-- Rollback migration 30: drop the AI feedback table.
+REMOVE TABLE IF EXISTS ai_feedback;

@@ -43,6 +43,7 @@ import {
   Command,
   Users,
   KeyRound,
+  MessageSquareWarning,
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -147,6 +148,11 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
             name: t('users.title'),
             href: '/settings/users',
             icon: Users,
+          },
+          {
+            name: t('feedback.adminTitle'),
+            href: '/settings/feedback',
+            icon: MessageSquareWarning,
           },
         ],
       },
