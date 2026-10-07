@@ -2,6 +2,30 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.0.3] - 2026-10-07
+
+Hoàn tất đổi thương hiệu hiển thị sang "Chatbot - 5400" trên toàn bộ phần
+giao diện người dùng, và chuẩn hoá hướng dẫn cài đặt/triển khai theo nguồn
+ChatBot 5400. Bản cập nhật không thay đổi RAG/GraphRAG, embedding, cách nạp
+nguồn hay cơ sở dữ liệu, và không có migration mới.
+
+### Đổi thương hiệu giao diện
+- Trang lỗi kết nối API: thay "Open Notebook" bằng "Chatbot - 5400" và cập
+  nhật liên kết tài liệu trỏ về kho mã của dự án.
+- Trang Cài đặt: cập nhật các mô tả (tự động xóa tệp đã tải lên, gán mô hình
+  mặc định, cảnh báo thiếu mô hình bắt buộc) sang tên "Chatbot - 5400" cho cả
+  tiếng Việt và tiếng Anh.
+- Hướng dẫn nhà cung cấp AI trong ứng dụng: thay toàn bộ "Open Notebook" bằng
+  "Chatbot - 5400".
+- Banner thiết lập mã hóa: liên kết "Xem tài liệu" trỏ về kho mã của dự án.
+
+### Cài đặt và triển khai
+- Chuẩn hoá quy trình cài đặt mới trên nguồn ChatBot 5400 (`.env.example`,
+  `docker-compose.yml`, tài liệu triển khai VPS, README).
+- Hoàn thiện hướng dẫn xác thực cho lần cài đặt mới và thống nhất hướng dẫn
+  giữa môi trường phát triển và sản xuất.
+- Bổ sung kiểm thử hợp đồng cài đặt (`tests/test_install_contract.py`).
+
 ## [1.0.2] - 2026-10-07
 
 Bổ sung hệ thống phản hồi chất lượng câu trả lời AI cho Trò chuyện trong Sổ tay
