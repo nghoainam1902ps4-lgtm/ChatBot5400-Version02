@@ -2,6 +2,50 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.0.2] - 2026-10-07
+
+Bổ sung hệ thống phản hồi chất lượng câu trả lời AI cho Trò chuyện trong Sổ tay
+và Trò chuyện theo Nguồn, kèm màn hình quản trị tổng hợp phản hồi. Bản cập nhật
+không thay đổi RAG/GraphRAG, embedding hoặc cách nạp nguồn.
+
+### Phản hồi câu trả lời AI
+- Thêm các thao tác Thích, Không thích và Báo cáo cho câu trả lời AI đã được lưu
+  trong Trò chuyện Sổ tay và Trò chuyện theo Nguồn.
+- Thích và Không thích loại trừ lẫn nhau; người dùng có thể bỏ lựa chọn đã đánh
+  giá.
+- Báo cáo hoạt động độc lập với Thích/Không thích và yêu cầu nhập lý do.
+- Báo cáo đã gửi là bất biến trong phiên bản này: người dùng không thể gửi lại
+  để sửa nội dung hoặc thời điểm báo cáo.
+- Các thao tác phản hồi chỉ khả dụng với câu trả lời AI đã được lưu; không cho
+  thao tác khi câu trả lời còn đang sinh hoặc đang dùng mã tạm thời.
+
+### Quản trị phản hồi AI
+- Thêm trang Cài đặt → Phản hồi AI dành cho quản trị viên.
+- Hiển thị thống kê Tổng phản hồi, Thích, Không thích và Báo cáo.
+- Danh sách hỗ trợ tìm kiếm, lọc theo loại phản hồi và ngữ cảnh Sổ tay/Nguồn,
+  cùng phân trang phía máy chủ.
+- Có thể mở chi tiết để xem ảnh chụp thông tin người dùng, ngữ cảnh, câu hỏi,
+  câu trả lời AI và lý do báo cáo tại thời điểm người dùng gửi phản hồi.
+- Thêm nút "Làm mới" để cập nhật đồng thời thống kê và danh sách hiện tại mà
+  không phải tải lại toàn bộ trang; giữ nguyên tìm kiếm, bộ lọc, trang đang xem
+  và hộp thoại chi tiết đang mở.
+
+### Quyền riêng tư và dữ liệu
+- Người dùng chỉ được đọc hoặc thay đổi phản hồi thuộc các phiên trò chuyện của
+  chính mình.
+- Quản trị viên xem dữ liệu phản hồi đã được người dùng chủ động tạo, không dùng
+  chức năng này để duyệt tùy ý lịch sử trò chuyện riêng tư.
+- Máy chủ tự lấy và lưu ảnh chụp câu hỏi, câu trả lời, người dùng và ngữ cảnh;
+  trình duyệt không gửi các nội dung này làm nguồn dữ liệu tin cậy.
+- Khi một bản ghi không còn Thích/Không thích và cũng chưa được Báo cáo, bản ghi
+  phản hồi được loại bỏ.
+
+### Cơ sở dữ liệu
+- Thêm migration 30 với bảng `ai_feedback` và các chỉ mục phục vụ thống kê, lọc
+  và tra cứu phản hồi.
+- Migration được áp dụng tự động khi ứng dụng khởi động theo cơ chế migration
+  hiện có.
+
 ## [1.0.1] - 2026-10-04
 
 Làm mới toàn bộ lớp giao diện cho chín trang chính trên nền "hệ trang dùng
