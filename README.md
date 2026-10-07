@@ -64,26 +64,23 @@ cd ChatBot5400-Version02
 
 ### 2. Chọn phiên bản mã nguồn
 
-**Bản ổn định (khuyến nghị cho cài mới).** Dùng tag phát hành `v*` mới nhất:
-
-```bash
-git fetch --tags
-# Chọn tag vX.Y.Z ổn định mới nhất (bỏ qua bản prerelease / tag không hợp lệ):
-LATEST=$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
-echo "Checkout $LATEST"
-git checkout "$LATEST"
-```
-
-> Tại thời điểm viết tài liệu, bản ổn định là **v1.0.2**. Nếu muốn ghim cứng:
-> `git checkout v1.0.2`.
-
-**Bản phát triển / mới nhất (dành cho người thử nghiệm, lập trình viên):**
+Dùng **nhánh mặc định** cho Quick Start bằng root compose ở máy mới:
 
 ```bash
 git checkout claude/practical-wozniak-9s1t6z
 ```
 
-Nhánh này có thể chứa thay đổi **mới hơn** bản ổn định gần nhất.
+> ⚠️ **Không `git checkout v1.0.2` cho Quick Start root-compose này.** Bản phát hành
+> `v1.0.2` được đóng băng **trước** khi root `docker-compose.yml` được chuẩn hóa để
+> build từ mã nguồn. Nếu checkout `v1.0.2` rồi chạy `docker compose up -d`, bạn sẽ
+> **mất bản sửa này** và có thể lại chạy nhầm image bản gốc
+> `lfnovo/open_notebook:v1-latest`. `v1.0.2` vẫn là một bản phát hành production hợp
+> lệ (xem phần production) vì topology production của nó đã build từ mã nguồn — chỉ
+> **root/local compose** của nó là chưa có bản sửa.
+>
+> Khi có **bản phát hành ổn định mới** chứa bản chuẩn hóa này, bạn có thể dùng đúng
+> tag đó cho cả cài cục bộ (checkout tag thay vì nhánh). Tới lúc đó, dùng nhánh mặc
+> định như trên.
 
 ### 3. Tạo cấu hình bí mật
 

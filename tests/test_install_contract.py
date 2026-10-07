@@ -61,6 +61,32 @@ def test_readme_does_not_install_via_upstream():
     )
 
 
+def _readme_code_blocks(text: str) -> list[str]:
+    """Bodies of fenced ``` code blocks (the commands users actually run)."""
+    return re.findall(r"```[^\n]*\n(.*?)```", text, re.DOTALL)
+
+
+def test_readme_local_quickstart_avoids_pre_fix_stable_tag():
+    """The local/root-compose Quick Start must route through the default
+    development branch, NOT `git checkout v1.0.2` — that frozen release predates
+    this fix and its root docker-compose.yml still runs the upstream app image.
+
+    Only *runnable* commands (fenced code blocks) are checked, so the prose
+    warning that tells users NOT to check out v1.0.2 is allowed.
+    """
+    blocks = _readme_code_blocks(README.read_text(encoding="utf-8"))
+    for body in blocks:
+        assert "checkout v1.0.2" not in body, (
+            "README Quick Start must not instruct `git checkout v1.0.2` for the "
+            "root-compose install; that pre-fix release reintroduces the upstream "
+            "app image. Use the default development branch until a newer stable "
+            "release contains this fix."
+        )
+    assert any(
+        "checkout claude/practical-wozniak-9s1t6z" in body for body in blocks
+    ), "README local Quick Start should check out the default development branch."
+
+
 def test_prod_compose_builds_from_source():
     text = PROD_COMPOSE.read_text(encoding="utf-8")
     assert re.search(r"^\s*build:", text, re.MULTILINE), (
