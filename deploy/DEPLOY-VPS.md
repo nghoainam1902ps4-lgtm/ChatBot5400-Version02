@@ -138,18 +138,43 @@ Mở trình duyệt: **https://5491sotay.io.vn**
 - Vào **Cài đặt → Nhà cung cấp** để nhập API key của mô hình AI (OpenAI/Anthropic/…)
   thì chat mới hoạt động.
 
-## 7. Nâng cấp về sau (khi có code mới)
+## 7. Nâng cấp về sau (khi có bản mới)
+
+Nâng cấp production phải **chọn rõ một tag phát hành ổn định đã được review** — KHÔNG
+kéo thẳng HEAD của nhánh phát triển lên production.
+
+> 🛟 **Sao lưu trước khi nâng cấp.** Dữ liệu nằm ở `deploy/surreal_data` và
+> `deploy/notebook_data`. Sao lưu (khi đã `down`) trước khi nâng cấp:
+> ```bash
+> cd /opt/chatbot5400/deploy
+> docker compose -f docker-compose.prod.yml down
+> tar czf backup-$(date +%F).tgz surreal_data notebook_data .env
+> ```
 
 ```bash
 cd /opt/chatbot5400
-git pull origin claude/practical-wozniak-9s1t6z
+git fetch origin --tags
+
+# (tùy chọn) xem tag ổn định mới nhất để biết nên lên bản nào:
+git tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1
+
+# Chọn RÕ bản ổn định muốn lên (thay vX.Y.Z bằng tag đã review):
+git checkout vX.Y.Z
+
 cd deploy
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 Dữ liệu (SurrealDB, uploads, chat) nằm trên các thư mục `deploy/surreal_data` và
-`deploy/notebook_data` nên **không mất** khi build lại. Migration DB tự chạy khi
-API khởi động.
+`deploy/notebook_data` nên **không mất** khi build lại.
+
+> ⚙️ **Migration tự chạy khi API khởi động** khi lên phiên bản mới. Hãy **chỉ nâng
+> cấp tiến** (lên tag mới hơn); **không hạ cấp (down-migrate) tùy tiện** — hạ phiên
+> bản có thể không tương thích với schema DB đã migrate. Nếu buộc phải quay lui,
+> khôi phục từ bản sao lưu ở trên.
+
+> 🧪 Môi trường **thử nghiệm / phát triển** (không phải production) có thể theo nhánh
+> mặc định: `git checkout claude/practical-wozniak-9s1t6z && git pull`.
 
 ## 8. Lệnh vận hành hữu ích
 
@@ -210,8 +235,11 @@ docker compose -f docker-compose.prod.yml down        # dừng (giữ dữ liệ
   ```
   (Từ bản mới, compose sẽ **báo lỗi ngay** nếu `SURREAL_PASSWORD` trống thay vì
   khởi tạo DB với mật khẩu rỗng.)
-- **Đăng nhập bị đăng xuất sau mỗi lần restart:** chưa đặt `OPEN_NOTEBOOK_JWT_SECRET`
-  trong `.env` — đặt rồi `up -d`.
+- **Đăng nhập bị đăng xuất sau mỗi lần restart:** chỉ xảy ra khi **cả**
+  `OPEN_NOTEBOOK_JWT_SECRET` **và** `OPEN_NOTEBOOK_ENCRYPTION_KEY` đều trống (app
+  derive khóa ký JWT ổn định từ `OPEN_NOTEBOOK_ENCRYPTION_KEY` nếu không đặt JWT
+  secret). Đặt ít nhất `OPEN_NOTEBOOK_ENCRYPTION_KEY` (bắt buộc), và nên đặt
+  `OPEN_NOTEBOOK_JWT_SECRET` để xoay khóa độc lập, rồi `up -d`.
 - **Chat báo lỗi cấu hình mô hình:** chưa nhập API key nhà cung cấp (bước 6).
 - **Tài liệu vẫn mất Điều/Khoản:** docling chưa cài xong hoặc đang fallback. Kiểm
   tra trong container:

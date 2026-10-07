@@ -11,7 +11,9 @@ So với bản gốc, ChatBot 5400 bổ sung và tùy biến:
 
 - 🔐 **Đăng nhập / phân quyền (auth + RBAC)** và **cô lập dữ liệu theo người dùng**
 - 🇻🇳 **Giao diện tiếng Việt** và **giao diện (UI) tùy biến**
-- 📄 Trích xuất tài liệu giữ đúng **Điều / Khoản** (docling bật mặc định)
+- 📄 Hỗ trợ **Docling** để trích xuất tài liệu theo bố cục (giữ đúng **Điều /
+  Khoản**). Bản production bật Docling mặc định; bản cục bộ để **tùy chọn** (bật
+  bằng `OPEN_NOTEBOOK_ENABLE_DOCLING=true`)
 - 🤖 Giữ nguyên năng lực lõi của Open Notebook: hỏi–đáp theo nguồn, tạo podcast,
   tìm kiếm full-text + vector, hỗ trợ nhiều nhà cung cấp AI
 
@@ -113,9 +115,12 @@ Mở trình duyệt: **http://localhost:8502**
 Sau đó vào mục **Models / Nhà cung cấp** để nhập API key của mô hình AI
 (OpenAI / Anthropic / Google …) thì chức năng chat mới hoạt động.
 
-> ⚠️ **Mặc định cục bộ, KHÔNG dùng cho production.** SurrealDB chỉ mở ở `127.0.0.1`
-> với tài khoản mặc định `root:root`; CORS mở rộng; auth là middleware mật khẩu đơn
-> giản. Trước khi phơi ra mạng, xem phần production bên dưới.
+> ⚠️ **Mặc định cục bộ, KHÔNG dùng cho production.** Đăng nhập dùng **JWT và bật
+> mặc định** (middleware JWT + phân quyền theo vai trò). Tuy nhiên bản root compose
+> cục bộ vẫn dùng thông tin DB tiện cho phát triển (`root:root`), SurrealDB chỉ mở ở
+> `127.0.0.1`, và CORS để mở. Đây là cấu hình cho **local/dev**; đừng phơi trực tiếp
+> ra Internet khi chưa làm bước làm cứng (hardening) cho production — xem phần
+> production bên dưới.
 
 ### Lần build đầu tiên diễn ra gì?
 
