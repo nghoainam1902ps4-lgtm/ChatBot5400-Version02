@@ -1,7 +1,8 @@
 # Triển khai ChatBot5400 lên VPS (5491sotay.io.vn)
 
-Hướng dẫn cài đặt bản mới nhất (nhánh `claude/practical-wozniak-9s1t6z`) lên VPS
-Ubuntu/Debian, chạy sau Caddy với HTTPS tự động.
+Hướng dẫn cài đặt ChatBot 5400 lên VPS Ubuntu/Debian, chạy sau Caddy với HTTPS tự
+động. Cài production mới nên dùng **tag phát hành ổn định mới nhất**; môi trường thử
+nghiệm có thể dùng nhánh phát triển (xem mục 3).
 
 - Frontend: **https://5491sotay.io.vn**
 - API: **https://api.5491sotay.io.vn**
@@ -47,12 +48,39 @@ curl -fsSL https://get.docker.com | sh
 docker version && docker compose version   # kiểm tra
 ```
 
-## 3. Tải mã nguồn (đúng nhánh)
+## 3. Tải mã nguồn
 
 ```bash
 apt-get update && apt-get install -y git
-git clone -b claude/practical-wozniak-9s1t6z \
-  https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02 /opt/chatbot5400
+git clone https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02 /opt/chatbot5400
+cd /opt/chatbot5400
+```
+
+Chọn phiên bản mã nguồn:
+
+- **Cài production MỚI → dùng tag phát hành ổn định mới nhất (khuyến nghị):**
+
+  ```bash
+  git fetch --tags
+  # Chọn tag vX.Y.Z ổn định mới nhất (bỏ qua prerelease / tag không hợp lệ):
+  LATEST=$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+  echo "Checkout $LATEST"
+  git checkout "$LATEST"
+  ```
+
+  > Bản ổn định tại thời điểm viết tài liệu là **v1.0.2**. Ghim cứng nếu muốn:
+  > `git checkout v1.0.2`.
+
+- **Môi trường thử nghiệm / phát triển → dùng nhánh mặc định:**
+
+  ```bash
+  git checkout claude/practical-wozniak-9s1t6z
+  ```
+
+> ⚠️ Đây chỉ là hướng dẫn cho cài đặt **mới**. **Không** tự ý đổi phiên bản trên VPS
+> đang chạy chỉ vì tài liệu — việc nâng cấp xem mục 7.
+
+```bash
 cd /opt/chatbot5400/deploy
 ```
 
@@ -136,9 +164,23 @@ docker compose -f docker-compose.prod.yml down        # dừng (giữ dữ liệ
 
 - **Caddy không cấp được HTTPS:** kiểm tra cổng 80/443 đã mở và DNS đã trỏ đúng
   (`dig 5491sotay.io.vn +short`). Xem `logs -f caddy`.
-- **`no space left on device`:** dọn Docker cũ `docker system prune -af && docker builder prune -af`,
-  kiểm tra `df -h /`. Image gọn nên hiếm khi gặp lúc build; nếu hết đĩa lúc chạy,
-  thường do PyTorch/model docling — cần thêm dung lượng.
+- **`no space left on device`:** trước hết **chẩn đoán** để biết chỗ nào đầy, đừng
+  xóa bừa:
+  ```bash
+  df -h /                 # còn trống bao nhiêu
+  docker system df        # Docker dùng hết bao nhiêu (images / containers / volumes / cache)
+  docker system df -v     # chi tiết từng image/volume
+  ```
+  Image gọn nên hiếm khi hết đĩa lúc build; nếu hết lúc chạy thường do
+  PyTorch/model docling — cân nhắc **thêm dung lượng** là an toàn nhất. Nếu cần dọn,
+  dọn **có mục tiêu** sau khi đã xác định thứ không dùng:
+  ```bash
+  docker builder prune              # chỉ dọn cache build (an toàn nhất)
+  docker image rm <image-cũ-không-dùng>   # xóa image cụ thể sau khi chắc không container nào dùng
+  ```
+  > ⚠️ Chỉ dùng lệnh dọn rộng như `docker system prune -a` khi bạn hiểu rõ nó xóa
+  > gì (mọi image/container/network không dùng) và coi đó là **giải pháp cuối**.
+  > **Tuyệt đối không** thêm `--volumes` / `-v`: sẽ xóa dữ liệu (SurrealDB, uploads).
 - **Lần đầu chạy rất lâu / có vẻ "treo":** đó là bước cài docling ở boot đầu tiên.
   Xem `logs -f open_notebook`, chờ dòng `[entrypoint] Docling installed`. Nếu cài
   docling **thất bại** (mất mạng...), app vẫn chạy nhưng dùng bộ trích thô; sửa

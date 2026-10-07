@@ -24,14 +24,31 @@ services:
     pull_policy: always
 
   open_notebook:
-    image: lfnovo/open_notebook:v1-latest
+    # Build ChatBot 5400 FROM THIS REPOSITORY's source (root Dockerfile, runtime
+    # target). Do NOT swap this for the upstream `lfnovo/open_notebook:v1-latest`
+    # image: that published image does NOT contain ChatBot 5400's customizations
+    # (authentication/RBAC, per-user data isolation, Vietnamese i18n, Agribank UI).
+    # `docker compose up -d --build` builds this locally; the result is tagged
+    # chatbot5400:local so it is never confused with the upstream image.
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: chatbot5400:local
     ports:
       - "8502:8502"  # Web UI
       - "5055:5055"  # REST API
     environment:
-      # REQUIRED: Change this to your own secret string
-      # This encrypts your API keys in the database
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string
+      # REQUIRED: encrypts your API keys in the database. Set it in a .env file
+      # next to this compose file (cp .env.example .env) — no need to edit this
+      # YAML. The default below only keeps zero-config local boot working; replace
+      # it with your own secret string before storing anything you care about.
+      - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY:-change-me-to-a-secret-string}
+
+      # OPTIONAL: signs login JWTs. If unset, a stable secret is derived from
+      # OPEN_NOTEBOOK_ENCRYPTION_KEY, so local sessions already survive restarts.
+      # Set it explicitly (in .env) to rotate it independently of the key.
+      - OPEN_NOTEBOOK_JWT_SECRET=${OPEN_NOTEBOOK_JWT_SECRET:-}
 
       # Database connection. SURREAL_USER / SURREAL_PASSWORD default to root:root
       # for local use; override them in a .env file before exposing the instance
@@ -59,4 +76,5 @@ services:
     depends_on:
       - surrealdb
     restart: always
-    pull_policy: always
+    # NOTE: no `pull_policy: always` here. This service is built from source
+    # (see build: above); pulling would fetch the upstream app image instead.
