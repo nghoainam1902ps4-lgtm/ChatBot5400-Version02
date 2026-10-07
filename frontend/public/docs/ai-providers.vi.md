@@ -8,7 +8,7 @@ Hướng dẫn thiết lập đầy đủ cho từng nhà cung cấp AI thông q
 
 ## Cách thiết lập nhà cung cấp hoạt động
 
-Open Notebook dùng **hệ thống dựa trên credential** để quản lý các nhà cung cấp AI:
+Chatbot - 5400 dùng **hệ thống dựa trên credential** để quản lý các nhà cung cấp AI:
 
 1. **Lấy API key** từ website của nhà cung cấp
 2. Mở **Quản lý** → **Mô hình** → **Thêm Credential**
@@ -32,7 +32,7 @@ Open Notebook dùng **hệ thống dựa trên credential** để quản lý cá
 3. Tạo API key mới (bắt đầu bằng "sk-proj-")
 4. Nạp thêm ≥ 5 USD tín dụng vào tài khoản
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **OpenAI**
@@ -42,7 +42,7 @@ Open Notebook dùng **hệ thống dựa trên credential** để quản lý cá
 7. Bấm **Khám phá mô hình** để tìm các mô hình khả dụng
 8. Bấm **Đăng ký mô hình** để đưa vào sử dụng
 
-**Mô hình khả dụng (trong Open Notebook):**
+**Mô hình khả dụng (trong Chatbot - 5400):**
 - `gpt-4o` — Chất lượng tốt nhất, nhanh (phiên bản mới nhất)
 - `gpt-4o-mini` — Nhanh, rẻ, phù hợp để thử nghiệm
 - `o1` — Mô hình suy luận nâng cao (chậm hơn, đắt hơn)
@@ -77,7 +77,7 @@ Dùng nhiều:  50–100+ USD/tháng
 3. Vào mục API keys
 4. Tạo API key mới (bắt đầu bằng "sk-ant-")
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **Anthropic**
@@ -138,7 +138,7 @@ Credential kiểu Anthropic Compatible chỉ hỗ trợ mô hình ngôn ngữ.
 2. Tạo tài khoản hoặc đăng nhập
 3. Tạo API key mới
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **Google Gemini**
@@ -178,7 +178,7 @@ Credential kiểu Anthropic Compatible chỉ hỗ trợ mô hình ngôn ngữ.
 2. Tạo tài khoản hoặc đăng nhập
 3. Tạo API key mới
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **Groq**
@@ -222,7 +222,7 @@ Credential kiểu Anthropic Compatible chỉ hỗ trợ mô hình ngôn ngữ.
 3. Nạp tín dụng vào tài khoản
 4. Tạo API key mới
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **OpenRouter**
@@ -280,7 +280,7 @@ Dùng nhiều: Tùy mô hình chọn
 3. Vào mục API Keys
 4. Tạo API key mới
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **DashScope (Qwen)**
@@ -314,7 +314,7 @@ Dùng nhiều: Tùy mô hình chọn
 3. Vào mục API Keys
 4. Tạo API key mới
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **MiniMax**
@@ -349,7 +349,7 @@ Dùng nhiều: Tùy mô hình chọn
 2. Tạo tài khoản (nếu cần)
 3. Tạo API key mới
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **Cohere**
@@ -363,7 +363,7 @@ Dùng nhiều: Tùy mô hình chọn
 
 **Ghi chú:**
 - Cohere dùng API v2 gốc của họ (`/v2/chat`, `/v2/embed`), không phải endpoint tương thích OpenAI.
-- Chức năng rerank chưa có trong Open Notebook (theo dõi riêng).
+- Chức năng rerank chưa có trong Chatbot - 5400 (theo dõi riêng).
 
 **Khắc phục sự cố:**
 - "Invalid API key" → Kiểm tra key trong dashboard Cohere
@@ -380,7 +380,7 @@ Dùng nhiều: Tùy mô hình chọn
 2. Tạo tài khoản (nếu cần)
 3. Tạo API key mới
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **Novita**
@@ -406,7 +406,7 @@ Dùng nhiều: Tùy mô hình chọn
 2. Tạo tài khoản (nếu cần)
 3. Tạo API key mới
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **PayPerQ**
@@ -435,7 +435,7 @@ Dùng nhiều: Tùy mô hình chọn
 2. Chạy Ollama nền: `ollama serve`
 3. Tải một mô hình: `ollama pull mistral`
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **Ollama**
@@ -516,11 +516,11 @@ Chỉ CPU:
    ```
 3. Nạp mô hình trong giao diện quản trị oMLX
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **oMLX**
-4. Base URL mặc định `http://localhost:11435/v1` (dùng `http://host.docker.internal:11435/v1` nếu Open Notebook chạy trong Docker)
+4. Base URL mặc định `http://localhost:11435/v1` (dùng `http://host.docker.internal:11435/v1` nếu Chatbot - 5400 chạy trong Docker)
 5. API key là tùy chọn (chỉ cần nếu bạn khởi động oMLX với `--api-key`)
 6. Bấm **Lưu**, rồi **Kiểm tra kết nối** → **Khám phá mô hình** → **Đăng ký mô hình**
 
@@ -539,7 +539,7 @@ Xem *Hướng dẫn thiết lập oMLX* để biết chi tiết về xung đột
 4. Vào tab "Local Server"
 5. Khởi động server (cổng mặc định: 1234)
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Vào **Quản lý** → **Mô hình**
 2. Bấm **Thêm Credential**
 3. Chọn nhà cung cấp: **OpenAI-Compatible**
@@ -583,7 +583,7 @@ Xem *Thiết lập OpenAI-Compatible* để biết hướng dẫn chi tiết.
 
 **Chi phí:** Như OpenAI (theo mức dùng)
 
-**Cấu hình trong Open Notebook:**
+**Cấu hình trong Chatbot - 5400:**
 1. Tạo dịch vụ Azure OpenAI trong Azure portal
 2. Triển khai mô hình GPT-4/3.5-turbo
 3. Lấy endpoint và key
@@ -608,7 +608,7 @@ Xem *Thiết lập OpenAI-Compatible* để biết hướng dẫn chi tiết.
 
 ## Embedding (Cho tính năng Tìm kiếm/Ngữ nghĩa)
 
-Mặc định, Open Notebook dùng embedding của chính nhà cung cấp LLM. Mô hình embedding được khám phá và đăng ký qua cùng hệ thống credential — khi bạn khám phá mô hình từ một credential, các mô hình embedding được liệt kê cùng với mô hình ngôn ngữ.
+Mặc định, Chatbot - 5400 dùng embedding của chính nhà cung cấp LLM. Mô hình embedding được khám phá và đăng ký qua cùng hệ thống credential — khi bạn khám phá mô hình từ một credential, các mô hình embedding được liệt kê cùng với mô hình ngôn ngữ.
 
 ---
 
