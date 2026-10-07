@@ -1,7 +1,8 @@
 # Triển khai ChatBot5400 lên VPS (5491sotay.io.vn)
 
-Hướng dẫn cài đặt bản mới nhất (nhánh `claude/practical-wozniak-9s1t6z`) lên VPS
-Ubuntu/Debian, chạy sau Caddy với HTTPS tự động.
+Hướng dẫn cài đặt ChatBot 5400 lên VPS Ubuntu/Debian, chạy sau Caddy với HTTPS tự
+động. Cài production mới nên dùng **tag phát hành ổn định mới nhất**; môi trường thử
+nghiệm có thể dùng nhánh phát triển (xem mục 3).
 
 - Frontend: **https://5491sotay.io.vn**
 - API: **https://api.5491sotay.io.vn**
@@ -13,7 +14,7 @@ Ubuntu/Debian, chạy sau Caddy với HTTPS tự động.
 > ⚠️ **Vì sao phải build từ mã nguồn:** image công bố `lfnovo/open_notebook:v1-latest`
 > **không** chứa code tùy biến của dự án (đăng nhập/RBAC, cô lập dữ liệu theo
 > người dùng, tiếng Việt, docling mặc định, giao diện Agribank). Bắt buộc build
-> từ nhánh này.
+> từ mã nguồn của kho ChatBot 5400 này.
 >
 > ℹ️ **Về docling (giữ đúng Điều/Khoản):** để image **nhẹ, build được trên VPS
 > nhỏ**, docling **không nhúng vào image** mà **tự cài ở lần khởi động đầu tiên**
@@ -47,12 +48,39 @@ curl -fsSL https://get.docker.com | sh
 docker version && docker compose version   # kiểm tra
 ```
 
-## 3. Tải mã nguồn (đúng nhánh)
+## 3. Tải mã nguồn
 
 ```bash
 apt-get update && apt-get install -y git
-git clone -b claude/practical-wozniak-9s1t6z \
-  https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02 /opt/chatbot5400
+git clone https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02 /opt/chatbot5400
+cd /opt/chatbot5400
+```
+
+Chọn phiên bản mã nguồn:
+
+- **Cài production MỚI → dùng tag phát hành ổn định mới nhất (khuyến nghị):**
+
+  ```bash
+  git fetch --tags
+  # Chọn tag vX.Y.Z ổn định mới nhất (bỏ qua prerelease / tag không hợp lệ):
+  LATEST=$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+  echo "Checkout $LATEST"
+  git checkout "$LATEST"
+  ```
+
+  > Bản ổn định tại thời điểm viết tài liệu là **v1.0.2**. Ghim cứng nếu muốn:
+  > `git checkout v1.0.2`.
+
+- **Môi trường thử nghiệm / phát triển → dùng nhánh mặc định:**
+
+  ```bash
+  git checkout claude/practical-wozniak-9s1t6z
+  ```
+
+> ⚠️ Đây chỉ là hướng dẫn cho cài đặt **mới**. **Không** tự ý đổi phiên bản trên VPS
+> đang chạy chỉ vì tài liệu — việc nâng cấp xem mục 7.
+
+```bash
 cd /opt/chatbot5400/deploy
 ```
 
@@ -110,18 +138,43 @@ Mở trình duyệt: **https://5491sotay.io.vn**
 - Vào **Cài đặt → Nhà cung cấp** để nhập API key của mô hình AI (OpenAI/Anthropic/…)
   thì chat mới hoạt động.
 
-## 7. Nâng cấp về sau (khi có code mới)
+## 7. Nâng cấp về sau (khi có bản mới)
+
+Nâng cấp production phải **chọn rõ một tag phát hành ổn định đã được review** — KHÔNG
+kéo thẳng HEAD của nhánh phát triển lên production.
+
+> 🛟 **Sao lưu trước khi nâng cấp.** Dữ liệu nằm ở `deploy/surreal_data` và
+> `deploy/notebook_data`. Sao lưu (khi đã `down`) trước khi nâng cấp:
+> ```bash
+> cd /opt/chatbot5400/deploy
+> docker compose -f docker-compose.prod.yml down
+> tar czf backup-$(date +%F).tgz surreal_data notebook_data .env
+> ```
 
 ```bash
 cd /opt/chatbot5400
-git pull origin claude/practical-wozniak-9s1t6z
+git fetch origin --tags
+
+# (tùy chọn) xem tag ổn định mới nhất để biết nên lên bản nào:
+git tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1
+
+# Chọn RÕ bản ổn định muốn lên (thay vX.Y.Z bằng tag đã review):
+git checkout vX.Y.Z
+
 cd deploy
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 Dữ liệu (SurrealDB, uploads, chat) nằm trên các thư mục `deploy/surreal_data` và
-`deploy/notebook_data` nên **không mất** khi build lại. Migration DB tự chạy khi
-API khởi động.
+`deploy/notebook_data` nên **không mất** khi build lại.
+
+> ⚙️ **Migration tự chạy khi API khởi động** khi lên phiên bản mới. Hãy **chỉ nâng
+> cấp tiến** (lên tag mới hơn); **không hạ cấp (down-migrate) tùy tiện** — hạ phiên
+> bản có thể không tương thích với schema DB đã migrate. Nếu buộc phải quay lui,
+> khôi phục từ bản sao lưu ở trên.
+
+> 🧪 Môi trường **thử nghiệm / phát triển** (không phải production) có thể theo nhánh
+> mặc định: `git checkout claude/practical-wozniak-9s1t6z && git pull`.
 
 ## 8. Lệnh vận hành hữu ích
 
@@ -136,9 +189,23 @@ docker compose -f docker-compose.prod.yml down        # dừng (giữ dữ liệ
 
 - **Caddy không cấp được HTTPS:** kiểm tra cổng 80/443 đã mở và DNS đã trỏ đúng
   (`dig 5491sotay.io.vn +short`). Xem `logs -f caddy`.
-- **`no space left on device`:** dọn Docker cũ `docker system prune -af && docker builder prune -af`,
-  kiểm tra `df -h /`. Image gọn nên hiếm khi gặp lúc build; nếu hết đĩa lúc chạy,
-  thường do PyTorch/model docling — cần thêm dung lượng.
+- **`no space left on device`:** trước hết **chẩn đoán** để biết chỗ nào đầy, đừng
+  xóa bừa:
+  ```bash
+  df -h /                 # còn trống bao nhiêu
+  docker system df        # Docker dùng hết bao nhiêu (images / containers / volumes / cache)
+  docker system df -v     # chi tiết từng image/volume
+  ```
+  Image gọn nên hiếm khi hết đĩa lúc build; nếu hết lúc chạy thường do
+  PyTorch/model docling — cân nhắc **thêm dung lượng** là an toàn nhất. Nếu cần dọn,
+  dọn **có mục tiêu** sau khi đã xác định thứ không dùng:
+  ```bash
+  docker builder prune              # chỉ dọn cache build (an toàn nhất)
+  docker image rm <image-cũ-không-dùng>   # xóa image cụ thể sau khi chắc không container nào dùng
+  ```
+  > ⚠️ Chỉ dùng lệnh dọn rộng như `docker system prune -a` khi bạn hiểu rõ nó xóa
+  > gì (mọi image/container/network không dùng) và coi đó là **giải pháp cuối**.
+  > **Tuyệt đối không** thêm `--volumes` / `-v`: sẽ xóa dữ liệu (SurrealDB, uploads).
 - **Lần đầu chạy rất lâu / có vẻ "treo":** đó là bước cài docling ở boot đầu tiên.
   Xem `logs -f open_notebook`, chờ dòng `[entrypoint] Docling installed`. Nếu cài
   docling **thất bại** (mất mạng...), app vẫn chạy nhưng dùng bộ trích thô; sửa
@@ -168,8 +235,11 @@ docker compose -f docker-compose.prod.yml down        # dừng (giữ dữ liệ
   ```
   (Từ bản mới, compose sẽ **báo lỗi ngay** nếu `SURREAL_PASSWORD` trống thay vì
   khởi tạo DB với mật khẩu rỗng.)
-- **Đăng nhập bị đăng xuất sau mỗi lần restart:** chưa đặt `OPEN_NOTEBOOK_JWT_SECRET`
-  trong `.env` — đặt rồi `up -d`.
+- **Đăng nhập bị đăng xuất sau mỗi lần restart:** chỉ xảy ra khi **cả**
+  `OPEN_NOTEBOOK_JWT_SECRET` **và** `OPEN_NOTEBOOK_ENCRYPTION_KEY` đều trống (app
+  derive khóa ký JWT ổn định từ `OPEN_NOTEBOOK_ENCRYPTION_KEY` nếu không đặt JWT
+  secret). Đặt ít nhất `OPEN_NOTEBOOK_ENCRYPTION_KEY` (bắt buộc), và nên đặt
+  `OPEN_NOTEBOOK_JWT_SECRET` để xoay khóa độc lập, rồi `up -d`.
 - **Chat báo lỗi cấu hình mô hình:** chưa nhập API key nhà cung cấp (bước 6).
 - **Tài liệu vẫn mất Điều/Khoản:** docling chưa cài xong hoặc đang fallback. Kiểm
   tra trong container:
