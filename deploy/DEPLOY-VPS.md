@@ -14,7 +14,7 @@ nghiệm có thể dùng nhánh phát triển (xem mục 3).
 > ⚠️ **Vì sao phải build từ mã nguồn:** image công bố `lfnovo/open_notebook:v1-latest`
 > **không** chứa code tùy biến của dự án (đăng nhập/RBAC, cô lập dữ liệu theo
 > người dùng, tiếng Việt, docling mặc định, giao diện Agribank). Bắt buộc build
-> từ nhánh này.
+> từ mã nguồn của kho ChatBot 5400 này.
 >
 > ℹ️ **Về docling (giữ đúng Điều/Khoản):** để image **nhẹ, build được trên VPS
 > nhỏ**, docling **không nhúng vào image** mà **tự cài ở lần khởi động đầu tiên**

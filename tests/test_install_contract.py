@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ROOT_COMPOSE = REPO_ROOT / "docker-compose.yml"
 PROD_COMPOSE = REPO_ROOT / "deploy" / "docker-compose.prod.yml"
 README = REPO_ROOT / "README.md"
+ENV_EXAMPLE = REPO_ROOT / ".env.example"
 
 # A YAML `image:` directive pointing at upstream's published app image, e.g.
 #   image: lfnovo/open_notebook:v1-latest
@@ -85,6 +86,18 @@ def test_readme_local_quickstart_avoids_pre_fix_stable_tag():
     assert any(
         "checkout claude/practical-wozniak-9s1t6z" in body for body in blocks
     ), "README local Quick Start should check out the default development branch."
+
+
+def test_env_example_has_no_stale_password_mechanism():
+    """ChatBot 5400 uses JWT auth enabled by default; the upstream
+    OPEN_NOTEBOOK_PASSWORD mechanism (and its "auth disabled if unset" note) is
+    obsolete and must not return to the canonical .env.example.
+    """
+    text = ENV_EXAMPLE.read_text(encoding="utf-8")
+    assert "OPEN_NOTEBOOK_PASSWORD" not in text, (
+        ".env.example must not reference the obsolete OPEN_NOTEBOOK_PASSWORD "
+        "mechanism; auth is JWT-based and enabled by default."
+    )
 
 
 def test_prod_compose_builds_from_source():

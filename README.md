@@ -109,6 +109,11 @@ curl http://localhost:5055/health      # API sống -> {"status":"healthy"}
 
 Mở trình duyệt: **http://localhost:8502**
 
+> 🔑 **Đăng nhập lần đầu (chỉ với cơ sở dữ liệu mới hoàn toàn):** khi chưa có người
+> dùng nào, hệ thống tạo sẵn tài khoản quản trị ban đầu `admin / admin`. Đăng nhập
+> rồi **đổi mật khẩu ngay**. (Việc nâng cấp trên DB đã có dữ liệu **không** đặt lại
+> tài khoản hiện có.)
+
 Sau đó vào mục **Models / Nhà cung cấp** để nhập API key của mô hình AI
 (OpenAI / Anthropic / Google …) thì chức năng chat mới hoạt động.
 
