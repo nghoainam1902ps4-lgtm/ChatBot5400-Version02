@@ -171,7 +171,7 @@ export const enUS = {
   },
   connectionErrors: {
     apiTitle: "Unable to Connect to API Server",
-    apiDesc: "The Open Notebook API server could not be reached",
+    apiDesc: "The Chatbot - 5400 API server could not be reached",
     dbTitle: "Database Connection Failed",
     dbDesc: "The API server is running, but the database is not accessible",
     troubleshooting: "This usually means:",
@@ -185,7 +185,7 @@ export const enUS = {
     setApiUrl: "Set the API_URL environment variable:",
     checkSurreal: "Check if SurrealDB is running:",
     seeDocumentation: "For detailed setup instructions, see:",
-    docLink: "Open Notebook Documentation",
+    docLink: "Chatbot - 5400 Documentation",
     showTechnical: "Show Technical Details",
     attemptedUrl: "Attempted URL",
     message: "Message",

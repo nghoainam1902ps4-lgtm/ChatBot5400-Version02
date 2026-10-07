@@ -174,7 +174,7 @@ export const viVN = {
   },
   connectionErrors: {
     apiTitle: "Không thể kết nối đến máy chủ API",
-    apiDesc: "Không thể tiếp cận máy chủ API của Open Notebook",
+    apiDesc: "Không thể tiếp cận máy chủ API của Chatbot - 5400",
     dbTitle: "Kết nối cơ sở dữ liệu thất bại",
     dbDesc: "Máy chủ API đang chạy, nhưng không thể truy cập cơ sở dữ liệu",
     troubleshooting: "Điều này thường có nghĩa là:",
@@ -188,7 +188,7 @@ export const viVN = {
     setApiUrl: "Đặt biến môi trường API_URL:",
     checkSurreal: "Kiểm tra xem SurrealDB có đang chạy không:",
     seeDocumentation: "Để biết hướng dẫn thiết lập chi tiết, hãy xem:",
-    docLink: "Tài liệu Open Notebook",
+    docLink: "Tài liệu Chatbot - 5400",
     showTechnical: "Hiển thị chi tiết kỹ thuật",
     attemptedUrl: "URL đã thử",
     message: "Thông báo",
