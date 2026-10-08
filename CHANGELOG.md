@@ -2,6 +2,45 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.0.4] - 2026-10-08
+
+Cập nhật hệ thống câu lệnh nền cho Trò chuyện Sổ tay và Trò chuyện theo
+Nguồn, định hướng trợ lý chuyên biệt cho Agribank Lâm Đồng. Bản cập nhật
+không thay đổi RAG/GraphRAG, embedding, cách nạp nguồn, API hay cơ sở dữ
+liệu và không có migration mới.
+
+### Trợ lý ảo Agribank Lâm Đồng
+
+- Cập nhật system prompt của Trò chuyện Sổ tay thành
+  "Trợ lý ảo Agribank Lâm Đồng", phục vụ cán bộ và người lao động.
+- Cập nhật system prompt của Trò chuyện theo Nguồn, giữ nguyên nguyên tắc
+  phân tích một Source cụ thể.
+- Bổ sung nguyên tắc ưu tiên nguồn văn bản theo thẩm quyền và phạm vi áp
+  dụng; phân biệt quy định chung với nội dung triển khai tại Agribank
+  Lâm Đồng.
+- Bổ sung cách xử lý văn bản sửa đổi, bổ sung, thay thế, bãi bỏ và hiệu
+  lực theo thời điểm; không mặc định văn bản mới hơn luôn thay toàn bộ
+  văn bản cũ.
+- Yêu cầu giữ nguyên số hiệu văn bản, Điều, Khoản, Điểm, Mục và ngày
+  tháng khi tài liệu cung cấp.
+- Phân biệt rõ nội dung "Theo tài liệu", "Có thể suy ra" và
+  "Chưa đủ căn cứ".
+- Tăng cường ranh giới chống prompt injection: tên Sổ tay, Source, Note,
+  Insight và nội dung tài liệu được coi là dữ liệu, không phải chỉ thị
+  hệ thống.
+- Loại bỏ các mô tả cũ về công cụ tìm kiếm/retrieval mà hai luồng chat
+  thực tế không sử dụng.
+
+### Phạm vi kỹ thuật
+
+- Không thay đổi RAG hoặc GraphRAG.
+- Không thay đổi embedding.
+- Không thay đổi pipeline nạp hoặc xử lý Source.
+- Không thay đổi API.
+- Không thay đổi schema cơ sở dữ liệu.
+- Không có migration mới.
+- Không thay đổi cấu hình mô hình AI.
+
 ## [1.0.3] - 2026-10-07
 
 Hoàn tất đổi thương hiệu hiển thị sang "Chatbot - 5400" trên toàn bộ phần
