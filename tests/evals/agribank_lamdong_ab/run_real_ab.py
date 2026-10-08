@@ -101,7 +101,8 @@ def build_payload(system_prompt: str, case: dict):
 # Credential / model config (presence only — never values)                     #
 # --------------------------------------------------------------------------- #
 def credential_present() -> bool:
-    for k in ("ANTHROPIC_COMPATIBLE_API_KEY", "ANTHROPIC_API_KEY",
+    for k in ("AB_API_KEY",
+              "ANTHROPIC_COMPATIBLE_API_KEY", "ANTHROPIC_API_KEY",
               "OPENAI_API_KEY", "OPENAI_COMPATIBLE_API_KEY",
               "GEMINI_API_KEY", "GROQ_API_KEY", "OLLAMA_BASE_URL"):
         if os.environ.get(k):
