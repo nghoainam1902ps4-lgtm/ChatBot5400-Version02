@@ -1,0 +1,5 @@
+GPT-5.6 Sol Agribank Lam Dong System Prompt A/B first pass
+Authorized: 56 calls maximum
+Cases: 28
+OLD: 887e55e23bd306686b8cd55ae960af3e77a5a3bf
+NEW: 1fcbde4922e950716b82d937f086ba45ad30e644
