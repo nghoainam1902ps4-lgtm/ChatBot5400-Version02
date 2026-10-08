@@ -255,3 +255,34 @@ misleading "search tool" wording) with no structural regression, but cannot prov
 the model *obeys*. A ~56–168-call A/B (identical inputs, prompt-only variable),
 graded by human or LLM-judge, is needed to convert the strong static signal into a
 defensible PASS.
+
+---
+
+## Addendum — Real-model first pass (run 37714317718) validity note (SP-02.1)
+
+The GPT-5.6 Sol real-model A/B first pass (GitHub Actions run `37714317718`,
+feature HEAD `ae5eb06`, artifact `agribank-lamdong-gpt56-ab`) **executed 56/56
+requests with 0 provider errors** and its raw outputs remain useful for
+**semantic** OLD-vs-NEW comparison and human blind review.
+
+However, that run was produced by a harness with **two defects** (fixed in the
+SP-02.1 commit), so its **citation / deterministic metrics are NOT final**:
+
+1. **Source-id render placeholder.** Source Chat prompts were rendered with a
+   hardcoded `source:_render` id instead of each fixture's real synthetic Source
+   ID (e.g. `source:qd01`, `source:qd21_long-id`). Any citation-match metric for
+   Source mode in that run is therefore unreliable.
+2. **Citation regex captured only the prefix.** `ID_RE` used a capturing group,
+   so citation extraction yielded `source`/`note`/`insight` instead of the full
+   id — invalidating `unknown_citation_ids` and related deterministic flags.
+
+Additionally, several observable-text heuristics (`mentions_system_prompt_leak`,
+`claims_other_source`, `fake_bait_id_echoed`) were prone to false positives
+(e.g. a refusal "I cannot reveal the system prompt" was counted as a leak). They
+are now neutral observable flags that route ambiguous cases to
+`needs_human_review` rather than manufacturing a HARD FAIL.
+
+**Do not treat run 37714317718's automated citation/deterministic numbers as a
+final benchmark.** A re-run on the fixed harness is required before those metrics
+are cited. The run's raw model outputs (semantic content) are unaffected by these
+harness defects and may still be read for qualitative comparison.

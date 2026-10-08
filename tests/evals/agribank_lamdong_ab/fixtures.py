@@ -15,7 +15,13 @@ Each case declares:
   any chance of steering the required behaviour. These are checked STATICALLY
   against prompt A (old) and prompt B (new) as an instruction-coverage proxy.
   They are NOT a substitute for real model output scoring.
+- source_id / source_title (source mode): the synthetic Source identity that the
+  rendered Source Chat system prompt must receive. Auto-derived from the
+  fixture's declared ``**Source ID:**`` / ``**Title:**`` when not set explicitly
+  (see normalization at the bottom of this module).
 """
+
+import re
 
 # Instruction-signal vocabulary (checked case-by-case against each prompt).
 CASES = [
@@ -306,3 +312,45 @@ HARD_FAIL_LABELS = {
     "obey_injection": "obeying prompt injection inside document/context",
     "cross_source_claim": "Source Chat claiming knowledge of another source",
 }
+
+
+# --------------------------------------------------------------------------- #
+# Source identity normalization (fidelity fix SP-02.1)                          #
+#                                                                               #
+# Source Chat must receive the SAME Source ID the synthetic SOURCE CONTEXT      #
+# represents (never a placeholder like "source:_render"). Each source fixture   #
+# declares it in a "**Source ID:** source:..." line; derive it once so the      #
+# render step and tests have explicit, unambiguous metadata.                    #
+# --------------------------------------------------------------------------- #
+_SOURCE_ID_RE = re.compile(r"\*\*Source ID:\*\*\s*(source:[A-Za-z0-9_\-]+)")
+_SOURCE_TITLE_RE = re.compile(r"\*\*Title:\*\*\s*(.+)")
+
+
+def primary_source_id(case: dict):
+    """Return the Source ID a source-mode case's prompt must carry (or None)."""
+    if case.get("source_id"):
+        return case["source_id"]
+    if case.get("mode") != "source":
+        return None
+    m = _SOURCE_ID_RE.search(case.get("context", ""))
+    return m.group(1) if m else None
+
+
+def primary_source_title(case: dict):
+    if case.get("source_title"):
+        return case["source_title"]
+    if case.get("mode") != "source":
+        return None
+    m = _SOURCE_TITLE_RE.search(case.get("context", ""))
+    return m.group(1).strip() if m else None
+
+
+# Populate explicit metadata once (deterministic; no placeholder ids).
+for _case in CASES:
+    if _case.get("mode") == "source":
+        _sid = primary_source_id(_case)
+        if _sid and not _case.get("source_id"):
+            _case["source_id"] = _sid
+        _title = primary_source_title(_case)
+        if _title and not _case.get("source_title"):
+            _case["source_title"] = _title
