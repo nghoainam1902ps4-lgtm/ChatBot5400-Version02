@@ -12,14 +12,27 @@ Complete REST API for Open Notebook. All endpoints are served from the API backe
 
 ### 1. Authentication
 
-Simple password-based (development only):
+Account-based login (username + password) returns a JWT that you send on every
+request as a Bearer token:
 
 ```bash
+# 1. Log in to get a JWT (default seeded admin is admin/admin — change it!)
+TOKEN=$(curl -s -X POST http://localhost:5055/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin"}' | jq -r .access_token)
+
+# 2. Send the token on protected requests
 curl http://localhost:5055/api/notebooks \
-  -H "Authorization: Bearer your_password"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-**⚠️ Production**: Replace with OAuth/JWT. See [Security Configuration](../5-CONFIGURATION/security.md) for details.
+Tokens are stateless and expire after `OPEN_NOTEBOOK_JWT_EXPIRE_MINUTES` (default
+12h). For a trusted single-user deployment you can set
+`OPEN_NOTEBOOK_DISABLE_AUTH=true` to turn enforcement off (all requests then run
+as a synthetic admin).
+
+> **📖 See [Authentication, RBAC & Data Isolation](authentication.md)** for roles,
+> per-user data isolation, and configuration.
 
 ### 2. Base API Flow
 
@@ -94,26 +107,65 @@ Instead of memorizing endpoints, use the interactive API docs:
 
 ## Authentication
 
-### Current (Development)
+The API uses **account-based authentication**: users sign in with a username and
+password, and the API issues a **JWT** that must be sent on every protected
+request. There are two roles — `admin` (manages the knowledge base and user
+accounts) and `user` (read-only knowledge base plus their own chats and notes) —
+and chat sessions and notes are isolated per user.
 
-All requests require password header:
+### 1. Log in
 
 ```bash
-curl -H "Authorization: Bearer your_password" http://localhost:5055/api/notebooks
+curl -X POST http://localhost:5055/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin"}'
 ```
 
-Password configured via `OPEN_NOTEBOOK_PASSWORD` environment variable.
+Response:
 
-> **📖 See [Security Configuration](../5-CONFIGURATION/security.md)** for complete authentication setup, API examples, and production hardening.
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "user": {"id": "user:...", "username": "admin", "role": "admin"}
+}
+```
 
-### Production
+A fresh database seeds one admin account (`admin` / `admin`). **Change this
+password immediately** via `POST /api/auth/change-password` or the profile menu.
 
-**⚠️ Not secure.** Replace with:
-- OAuth 2.0 (recommended)
-- JWT tokens
-- API keys
+### 2. Call protected endpoints
 
-See [Security Configuration](../5-CONFIGURATION/security.md) for production setup.
+Send the token in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer <access_token>" http://localhost:5055/api/notebooks
+```
+
+Public endpoints (no token required): `GET /api/auth/status`,
+`POST /api/auth/login`, `GET /api/config`, `GET /health`, and the docs
+(`/docs`, `/openapi.json`, `/redoc`).
+
+### Auth-related endpoints
+
+- `POST /api/auth/login` — authenticate, returns a JWT
+- `GET /api/auth/me` — current user profile
+- `POST /api/auth/logout` — stateless (client discards the token)
+- `POST /api/auth/change-password` — change own password
+- `PUT /api/auth/preferences` — update UI language / theme
+- `GET /api/auth/status` — report whether auth is enforced (public)
+
+### Configuration
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `OPEN_NOTEBOOK_JWT_SECRET` | derived from `OPEN_NOTEBOOK_ENCRYPTION_KEY` | HMAC secret used to sign JWTs. Set explicitly for stable sessions across restarts / multiple workers. |
+| `OPEN_NOTEBOOK_JWT_EXPIRE_MINUTES` | `720` (12h) | Access-token lifetime. |
+| `OPEN_NOTEBOOK_DISABLE_AUTH` | unset (auth **enforced**) | Truthy (`1/true/yes/on`) turns OFF enforcement for a trusted single-user deployment — all requests run as a synthetic admin and data isolation is not applied. |
+
+> **📖 See [Authentication, RBAC & Data Isolation](authentication.md)** for the
+> full role matrix, data model, and data-isolation details, and
+> [Security Configuration](../5-CONFIGURATION/security.md) for production hardening.
 
 ---
 
@@ -209,7 +261,7 @@ All errors return JSON with status code:
 
 ## Learning Path
 
-1. **Authentication**: Add `X-Password` header to all requests
+1. **Authentication**: `POST /auth/login` to get a JWT, then send it as `Authorization: Bearer <token>`
 2. **Create a notebook**: `POST /notebooks` with name and description
 3. **Add a source**: `POST /sources` with file, URL, or text
 4. **Query your content**: `POST /chat/execute` to ask questions
@@ -219,7 +271,7 @@ All errors return JSON with status code:
 
 ## Production Considerations
 
-- Replace password auth with OAuth/JWT (see [Security](../5-CONFIGURATION/security.md))
+- Harden JWT auth: set a stable `OPEN_NOTEBOOK_JWT_SECRET`, change the default `admin/admin` account, and keep `OPEN_NOTEBOOK_DISABLE_AUTH` unset (see [Authentication](authentication.md) and [Security](../5-CONFIGURATION/security.md))
 - Add rate limiting via reverse proxy (Nginx, CloudFlare, Kong)
 - Enable CORS restrictions (currently allows all origins)
 - Use HTTPS via reverse proxy (see [Reverse Proxy](../5-CONFIGURATION/reverse-proxy.md))
