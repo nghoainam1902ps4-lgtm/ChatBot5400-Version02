@@ -1,0 +1,3 @@
+# Evaluation run outputs — never commit model outputs or run manifests.
+*
+!.gitignore
