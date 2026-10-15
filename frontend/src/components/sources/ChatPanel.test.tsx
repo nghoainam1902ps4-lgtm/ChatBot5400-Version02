@@ -1,11 +1,19 @@
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ChatPanel } from './ChatPanel'
+import { useAuth } from '@/lib/hooks/use-auth'
 
-// useTranslation is mocked globally in setup.ts (t returns the key string)
+// useTranslation + useAuth are mocked globally in setup.ts (useAuth defaults to
+// an admin user; individual tests override it via vi.mocked).
 
 vi.mock('@/lib/hooks/use-modal-manager', () => ({
   useModalManager: () => ({ openModal: vi.fn() }),
+}))
+
+// Stub the model picker so these tests don't need a QueryClientProvider (it
+// fetches the model list). We only assert whether it is rendered.
+vi.mock('./ModelSelector', () => ({
+  ModelSelector: () => <div data-testid="model-selector" />,
 }))
 
 // Keep the message-content deps light for this composer-focused test.
@@ -112,6 +120,45 @@ describe('ChatPanel composer', () => {
     fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
 
     expect(onSendMessage).not.toHaveBeenCalled()
+  })
+})
+
+// Model selection in chat is admin-only: regular users chat with the model the
+// admin configured, so the picker must not render for them.
+describe('ChatPanel model selector visibility by role', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.HTMLElement.prototype.scrollIntoView = vi.fn()
+  })
+
+  afterEach(() => {
+    cleanup()
+    // Restore the admin default so later describe blocks (which render the
+    // composer without a model-change handler) get a valid auth object.
+    vi.mocked(useAuth).mockReturnValue({ isAdmin: true } as unknown as ReturnType<typeof useAuth>)
+  })
+
+  const renderPanel = () =>
+    render(
+      <ChatPanel
+        messages={[]}
+        isStreaming={false}
+        contextIndicators={null}
+        onSendMessage={vi.fn()}
+        onModelChange={vi.fn()}
+      />
+    )
+
+  it('shows the model selector for admins', () => {
+    vi.mocked(useAuth).mockReturnValue({ isAdmin: true } as unknown as ReturnType<typeof useAuth>)
+    renderPanel()
+    expect(screen.getByTestId('model-selector')).toBeInTheDocument()
+  })
+
+  it('hides the model selector for non-admin users', () => {
+    vi.mocked(useAuth).mockReturnValue({ isAdmin: false } as unknown as ReturnType<typeof useAuth>)
+    renderPanel()
+    expect(screen.queryByTestId('model-selector')).not.toBeInTheDocument()
   })
 })
 
