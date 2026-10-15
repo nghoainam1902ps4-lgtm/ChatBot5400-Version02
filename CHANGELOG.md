@@ -33,6 +33,13 @@ ngược).
   đăng nhập tài khoản bằng JWT: đăng nhập `POST /api/auth/login` lấy token rồi
   gửi `Authorization: Bearer <token>`; bỏ mô tả cơ chế mật khẩu tĩnh cũ.
 
+### Sửa lỗi giao diện
+
+- Sửa lỗi trang **Cài đặt** tự kéo dài vô hạn khi cuộn: thanh "Lưu thay đổi"
+  dạng `sticky` dùng `backdrop-blur` gây lỗi compositor của Chromium làm chiều
+  cao vùng cuộn tăng liên tục. Đổi sang nền đặc (bỏ `backdrop-filter`), vẫn giữ
+  thanh luôn hiển thị ở đáy.
+
 ## [1.0.4] - 2026-10-08
 
 Cập nhật hệ thống câu lệnh nền cho Trò chuyện Sổ tay và Trò chuyện theo
