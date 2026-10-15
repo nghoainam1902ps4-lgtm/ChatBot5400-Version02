@@ -394,7 +394,12 @@ export function SettingsForm() {
       {isDirty && (
         <div
           data-slot="settings-save-bar"
-          className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-2 rounded-lg border bg-background/95 px-3 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80"
+          // Solid, opaque background on purpose: a `position: sticky` element with
+          // `backdrop-filter` (backdrop-blur) inside this scroll container triggers
+          // a Chromium compositing bug where the container's scrollHeight keeps
+          // growing as you scroll (the page "auto-extends" endlessly). Keep this bar
+          // sticky but without backdrop-filter to avoid that loop.
+          className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-2 rounded-lg border bg-background px-3 py-3 shadow-sm"
         >
           <Button
             type="button"

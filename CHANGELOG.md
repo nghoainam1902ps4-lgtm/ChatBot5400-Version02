@@ -2,6 +2,26 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.0.6] - 2026-10-15
+
+Bản vá giao diện và phân quyền tiếp nối v1.0.5. **Không** thay đổi
+RAG/GraphRAG, embedding, cách nạp nguồn hay schema cơ sở dữ liệu và **không có
+migration mới**.
+
+### Sửa lỗi giao diện
+
+- Sửa lỗi trang **Cài đặt** tự kéo dài vô hạn khi cuộn: thanh "Lưu thay đổi"
+  dạng `sticky` dùng `backdrop-blur` gây lỗi compositor của Chromium làm chiều
+  cao vùng cuộn tăng liên tục. Đổi sang nền đặc (bỏ `backdrop-filter`), vẫn giữ
+  thanh luôn hiển thị ở đáy.
+
+### Chọn mô hình trong Hỏi & Tìm kiếm chỉ dành cho admin
+
+- Ẩn nút **"Nâng cao"** (chọn mô hình) ở trang Hỏi & Tìm kiếm đối với người
+  dùng thường; chỉ quản trị viên mới mở được hộp thoại chọn mô hình.
+- Người dùng thường hỏi bằng mô hình do quản trị viên cấu hình (mô hình mặc
+  định); vẫn hiển thị tên mô hình đang dùng (chỉ đọc).
+
 ## [1.0.5] - 2026-10-15
 
 Phân quyền chặt hơn cho chọn mô hình khi trò chuyện, thêm công tắc bật/tắt

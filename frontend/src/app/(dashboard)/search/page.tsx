@@ -20,6 +20,7 @@ import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
+import { useAuth } from '@/lib/hooks/use-auth'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { PageShell } from '@/components/common/PageShell'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -33,6 +34,9 @@ import { NotebookScopeSelector } from '@/components/search/NotebookScopeSelector
 
 export default function SearchPage() {
   const { t } = useTranslation()
+  // Model selection (the "Advanced" dialog) is admin-only: regular users ask
+  // with the models the admin configured as defaults.
+  const { isAdmin } = useAuth()
   // URL params
   const searchParams = useSearchParams()
   const urlQuery = searchParams?.get('q') || ''
@@ -251,16 +255,20 @@ export default function SearchPage() {
                         <Label className="text-xs text-muted-foreground">
                           {customModels ? t('searchPage.usingCustomModels') : t('searchPage.usingDefaultModels')}
                         </Label>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowAdvancedModels(true)}
-                          disabled={ask.isStreaming}
-                          className="h-auto py-1 px-2"
-                        >
-                          <Settings className="h-3 w-3 mr-1" />
-                          {t('searchPage.advanced')}
-                        </Button>
+                        {/* Model override is admin-only. Regular users ask with the
+                            admin-configured default models and don't see this button. */}
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowAdvancedModels(true)}
+                            disabled={ask.isStreaming}
+                            className="h-auto py-1 px-2"
+                          >
+                            <Settings className="h-3 w-3 mr-1" />
+                            {t('searchPage.advanced')}
+                          </Button>
+                        )}
                       </div>
                       <div className="flex gap-2 text-xs flex-wrap">
                         <Badge variant="secondary" className="font-mono text-[11px]">
@@ -314,17 +322,19 @@ export default function SearchPage() {
                 finalAnswer={ask.finalAnswer}
               />
 
-              {/* Advanced Models Dialog */}
-              <AdvancedModelsDialog
-                open={showAdvancedModels}
-                onOpenChange={setShowAdvancedModels}
-                defaultModels={{
-                  strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
-                  answer: customModels?.answer || modelDefaults?.default_chat_model || '',
-                  finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
-                }}
-                onSave={setCustomModels}
-              />
+              {/* Advanced Models Dialog — admin only */}
+              {isAdmin && (
+                <AdvancedModelsDialog
+                  open={showAdvancedModels}
+                  onOpenChange={setShowAdvancedModels}
+                  defaultModels={{
+                    strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
+                    answer: customModels?.answer || modelDefaults?.default_chat_model || '',
+                    finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
+                  }}
+                  onSave={setCustomModels}
+                />
+              )}
 
               {/* Save to Notebooks Dialog */}
               {ask.finalAnswer && (
