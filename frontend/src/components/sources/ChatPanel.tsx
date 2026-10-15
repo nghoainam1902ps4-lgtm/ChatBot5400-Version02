@@ -27,6 +27,7 @@ import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
 import { useIsDesktop } from '@/lib/hooks/use-media-query'
+import { useAuth } from '@/lib/hooks/use-auth'
 
 interface NotebookContextStats {
   sourcesInsights: number
@@ -355,6 +356,7 @@ function ChatComposer({
   contextType = 'source'
 }: ChatComposerProps) {
   const { t } = useTranslation()
+  const { isAdmin } = useAuth()
   const chatInputId = useId()
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -440,8 +442,10 @@ function ChatComposer({
           />
           <div className="flex items-end justify-between gap-2 px-2 pb-2 max-lg:contents">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 max-lg:order-1 max-lg:col-span-2 max-lg:mb-1 max-lg:h-[30px] max-lg:flex-nowrap max-lg:overflow-hidden">
-              {/* Model chip */}
-              {onModelChange && (
+              {/* Model chip — admins only. Regular users chat with the model
+                  configured by the admin (default model), so the picker is
+                  hidden and no per-message/session model override is sent. */}
+              {onModelChange && isAdmin && (
                 <div className="flex flex-shrink-0 items-center" title={t('chat.model')}>
                   <span className="sr-only">{t('chat.model')}</span>
                   <ModelSelector

@@ -53,3 +53,12 @@ class ContentSettings(RecordModel):
         ["en", "pt", "es", "de", "nl", "en-GB", "fr", "hi", "ja", "zh-CN", "zh-TW"],
         description="Preferred languages for YouTube transcripts",
     )
+    podcast_enabled: Optional[bool] = Field(
+        True,
+        description=(
+            "Whether the Podcast feature is available to users. When False, the "
+            "Podcast navigation entry, the 'Create podcast' action and the podcast "
+            "quick-action (Ctrl+K) are hidden app-wide. Toggled by an admin in "
+            "Settings. Defaults to True so existing deployments are unaffected."
+        ),
+    )

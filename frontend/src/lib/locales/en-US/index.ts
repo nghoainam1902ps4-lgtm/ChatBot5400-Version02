@@ -591,6 +591,8 @@ export const enUS = {
     processingQuestion: "Processing your question...",
   },
   podcasts: {
+    featureDisabled: "Podcasts are turned off",
+    featureDisabledDesc: "An administrator has disabled the Podcast feature. Ask an admin to enable it in Settings.",
     generateEpisode: "Generate Podcast Episode",
     generateEpisodeDesc: "Select the content to include and configure the episode details before generating a new podcast episode.",
     content: "Content",
@@ -864,6 +866,10 @@ export const enUS = {
     pageDesc: "How the system processes documents, embeddings and attached files.",
     loadFailedDesc: "The server did not return the configuration. Nothing can be changed until it reloads.",
     undoChanges: "Undo changes",
+    featureToggles: "Features",
+    featureTogglesDesc: "Turn optional features on or off for everyone.",
+    podcastEnabled: "Enable Podcasts",
+    podcastEnabledHelp: "When enabled, the Podcast menu, the 'Create podcast' action and the podcast quick action (Ctrl+K) are available to all users. When disabled, they are hidden app-wide.",
   },
   advanced: {
     title: "AdvancedTools",

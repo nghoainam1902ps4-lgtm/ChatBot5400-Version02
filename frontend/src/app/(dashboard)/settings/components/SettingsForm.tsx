@@ -26,6 +26,7 @@ const settingsSchema = z.object({
   docling_ocr: z.boolean().optional(),
   docling_formulas: z.boolean().optional(),
   docling_vision: z.boolean().optional(),
+  podcast_enabled: z.boolean().optional(),
 })
 
 type SettingsFormData = z.infer<typeof settingsSchema>
@@ -41,6 +42,7 @@ function toFormData(settings: SettingsResponse): SettingsFormData {
     docling_ocr: settings.docling_ocr ?? true,
     docling_formulas: settings.docling_formulas ?? false,
     docling_vision: settings.docling_vision ?? false,
+    podcast_enabled: settings.podcast_enabled ?? true,
   }
 }
 
@@ -97,6 +99,7 @@ export function SettingsForm() {
       docling_ocr: undefined,
       docling_formulas: undefined,
       docling_vision: undefined,
+      podcast_enabled: undefined,
     }
   })
 
@@ -353,6 +356,35 @@ export function SettingsForm() {
             <SettingsHelp open={expandedSections.files} onToggle={() => toggleSection('files')}>
               {t('settings.filesHelp')}
             </SettingsHelp>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('settings.featureToggles')}</CardTitle>
+          <CardDescription>
+            {t('settings.featureTogglesDesc')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Controller
+                name="podcast_enabled"
+                control={control}
+                render={({ field }) => (
+                  <Checkbox
+                    id="podcast_enabled"
+                    checked={field.value ?? true}
+                    onCheckedChange={field.onChange}
+                    disabled={field.disabled || isLoading}
+                  />
+                )}
+              />
+              <Label htmlFor="podcast_enabled">{t('settings.podcastEnabled')}</Label>
+            </div>
+            <p className="text-sm text-muted-foreground">{t('settings.podcastEnabledHelp')}</p>
           </div>
         </CardContent>
       </Card>

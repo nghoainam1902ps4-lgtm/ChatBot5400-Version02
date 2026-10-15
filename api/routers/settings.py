@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
+from api.auth import require_admin
 from api.models import SettingsResponse, SettingsUpdate
 from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.exceptions import (
@@ -11,22 +12,32 @@ from open_notebook.exceptions import (
 router = APIRouter()
 
 
+def _settings_response(settings: ContentSettings) -> SettingsResponse:
+    return SettingsResponse(
+        default_content_processing_engine_doc=settings.default_content_processing_engine_doc,
+        default_content_processing_engine_url=settings.default_content_processing_engine_url,
+        default_embedding_option=settings.default_embedding_option,
+        auto_delete_files=settings.auto_delete_files,
+        docling_ocr=settings.docling_ocr,
+        docling_formulas=settings.docling_formulas,
+        docling_vision=settings.docling_vision,
+        youtube_preferred_languages=settings.youtube_preferred_languages,
+        podcast_enabled=settings.podcast_enabled,
+    )
+
+
 @router.get("/settings", response_model=SettingsResponse)
 async def get_settings():
-    """Get all application settings."""
+    """Get all application settings.
+
+    Readable by any authenticated user: the frontend needs it to know which
+    optional features (e.g. Podcasts) are enabled. Writing is admin-only (see
+    the PUT handler).
+    """
     try:
         settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
 
-        return SettingsResponse(
-            default_content_processing_engine_doc=settings.default_content_processing_engine_doc,
-            default_content_processing_engine_url=settings.default_content_processing_engine_url,
-            default_embedding_option=settings.default_embedding_option,
-            auto_delete_files=settings.auto_delete_files,
-            docling_ocr=settings.docling_ocr,
-            docling_formulas=settings.docling_formulas,
-            docling_vision=settings.docling_vision,
-            youtube_preferred_languages=settings.youtube_preferred_languages,
-        )
+        return _settings_response(settings)
     except HTTPException:
         raise
     except OpenNotebookError:
@@ -38,9 +49,13 @@ async def get_settings():
         )
 
 
-@router.put("/settings", response_model=SettingsResponse)
+@router.put(
+    "/settings",
+    response_model=SettingsResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def update_settings(settings_update: SettingsUpdate):
-    """Update application settings."""
+    """Update application settings (admin only)."""
     try:
         settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
 
@@ -83,19 +98,12 @@ async def update_settings(settings_update: SettingsUpdate):
             settings.youtube_preferred_languages = (
                 settings_update.youtube_preferred_languages
             )
+        if settings_update.podcast_enabled is not None:
+            settings.podcast_enabled = settings_update.podcast_enabled
 
         await settings.update()
 
-        return SettingsResponse(
-            default_content_processing_engine_doc=settings.default_content_processing_engine_doc,
-            default_content_processing_engine_url=settings.default_content_processing_engine_url,
-            default_embedding_option=settings.default_embedding_option,
-            auto_delete_files=settings.auto_delete_files,
-            docling_ocr=settings.docling_ocr,
-            docling_formulas=settings.docling_formulas,
-            docling_vision=settings.docling_vision,
-            youtube_preferred_languages=settings.youtube_preferred_languages,
-        )
+        return _settings_response(settings)
     except HTTPException:
         raise
     except InvalidInputError as e:

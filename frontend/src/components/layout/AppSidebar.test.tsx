@@ -4,6 +4,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { usePathname } from 'next/navigation'
 import { AppSidebar } from './AppSidebar'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
+import { usePodcastEnabled } from '@/lib/hooks/use-settings'
 
 // Mock Tooltip components to avoid Radix UI async issues in tests
 vi.mock('@/components/ui/tooltip', () => ({
@@ -19,9 +20,16 @@ vi.mock('@/lib/hooks/use-users', () => ({
   useChangePassword: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
+// usePodcastEnabled reads the settings query; mock it so the sidebar renders
+// without a QueryClientProvider. Defaults to enabled.
+vi.mock('@/lib/hooks/use-settings', () => ({
+  usePodcastEnabled: vi.fn(() => true),
+}))
+
 describe('AppSidebar', () => {
   afterEach(() => {
     vi.mocked(usePathname).mockReturnValue('')
+    vi.mocked(usePodcastEnabled).mockReturnValue(true)
   })
 
   it('highlights only Models (not Settings) on the Models page', () => {
@@ -125,5 +133,23 @@ describe('AppSidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'common.expandSidebar' }))
 
     expect(toggleCollapse).toHaveBeenCalled()
+  })
+
+  it('shows the Podcasts nav entry when the feature is enabled', () => {
+    vi.mocked(usePodcastEnabled).mockReturnValue(true)
+
+    const { container } = render(<AppSidebar />)
+
+    expect(container.querySelector('a[href="/podcasts"]')).not.toBeNull()
+  })
+
+  it('hides the Podcasts nav entry when the feature is disabled', () => {
+    vi.mocked(usePodcastEnabled).mockReturnValue(false)
+
+    const { container } = render(<AppSidebar />)
+
+    expect(container.querySelector('a[href="/podcasts"]')).toBeNull()
+    // Other nav entries remain unaffected.
+    expect(container.querySelector('a[href="/notebooks"]')).not.toBeNull()
   })
 })

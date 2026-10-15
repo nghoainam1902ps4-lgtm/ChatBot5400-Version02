@@ -61,6 +61,7 @@ export interface SettingsResponse {
   docling_formulas?: boolean
   docling_vision?: boolean
   youtube_preferred_languages?: string[]
+  podcast_enabled?: boolean
 }
 
 export interface Capabilities {
