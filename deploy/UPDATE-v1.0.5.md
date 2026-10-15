@@ -16,6 +16,34 @@ Chọn đúng phần theo nơi bạn đang chạy:
 
 ---
 
+## 0. Yêu cầu trước: tạo tag `v1.0.5` trên GitHub
+
+Code của v1.0.5 đã nằm trên nhánh `claude/hopeful-albattani-rxsn4c` (commit
+`chore(release): v1.0.5`). Để các lệnh `git checkout v1.0.5` bên dưới dùng được,
+tag `v1.0.5` cần tồn tại trên remote. Chạy **một lần** trên máy của bạn (máy có
+quyền ghi vào kho):
+
+```bash
+git clone https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02 cb5400 2>/dev/null || true
+cd cb5400 2>/dev/null || cd <repo-đã-clone>
+git fetch origin
+# Tạo tag trỏ đúng commit release trên nhánh:
+git tag -a v1.0.5 origin/claude/hopeful-albattani-rxsn4c \
+  -m "ChatBot 5400 v1.0.5"
+git push origin v1.0.5
+```
+
+> 💡 Hoặc tạo qua giao diện GitHub: **Releases → Draft a new release → Choose a
+> tag → v1.0.5**, target chọn nhánh `claude/hopeful-albattani-rxsn4c` (hoặc nhánh
+> mặc định sau khi đã merge).
+>
+> 🔁 **Không muốn tạo tag?** Có thể thay mọi lệnh `git checkout v1.0.5` bên dưới
+> bằng cách bám nhánh:
+> `git fetch origin && git checkout claude/hopeful-albattani-rxsn4c && git pull`.
+> (Khuyến nghị dùng tag cho production để ghim đúng một bản đã review.)
+
+---
+
 ## A. Cập nhật trên VPS (production)
 
 Thư mục cài đặt giả định là `/opt/chatbot5400` (theo `deploy/DEPLOY-VPS.md`).
