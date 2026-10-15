@@ -594,6 +594,8 @@ export const viVN = {
     processingQuestion: "Đang xử lý câu hỏi của bạn...",
   },
   podcasts: {
+    featureDisabled: "Podcast đã bị tắt",
+    featureDisabledDesc: "Quản trị viên đã tắt tính năng Podcast. Vui lòng liên hệ quản trị viên để bật lại trong phần Cài đặt.",
     generateEpisode: "Tạo tập podcast",
     generateEpisodeDesc: "Chọn nội dung để đưa vào và cấu hình chi tiết tập trước khi tạo một tập podcast mới.",
     content: "Nội dung",
@@ -867,6 +869,10 @@ export const viVN = {
     pageDesc: "Cách hệ thống xử lý tài liệu, nhúng và tệp đính kèm.",
     loadFailedDesc: "Máy chủ không trả về cấu hình. Không thay đổi được gì cho tới khi tải lại.",
     undoChanges: "Hoàn tác",
+    featureToggles: "Tính năng",
+    featureTogglesDesc: "Bật hoặc tắt các tính năng tùy chọn cho toàn bộ người dùng.",
+    podcastEnabled: "Bật Podcast",
+    podcastEnabledHelp: "Khi bật, menu Podcast, thao tác 'Tạo podcast' và lối tắt nhanh (Ctrl+K) sẽ hiển thị cho mọi người dùng. Khi tắt, chúng được ẩn trên toàn ứng dụng.",
   },
   advanced: {
     title: "Công cụ nâng cao",

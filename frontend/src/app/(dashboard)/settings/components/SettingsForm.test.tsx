@@ -179,7 +179,7 @@ describe('SettingsForm (P1C)', () => {
     expect(mutateAsync).not.toHaveBeenCalled()
   })
 
-  it('a successful save sends the same 7-field payload and clears the dirty bar', async () => {
+  it('a successful save sends the same 8-field payload and clears the dirty bar', async () => {
     mutateAsync.mockResolvedValue({})
     mockCapabilities(available)
     render(<SettingsForm />)
@@ -201,6 +201,7 @@ describe('SettingsForm (P1C)', () => {
       docling_ocr: false,
       docling_formulas: false,
       docling_vision: false,
+      podcast_enabled: true,
     })
   })
 

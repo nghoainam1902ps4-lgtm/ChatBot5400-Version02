@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
+import { usePodcastEnabled } from '@/lib/hooks/use-settings'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import {
@@ -119,6 +120,7 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
   const { t } = useTranslation()
   const pathname = usePathname()
   const { logout, user, isAdmin } = useAuth()
+  const podcastEnabled = usePodcastEnabled()
   const { isCollapsed: railCollapsed, toggleCollapse } = useSidebarStore()
   const isDrawer = variant === 'drawer'
   const isCollapsed = isDrawer ? false : railCollapsed
@@ -134,7 +136,15 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
   const manageTitle = t('navigation.manage')
   const navigation = getNavigation(t).flatMap((section): NavSection[] => {
     if (section.title !== manageTitle) {
-      return [{ title: section.title, items: [...section.items] }]
+      // Podcasts are gated behind the admin-controlled feature toggle: when
+      // disabled, drop the entry (and any section left empty by that).
+      const items = section.items.filter(
+        (item) => podcastEnabled || item.href !== '/podcasts'
+      )
+      if (items.length === 0) {
+        return []
+      }
+      return [{ title: section.title, items }]
     }
     if (!isAdmin) {
       return []
@@ -350,16 +360,18 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
                     {t('common.notebook')}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    handleCreateSelection('podcast')
-                  }}
-                  className="gap-2"
-                >
-                   <Podcast className="h-4 w-4" />
-                  {t('common.podcast')}
-                </DropdownMenuItem>
+                {podcastEnabled && (
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      handleCreateSelection('podcast')
+                    }}
+                    className="gap-2"
+                  >
+                     <Podcast className="h-4 w-4" />
+                    {t('common.podcast')}
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

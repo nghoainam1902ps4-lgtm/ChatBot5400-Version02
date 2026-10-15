@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useId } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import { useAuth } from '@/lib/hooks/use-auth'
+import { usePodcastEnabled } from '@/lib/hooks/use-settings'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useTheme } from '@/lib/stores/theme-store'
 import {
@@ -62,18 +63,25 @@ const getThemeItems = (t: TFunction) => [
 export function CommandPalette() {
   const { t } = useTranslation()
   const { isAdmin } = useAuth()
+  const podcastEnabled = usePodcastEnabled()
   const commandInputId = useId()
   const navigationItems = useMemo(() => {
-    const items = getNavigationItems(t)
+    let items = getNavigationItems(t)
     // Hide admin-only destinations (Models, Transformations, Settings,
     // Advanced) from non-admin users — matches the sidebar RBAC.
-    return isAdmin ? items : items.filter((item) => !item.adminOnly)
-  }, [t, isAdmin])
+    if (!isAdmin) items = items.filter((item) => !item.adminOnly)
+    // Podcasts are gated behind the admin feature toggle.
+    if (!podcastEnabled) items = items.filter((item) => item.href !== '/podcasts')
+    return items
+  }, [t, isAdmin, podcastEnabled])
   const createItems = useMemo(() => {
-    const items = getCreateItems(t)
+    let items = getCreateItems(t)
     // Source & Notebook creation is admin-only (RBAC).
-    return isAdmin ? items : items.filter((item) => item.action === 'podcast')
-  }, [t, isAdmin])
+    if (!isAdmin) items = items.filter((item) => item.action === 'podcast')
+    // Podcasts are gated behind the admin feature toggle.
+    if (!podcastEnabled) items = items.filter((item) => item.action !== 'podcast')
+    return items
+  }, [t, isAdmin, podcastEnabled])
   const themeItems = useMemo(() => getThemeItems(t), [t])
   
   const [open, setOpen] = useState(false)
@@ -250,18 +258,20 @@ export function CommandPalette() {
         </CommandGroup>
 
         {/* Create */}
-        <CommandGroup heading={t('navigation.create')}>
-          {createItems.map((item) => (
-            <CommandItem
-              key={item.action}
-              value={`create ${item.name}`}
-              onSelect={() => handleCreate(item.action)}
-            >
-              <Plus className="h-4 w-4" />
-              <span>{item.name}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {createItems.length > 0 && (
+          <CommandGroup heading={t('navigation.create')}>
+            {createItems.map((item) => (
+              <CommandItem
+                key={item.action}
+                value={`create ${item.name}`}
+                onSelect={() => handleCreate(item.action)}
+              >
+                <Plus className="h-4 w-4" />
+                <span>{item.name}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
 
         {/* Theme */}
         <CommandGroup heading={t('navigation.theme')}>

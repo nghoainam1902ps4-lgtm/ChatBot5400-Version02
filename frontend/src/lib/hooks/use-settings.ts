@@ -13,6 +13,18 @@ export function useSettings() {
   })
 }
 
+/**
+ * Whether the Podcast feature is enabled by the admin. Drives the visibility of
+ * the Podcast navigation entry, the "Create podcast" action and the podcast
+ * quick-action (Ctrl+K) for every user. Defaults to enabled (true) — both while
+ * the setting is loading and when it is unset — so existing deployments and the
+ * initial render are unaffected; only an explicit `false` hides podcasts.
+ */
+export function usePodcastEnabled(): boolean {
+  const { data } = useSettings()
+  return data?.podcast_enabled !== false
+}
+
 export function useUpdateSettings() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
