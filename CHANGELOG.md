@@ -2,6 +2,37 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.0.5] - 2026-10-15
+
+Phân quyền chặt hơn cho chọn mô hình khi trò chuyện, thêm công tắc bật/tắt
+tính năng Podcast cho quản trị viên, và đồng bộ lại tài liệu API theo cơ chế
+đăng nhập tài khoản (JWT). Bản cập nhật **không** thay đổi RAG/GraphRAG,
+embedding, cách nạp nguồn hay schema cơ sở dữ liệu và **không có migration mới**
+(tùy chọn Podcast lưu trong bản ghi cấu hình, mặc định Bật nên tương thích
+ngược).
+
+### Chọn mô hình khi chat chỉ dành cho admin
+
+- Ẩn phần chọn mô hình trong Trò chuyện Sổ tay và Trò chuyện theo Nguồn đối
+  với người dùng thường; chỉ quản trị viên mới thấy và chọn được.
+- Người dùng thường trò chuyện bằng mô hình do quản trị viên cấu hình (mô hình
+  mặc định); không gửi `model_override` thay cho họ.
+
+### Bật/tắt tính năng Podcast (quản trị viên)
+
+- Thêm công tắc **"Bật Podcast"** trong **Cài đặt** (chỉ quản trị viên).
+- Khi bật: menu Podcast, thao tác "Tạo podcast" và lối tắt nhanh (Ctrl+K) hiển
+  thị cho mọi người dùng. Khi tắt: ẩn trên toàn ứng dụng và chặn truy cập trực
+  tiếp `/podcasts` (hiện thông báo "Podcast đã bị tắt").
+- `GET /api/settings` trả thêm `podcast_enabled` (mọi người dùng đọc được);
+  `PUT /api/settings` nay chỉ dành cho quản trị viên.
+
+### Tài liệu
+
+- Cập nhật `docs/7-DEVELOPMENT/api-reference.md` (mục Authentication) theo cơ chế
+  đăng nhập tài khoản bằng JWT: đăng nhập `POST /api/auth/login` lấy token rồi
+  gửi `Authorization: Bearer <token>`; bỏ mô tả cơ chế mật khẩu tĩnh cũ.
+
 ## [1.0.4] - 2026-10-08
 
 Cập nhật hệ thống câu lệnh nền cho Trò chuyện Sổ tay và Trò chuyện theo
