@@ -4,6 +4,14 @@
 # Shared stages below guarantee that fixes (tiktoken pre-cache, env defaults,
 # npm retry logic, ...) apply to both variants at once.
 
+# uv is pinned, not `latest`: a new uv can change its cache layout, and then a
+# container running with UV_OFFLINE=1 (branch networks that cannot reach the
+# PyTorch / Hugging Face hosts) no longer finds the Docling packages cached on
+# the data volume. 0.13.1 matches the simple-v26 cache existing installs have.
+# Bump deliberately: --build-arg UV_VERSION=<x.y.z>.
+ARG UV_VERSION=0.13.1
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-bin
+
 # Stage 1: Frontend builder
 FROM node:22-slim AS frontend-builder
 WORKDIR /app/frontend
@@ -42,7 +50,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv using the official method
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=uv-bin /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -85,7 +93,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv using the official method
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=uv-bin /uv /uvx /bin/
 
 WORKDIR /app
 
