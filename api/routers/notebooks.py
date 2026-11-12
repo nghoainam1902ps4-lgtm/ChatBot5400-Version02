@@ -3,7 +3,14 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
-from api.auth import TokenUser, auth_disabled, get_current_user, require_admin
+from api import approvals_service
+from api.auth import (
+    TokenUser,
+    auth_disabled,
+    get_current_user,
+    require_admin,
+    require_approver,
+)
 from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
@@ -16,12 +23,24 @@ from api.recently_viewed import stamp_view
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import (
+    AuthorizationError,
     InvalidInputError,
     NotFoundError,
     OpenNotebookError,
 )
 
 router = APIRouter()
+
+
+def _hierarchy_fields(row: dict) -> dict:
+    """Extract parent/managers/is_category from a notebook row for the response."""
+    parent = row.get("parent")
+    managers = row.get("managers") or []
+    return {
+        "parent": str(parent) if parent else None,
+        "managers": [str(m) for m in managers],
+        "is_category": not parent,
+    }
 
 
 def _note_count_scope(current_user: TokenUser) -> tuple[str, dict]:
@@ -129,6 +148,7 @@ async def get_notebooks(
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                **_hierarchy_fields(nb),
             )
             for nb in result
         ]
@@ -146,14 +166,44 @@ async def get_notebooks(
 @router.post(
     "/notebooks",
     response_model=NotebookResponse,
-    dependencies=[Depends(require_admin)],
 )
-async def create_notebook(notebook: NotebookCreate):
-    """Create a new notebook."""
+async def create_notebook(
+    notebook: NotebookCreate,
+    current_user: TokenUser = Depends(require_approver),
+):
+    """Create a new notebook (category) or sub-notebook.
+
+    - Admins create anything: top-level categories (optionally assigning
+      ``managers``) and sub-notebooks under any parent.
+    - Approvers ("nguoi duyet") may create sub-notebooks only under a category
+      they manage; they cannot create top-level categories or assign managers.
+    """
     try:
+        managers: list[str] = []
+        parent = notebook.parent
+
+        if parent:
+            # Sub-notebook: the parent must exist and be in the caller's scope.
+            await Notebook.get(parent)  # raises NotFoundError -> 404
+            await approvals_service.assert_can_manage_notebook(current_user, parent)
+        else:
+            # Top-level category creation is admin-only.
+            if not current_user.is_admin:
+                raise AuthorizationError(
+                    "Only an administrator can create a top-level category"
+                )
+
+        # Only admins may assign which approvers manage a category.
+        if notebook.managers is not None:
+            if not current_user.is_admin:
+                raise AuthorizationError("Only an administrator can assign managers")
+            managers = notebook.managers
+
         new_notebook = Notebook(
             name=notebook.name,
             description=notebook.description,
+            parent=parent,
+            managers=managers,
         )
         await new_notebook.save()
 
@@ -166,6 +216,9 @@ async def create_notebook(notebook: NotebookCreate):
             updated=str(new_notebook.updated),
             source_count=0,  # New notebook has no sources
             note_count=0,  # New notebook has no notes
+            parent=str(new_notebook.parent) if new_notebook.parent else None,
+            managers=[str(m) for m in (new_notebook.managers or [])],
+            is_category=not new_notebook.parent,
         )
     except InvalidInputError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -287,6 +340,7 @@ async def get_notebook(
             updated=str(nb.get("updated", "")),
             source_count=nb.get("source_count", 0),
             note_count=nb.get("note_count", 0),
+            **_hierarchy_fields(nb),
         )
     except HTTPException:
         raise
@@ -320,6 +374,9 @@ async def update_notebook(
             notebook.description = notebook_update.description
         if notebook_update.archived is not None:
             notebook.archived = notebook_update.archived
+        # Manager assignment (which approvers manage this category) is admin-only.
+        if notebook_update.managers is not None:
+            notebook.managers = notebook_update.managers
 
         await notebook.save()
 
@@ -348,6 +405,7 @@ async def update_notebook(
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
+                **_hierarchy_fields(nb),
             )
 
         # Fallback if query fails
@@ -360,6 +418,9 @@ async def update_notebook(
             updated=str(notebook.updated),
             source_count=0,
             note_count=0,
+            parent=str(notebook.parent) if notebook.parent else None,
+            managers=[str(m) for m in (notebook.managers or [])],
+            is_category=not notebook.parent,
         )
     except HTTPException:
         raise
@@ -378,14 +439,23 @@ async def update_notebook(
 
 @router.post(
     "/notebooks/{notebook_id}/sources/{source_id}",
-    dependencies=[Depends(require_admin)],
 )
-async def add_source_to_notebook(notebook_id: str, source_id: str):
-    """Add an existing source to a notebook (create the reference)."""
+async def add_source_to_notebook(
+    notebook_id: str,
+    source_id: str,
+    current_user: TokenUser = Depends(require_approver),
+):
+    """Add an existing source to a notebook (create the reference).
+
+    Admins may link into any notebook; an approver may link an existing source
+    into a notebook they manage, without it needing re-approval.
+    """
     try:
         # Verify the notebook and source exist (raises NotFoundError -> 404)
         await Notebook.get(notebook_id)
         await Source.get(source_id)
+        # Approvers are limited to their managed categories (admins bypass).
+        await approvals_service.assert_can_manage_notebook(current_user, notebook_id)
 
         # Check if reference already exists (idempotency)
         existing_ref = await repo_query(

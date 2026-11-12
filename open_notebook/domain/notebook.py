@@ -17,12 +17,33 @@ from open_notebook.exceptions import (
 )
 
 
+def _record_to_str(value: Any) -> Any:
+    """Coerce a SurrealDB RecordID (or list of them) back to string id(s).
+
+    DB rows hydrate record-link fields as RecordID objects; the domain models
+    keep them as plain string ids, so every such field runs through this in a
+    ``mode="before"`` validator.
+    """
+    if value is None:
+        return value
+    if isinstance(value, list):
+        return [str(v) if isinstance(v, RecordID) else v for v in value]
+    if isinstance(value, RecordID):
+        return str(value)
+    return value
+
+
 class Notebook(ObjectModel):
     table_name: ClassVar[str] = "notebook"
     name: str
     description: str
     archived: Optional[bool] = False
     last_viewed_at: Optional[datetime] = None
+    # Hierarchy (ChatBot5400): a `parent` makes this a sub-notebook (so tay con)
+    # of a category. `managers` lists the approver user ids an admin assigned to
+    # manage this category; only meaningful on top-level (parent-less) notebooks.
+    parent: Optional[str] = None
+    managers: Optional[List[str]] = Field(default_factory=list)
 
     @field_validator("name")
     @classmethod
@@ -31,15 +52,111 @@ class Notebook(ObjectModel):
             raise InvalidInputError("Notebook name cannot be empty")
         return v
 
-    async def get_sources(self, include_full_text: bool = False) -> List["Source"]:
+    @field_validator("parent", mode="before")
+    @classmethod
+    def _parse_parent(cls, value):
+        return _record_to_str(value)
+
+    @field_validator("managers", mode="before")
+    @classmethod
+    def _parse_managers(cls, value):
+        coerced = _record_to_str(value)
+        return coerced if coerced is not None else []
+
+    def _prepare_save_data(self) -> Dict[str, Any]:
+        data = super()._prepare_save_data()
+        # Record-link columns must be written as RecordID(s), not bare strings.
+        if data.get("parent") is not None:
+            data["parent"] = ensure_record_id(data["parent"])
+        if data.get("managers"):
+            data["managers"] = [ensure_record_id(m) for m in data["managers"]]
+        return data
+
+    @property
+    def is_category(self) -> bool:
+        """A top-level notebook (no parent) is treated as a category."""
+        return not self.parent
+
+    async def get_children(self) -> List["Notebook"]:
+        """Return the sub-notebooks whose parent is this notebook."""
+        try:
+            rows = await repo_query(
+                "SELECT * FROM notebook WHERE parent = $id ORDER BY name ASC",
+                {"id": ensure_record_id(self.id)},
+            )
+            return [Notebook(**row) for row in rows] if rows else []
+        except Exception as e:
+            logger.error(f"Error fetching children for notebook {self.id}: {str(e)}")
+            logger.exception(e)
+            raise DatabaseOperationError(e)
+
+    def is_managed_by(self, user_id: str) -> bool:
+        """Whether the given user is assigned to manage this category."""
+        if not user_id:
+            return False
+        return str(user_id) in {str(m) for m in (self.managers or [])}
+
+    @classmethod
+    async def managed_categories(cls, user_id: str) -> List["Notebook"]:
+        """Top-level notebooks (categories) the given approver manages."""
+        if not user_id:
+            return []
+        try:
+            rows = await repo_query(
+                "SELECT * FROM notebook WHERE $uid IN managers ORDER BY name ASC",
+                {"uid": ensure_record_id(user_id)},
+            )
+            return [cls(**row) for row in rows] if rows else []
+        except Exception as e:
+            logger.error(f"Error fetching managed categories for {user_id}: {str(e)}")
+            logger.exception(e)
+            raise DatabaseOperationError(e)
+
+    @classmethod
+    async def managed_scope_ids(cls, user_id: str) -> List[str]:
+        """All notebook ids an approver controls: managed categories + their
+        direct sub-notebooks. Used to scope the approval queue and sub-notebook
+        creation to what an admin granted this approver.
+        """
+        categories = await cls.managed_categories(user_id)
+        if not categories:
+            return []
+        category_ids = [str(c.id) for c in categories if c.id]
+        try:
+            child_rows = await repo_query(
+                "SELECT VALUE id FROM notebook WHERE parent IN $ids",
+                {"ids": [ensure_record_id(cid) for cid in category_ids]},
+            )
+        except Exception as e:
+            logger.error(f"Error fetching managed scope for {user_id}: {str(e)}")
+            logger.exception(e)
+            raise DatabaseOperationError(e)
+        scope = set(category_ids)
+        scope.update(str(cid) for cid in (child_rows or []))
+        return sorted(scope)
+
+    async def get_sources(
+        self,
+        include_full_text: bool = False,
+        include_unapproved: bool = False,
+    ) -> List["Source"]:
         try:
             source_projection = "" if include_full_text else " omit source.full_text"
+            # Only approved sources feed chat/LLM context and podcasts; pending
+            # or rejected submissions stay invisible until an approver acts.
+            # (approval_status OR 'approved') treats pre-migration NONE as
+            # approved. Pass include_unapproved=True to bypass (admin tooling).
+            approval_filter = (
+                ""
+                if include_unapproved
+                else " where (source.approval_status OR 'approved') = 'approved'"
+            )
             srcs = await repo_query(
                 f"""
                 select *{source_projection} from (
                 select in as source from reference where out=$id
                 fetch source
-            ) order by source.updated desc
+            ){approval_filter} order by source.updated desc
             """,
                 {"id": ensure_record_id(self.id)},
             )
@@ -415,6 +532,28 @@ class Source(ObjectModel):
     command: Optional[Union[str, RecordID]] = Field(
         default=None, description="Link to surreal-commands processing job"
     )
+    # Approval workflow (ChatBot5400). `approval_status` gates visibility:
+    # only 'approved' sources are shown to regular users and reach search.
+    # A contributor's submission starts 'pending'; admins/approvers add
+    # 'approved' content directly. Separate from the async *processing* status
+    # tracked on `command`.
+    approval_status: str = "approved"
+    submitted_by: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    review_note: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
+
+    @field_validator("submitted_by", "reviewed_by", mode="before")
+    @classmethod
+    def _parse_reviewer_links(cls, value):
+        return _record_to_str(value)
+
+    @field_validator("approval_status", mode="before")
+    @classmethod
+    def _default_approval_status(cls, value):
+        # Pre-approval rows (and NONE from the DB) are treated as approved.
+        return value or "approved"
 
     @field_validator("command", mode="before")
     @classmethod
@@ -641,7 +780,127 @@ class Source(ObjectModel):
         if data.get("command") is not None:
             data["command"] = ensure_record_id(data["command"])
 
+        # Reviewer/submitter links are typed record<user> columns.
+        for link_field in ("submitted_by", "reviewed_by"):
+            if data.get(link_field) is not None:
+                data[link_field] = ensure_record_id(data[link_field])
+
         return data
+
+    @property
+    def is_approved(self) -> bool:
+        return self.approval_status == "approved"
+
+    @property
+    def is_pending(self) -> bool:
+        return self.approval_status == "pending"
+
+    async def approve(self, reviewer_id: str) -> str:
+        """Approve a pending source and queue it for embedding so it becomes
+        searchable. Returns the vectorize command id (or "" when there is no
+        text to embed)."""
+        self.approval_status = "approved"
+        self.reviewed_by = reviewer_id
+        self.reviewed_at = datetime.now()
+        self.review_note = None
+        await self.save()
+        # Pending submissions are intentionally not embedded while under review,
+        # so embed on approval to make the content searchable.
+        try:
+            if self.full_text and self.full_text.strip():
+                return await self.vectorize()
+        except Exception as e:  # best-effort: approval itself already persisted
+            logger.warning(f"Failed to embed source {self.id} on approval: {e}")
+        return ""
+
+    async def reject(self, reviewer_id: str, note: Optional[str] = None) -> None:
+        """Reject a pending source with an optional reason."""
+        self.approval_status = "rejected"
+        self.reviewed_by = reviewer_id
+        self.reviewed_at = datetime.now()
+        self.review_note = note
+        await self.save()
+
+    @classmethod
+    async def get_pending(
+        cls, scope_ids: Optional[List[str]]
+    ) -> List[Dict[str, Any]]:
+        """Pending sources for an approval queue, newest submission first.
+
+        ``scope_ids`` is ``None`` for an admin (every pending source) or the list
+        of notebook ids an approver manages; an empty list yields no results.
+        Each row carries the source fields plus a fetched ``submitted_by`` user
+        and a ``notebooks`` list of ``{id, name}`` the source is referenced in
+        (restricted to the scope for approvers).
+        """
+        try:
+            if scope_ids is None:
+                nb_filter = ""
+                where = "approval_status = 'pending'"
+                params: Dict[str, Any] = {}
+            else:
+                if not scope_ids:
+                    return []
+                params = {"ids": [ensure_record_id(x) for x in scope_ids]}
+                nb_filter = " AND out IN $ids"
+                where = (
+                    "approval_status = 'pending' AND "
+                    "(SELECT VALUE out FROM reference "
+                    "WHERE in = $parent.id AND out IN $ids) != []"
+                )
+            rows = await repo_query(
+                f"""
+                SELECT id, title, asset, approval_status, submitted_at, submitted_by,
+                    (SELECT out.id AS id, out.name AS name FROM reference
+                        WHERE in = $parent.id{nb_filter}) AS notebooks
+                FROM source
+                WHERE {where}
+                ORDER BY submitted_at DESC
+                FETCH submitted_by
+                """,
+                params,
+            )
+            return rows or []
+        except Exception as e:
+            logger.error(f"Error fetching pending sources: {str(e)}")
+            logger.exception(e)
+            raise DatabaseOperationError(e)
+
+    @classmethod
+    async def count_pending(cls, scope_ids: Optional[List[str]]) -> int:
+        """Number of distinct pending sources in scope (see ``get_pending``)."""
+        try:
+            if scope_ids is None:
+                rows = await repo_query(
+                    "SELECT VALUE id FROM source WHERE approval_status = 'pending'"
+                )
+            else:
+                if not scope_ids:
+                    return 0
+                rows = await repo_query(
+                    "SELECT VALUE id FROM source WHERE approval_status = 'pending' "
+                    "AND (SELECT VALUE out FROM reference "
+                    "WHERE in = $parent.id AND out IN $ids) != []",
+                    {"ids": [ensure_record_id(x) for x in scope_ids]},
+                )
+            return len(rows or [])
+        except Exception as e:
+            logger.error(f"Error counting pending sources: {str(e)}")
+            logger.exception(e)
+            raise DatabaseOperationError(e)
+
+    async def referenced_notebook_ids(self) -> List[str]:
+        """Ids of notebooks this source is referenced in."""
+        try:
+            rows = await repo_query(
+                "SELECT VALUE out FROM reference WHERE in = $id",
+                {"id": ensure_record_id(self.id)},
+            )
+            return [str(r) for r in (rows or [])]
+        except Exception as e:
+            logger.error(f"Error fetching notebooks for source {self.id}: {str(e)}")
+            logger.exception(e)
+            raise DatabaseOperationError(e)
 
     async def delete(self) -> bool:
         """Delete source and clean up associated file, embeddings, and insights."""

@@ -1,0 +1,42 @@
+-- Migration 31: Approval workflow roles, notebook hierarchy and source review
+-- (ChatBot5400).
+--
+-- Adds two new RBAC roles on top of admin/user:
+--   * contributor  — "nguoi dua van ban": submits sources that enter a
+--                     `pending` approval queue before they become visible.
+--   * approver     — "nguoi duyet": reviews pending sources, manages the
+--                     notebook categories an admin assigns to them, and may
+--                     create sub-notebooks and link existing sources without
+--                     needing approval.
+--
+-- Also makes notebooks hierarchical (a `parent` link turns a notebook into a
+-- "sub-notebook"/so tay con of a category) and records which approvers manage
+-- each category (`managers`). Sources gain an `approval_status` and review
+-- audit fields. All new fields are optional / defaulted so rows created before
+-- this migration stay valid.
+
+-- 1) Expand the user role domain.
+DEFINE FIELD OVERWRITE role ON TABLE user TYPE string DEFAULT 'user' ASSERT $value IN ['admin', 'approver', 'contributor', 'user'];
+
+-- 2) Notebook hierarchy + category management.
+-- `parent` links a sub-notebook to its category (a top-level notebook). A
+-- notebook with no parent that carries `managers` is a managed category.
+DEFINE FIELD IF NOT EXISTS parent ON TABLE notebook TYPE option<record<notebook>>;
+DEFINE FIELD IF NOT EXISTS managers ON TABLE notebook TYPE option<array<record<user>>> DEFAULT [];
+DEFINE INDEX IF NOT EXISTS idx_notebook_parent ON TABLE notebook COLUMNS parent;
+
+-- 3) Source approval workflow fields.
+-- `approval_status` is separate from a source's async *processing* status
+-- (which lives on its linked command). Existing sources are all pre-approved
+-- content, so they are backfilled to 'approved' below.
+DEFINE FIELD IF NOT EXISTS approval_status ON TABLE source TYPE string DEFAULT 'approved' ASSERT $value IN ['approved', 'pending', 'rejected'];
+DEFINE FIELD IF NOT EXISTS submitted_by ON TABLE source TYPE option<record<user>>;
+DEFINE FIELD IF NOT EXISTS reviewed_by ON TABLE source TYPE option<record<user>>;
+DEFINE FIELD IF NOT EXISTS review_note ON TABLE source TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS submitted_at ON TABLE source TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS reviewed_at ON TABLE source TYPE option<datetime>;
+DEFINE INDEX IF NOT EXISTS idx_source_approval_status ON TABLE source COLUMNS approval_status;
+DEFINE INDEX IF NOT EXISTS idx_source_submitted_by ON TABLE source COLUMNS submitted_by;
+
+-- 4) Backfill: every source that predates this migration is approved content.
+UPDATE source SET approval_status = 'approved' WHERE approval_status = NONE OR approval_status = NULL;

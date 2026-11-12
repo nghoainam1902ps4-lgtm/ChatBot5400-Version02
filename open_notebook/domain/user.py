@@ -10,7 +10,12 @@ from open_notebook.domain.base import ObjectModel
 from open_notebook.exceptions import InvalidInputError
 from open_notebook.utils.passwords import hash_password, verify_password
 
-Role = Literal["admin", "user"]
+Role = Literal["admin", "approver", "contributor", "user"]
+
+# Roles allowed to submit sources/van ban into the system. A plain "user" is a
+# read/chat-only consumer. A "contributor" submits content that must be approved;
+# "approver"/"admin" submit content that is approved immediately.
+SUBMITTER_ROLES = ("admin", "approver", "contributor")
 
 
 class User(ObjectModel):
@@ -101,6 +106,30 @@ class User(ObjectModel):
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
+
+    @property
+    def is_approver(self) -> bool:
+        """An approver reviews pending sources and manages assigned categories."""
+        return self.role == "approver"
+
+    @property
+    def is_contributor(self) -> bool:
+        """A contributor submits sources that require approval."""
+        return self.role == "contributor"
+
+    @property
+    def can_submit_sources(self) -> bool:
+        """Whether this user may add sources/van ban into the system at all."""
+        return self.role in SUBMITTER_ROLES
+
+    @property
+    def requires_approval(self) -> bool:
+        """Whether sources this user submits must be approved before use.
+
+        Only a plain contributor's submissions are held for review; admins and
+        approvers add approved content directly.
+        """
+        return self.role == "contributor"
 
     # --- Auth --------------------------------------------------------------
     @classmethod

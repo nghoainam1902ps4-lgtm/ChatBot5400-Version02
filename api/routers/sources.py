@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -18,7 +19,13 @@ from loguru import logger
 from pydantic import ValidationError
 from surreal_commands import execute_command_sync, submit_command
 
-from api.auth import TokenUser, get_current_user, require_admin
+from api.auth import (
+    TokenUser,
+    auth_disabled,
+    get_current_user,
+    require_admin,
+    require_submitter,
+)
 from api.command_service import CommandService
 from api.credentials_service import validate_url
 from api.models import (
@@ -265,8 +272,14 @@ async def get_sources(
             "uploaded file name. Applied before limit/offset."
         ),
     ),
+    current_user: TokenUser = Depends(get_current_user),
 ):
-    """Get sources with pagination, sorting and optional title search."""
+    """Get sources with pagination, sorting and optional title search.
+
+    Pending/rejected sources (contributor submissions under review) are hidden
+    from everyone except an admin and the submitter themselves; approvers review
+    them through the dedicated /approvals queue.
+    """
     try:
         # Validate sort parameters
         if sort_by not in SOURCE_SORT_FIELDS:
@@ -301,23 +314,36 @@ async def get_sources(
         else:
             from_clause = "source"
 
-        # Optional metadata search: title or uploaded file name only (no
-        # content/chunk/vector search). Filtering happens before LIMIT/START so
-        # pagination walks the matching set.
-        where_clause = ""
+        # Build the WHERE clause from independent conditions:
+        #  - optional metadata search (title / uploaded file name), and
+        #  - approval visibility (hide others' pending/rejected submissions).
+        conditions: list[str] = []
         search_pattern = build_accent_insensitive_pattern(q) if q else None
         if search_pattern:
             params["q_pattern"] = search_pattern
-            where_clause = (
-                "WHERE string::matches(title OR '', $q_pattern) "
+            conditions.append(
+                "(string::matches(title OR '', $q_pattern) "
                 "OR string::matches("
                 "array::last(string::split(asset.file_path OR '', '/')) OR '', "
-                "$q_pattern)"
+                "$q_pattern))"
             )
+
+        # Admins (and single-user mode) see everything; everyone else sees
+        # approved sources plus their own submissions. (approval_status OR
+        # 'approved') treats pre-migration NONE as approved.
+        if not auth_disabled() and not current_user.is_admin:
+            params["me"] = ensure_record_id(current_user.id)
+            conditions.append(
+                "((approval_status OR 'approved') = 'approved' "
+                "OR submitted_by = $me)"
+            )
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         # Query sources - include command field with FETCH
         query = f"""
             SELECT id, asset, created, title, updated, topics, command,
+            (approval_status OR 'approved') AS approval_status,
             string::lowercase(title OR '') AS title_sort,
             ({SOURCE_TYPE_EXPRESSION}) AS type,
             (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
@@ -382,6 +408,7 @@ async def get_sources(
                     command_id=command_id,
                     status=status,
                     processing_info=processing_info,
+                    approval_status=row.get("approval_status") or "approved",
                 )
             )
 
@@ -419,6 +446,9 @@ def _source_to_response(
         "embedded_chunks": embedded_chunks,
         "created": str(source.created),
         "updated": str(source.updated),
+        "approval_status": source.approval_status or "approved",
+        "submitted_by": source.submitted_by,
+        "review_note": source.review_note,
     }
     fields.update(extras)
     return SourceResponse(**fields)
@@ -495,6 +525,8 @@ async def _create_source_async_path(
     content_state: dict[str, Any],
     transformation_ids: List[str],
     file_path: Optional[str],
+    approval_status: str = "approved",
+    submitted_by: Optional[str] = None,
 ) -> SourceResponse:
     """ASYNC PATH: Create source record first, then queue command."""
     logger.info("Using async processing path")
@@ -512,8 +544,16 @@ async def _create_source_async_path(
         title=source_data.title or "Processing...",
         topics=[],
         asset=source_asset,
+        approval_status=approval_status,
+        submitted_by=submitted_by,
+        submitted_at=datetime.now() if submitted_by else None,
     )
     await source.save()
+
+    # Pending submissions are not embedded while under review (they must stay
+    # out of search until an approver accepts them); approval triggers embedding.
+    if approval_status == "pending":
+        source_data = source_data.model_copy(update={"embed": False})
 
     # Add source to notebooks immediately so it appears in the UI
     # The source_graph will skip adding duplicates
@@ -581,6 +621,8 @@ async def _create_source_sync_path(
     source_data: SourceCreate,
     content_state: dict[str, Any],
     transformation_ids: List[str],
+    approval_status: str = "approved",
+    submitted_by: Optional[str] = None,
 ) -> SourceResponse:
     """SYNC PATH: Execute synchronously using execute_command_sync."""
     logger.info("Using sync processing path")
@@ -589,10 +631,17 @@ async def _create_source_sync_path(
         # Import command modules to ensure they're registered
         import commands.source_commands  # noqa: F401
 
+        # Pending submissions must not be embedded while under review.
+        if approval_status == "pending":
+            source_data = source_data.model_copy(update={"embed": False})
+
         # Create source record - let SurrealDB generate the ID
         source = Source(
             title=source_data.title or "Processing...",
             topics=[],
+            approval_status=approval_status,
+            submitted_by=submitted_by,
+            submitted_at=datetime.now() if submitted_by else None,
         )
         await source.save()
 
@@ -653,15 +702,24 @@ async def _create_source_sync_path(
 @router.post(
     "/sources",
     response_model=SourceResponse,
-    dependencies=[Depends(require_admin)],
 )
 async def create_source(
     form_data: tuple[SourceCreate, Optional[UploadFile]] = Depends(
         parse_source_form_data
     ),
+    current_user: TokenUser = Depends(require_submitter),
 ):
-    """Create a new source with support for both JSON and multipart form data."""
+    """Create a new source with support for both JSON and multipart form data.
+
+    Any submitter role (admin, approver, contributor) may add sources. A plain
+    contributor's submission enters the approval queue (``pending``) and is not
+    embedded until an approver accepts it; admins and approvers add approved
+    content directly.
+    """
     source_data, upload_file = form_data
+    # A contributor's content must be reviewed before it becomes visible.
+    approval_status = "pending" if current_user.requires_approval else "approved"
+    submitted_by = current_user.id
 
     # Initialize file_path before try block so exception handlers can reference it
     file_path = None
@@ -698,10 +756,19 @@ async def create_source(
         # Branch based on processing mode
         if source_data.async_processing:
             return await _create_source_async_path(
-                source_data, content_state, transformation_ids, file_path
+                source_data,
+                content_state,
+                transformation_ids,
+                file_path,
+                approval_status=approval_status,
+                submitted_by=submitted_by,
             )
         return await _create_source_sync_path(
-            source_data, content_state, transformation_ids
+            source_data,
+            content_state,
+            transformation_ids,
+            approval_status=approval_status,
+            submitted_by=submitted_by,
         )
 
     except HTTPException:
@@ -726,13 +793,15 @@ async def create_source(
 @router.post(
     "/sources/json",
     response_model=SourceResponse,
-    dependencies=[Depends(require_admin)],
 )
-async def create_source_json(source_data: SourceCreate):
+async def create_source_json(
+    source_data: SourceCreate,
+    current_user: TokenUser = Depends(require_submitter),
+):
     """Create a new source using JSON payload (legacy endpoint for backward compatibility)."""
     # Convert to form data format and call main endpoint
     form_data = (source_data, None)
-    return await create_source(form_data)
+    return await create_source(form_data, current_user)
 
 
 async def _resolve_source_file(source_id: str) -> tuple[str, str]:

@@ -34,13 +34,13 @@ class UserResponse(BaseModel):
 class UserCreateRequest(BaseModel):
     username: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
-    role: str = Field("user", pattern="^(admin|user)$")
+    role: str = Field("user", pattern="^(admin|approver|contributor|user)$")
     name: Optional[str] = None
 
 
 class UserUpdateRequest(BaseModel):
     username: Optional[str] = Field(None, min_length=1)
-    role: Optional[str] = Field(None, pattern="^(admin|user)$")
+    role: Optional[str] = Field(None, pattern="^(admin|approver|contributor|user)$")
     name: Optional[str] = None
 
 
