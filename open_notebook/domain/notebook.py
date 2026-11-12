@@ -587,6 +587,22 @@ class Source(ObjectModel):
         }
 
     async def save(self) -> None:
+        # Checked here, before ObjectModel.save(), which would re-raise it as a
+        # generic DatabaseOperationError and bury the message.
+        if self.id is not None:
+            changed = [
+                field
+                for field in _APPROVAL_FIELDS
+                if _approval_value(getattr(self, field))
+                != self._approval_snapshot.get(field)
+            ]
+            if changed:
+                # Fail loudly instead of silently dropping the edit.
+                raise InvalidInputError(
+                    f"Approval fields ({', '.join(changed)}) cannot be changed "
+                    "through Source.save(); use Source.approve() or a targeted "
+                    "UPDATE instead"
+                )
         await super().save()
         self._snapshot_approval()
 
@@ -829,20 +845,8 @@ class Source(ObjectModel):
         # this in-memory copy, so writing these fields on update would let a
         # stale copy (e.g. the background processing job, which loads the
         # source before a long extraction) revert an approval to 'pending'.
+        # (save() refuses in-memory edits to them before getting here.)
         if self.id is not None:
-            changed = [
-                field
-                for field in _APPROVAL_FIELDS
-                if _approval_value(getattr(self, field))
-                != self._approval_snapshot.get(field)
-            ]
-            if changed:
-                # Fail loudly instead of silently dropping the edit.
-                raise InvalidInputError(
-                    f"Approval fields ({', '.join(changed)}) cannot be changed "
-                    "through Source.save(); use Source.approve() or a targeted "
-                    "UPDATE instead"
-                )
             for field in _APPROVAL_FIELDS:
                 data.pop(field, None)
             return data
@@ -892,15 +896,22 @@ class Source(ObjectModel):
         here: either the text is not extracted yet (the processing job embeds
         it when it finishes, see graphs/source.py save_source) or the job
         already claimed the embedding."""
-        # Targeted write: never a full MERGE of this (possibly stale) copy.
-        await repo_query(
+        # Targeted write: never a full MERGE of this (possibly stale) copy. The
+        # WHERE makes "only a pending source can be approved" atomic, so a
+        # repeated or concurrent approve is refused instead of re-stamped.
+        rows = await repo_query(
             "UPDATE $id SET approval_status = 'approved', reviewed_by = $reviewer, "
-            "reviewed_at = time::now(), review_note = NONE",
+            "reviewed_at = time::now(), review_note = NONE "
+            "WHERE approval_status = 'pending' RETURN id",
             {
                 "id": ensure_record_id(self.id),
                 "reviewer": ensure_record_id(reviewer_id),
             },
         )
+        if not rows:
+            raise InvalidInputError(
+                "Only a document awaiting approval can be approved"
+            )
         self.approval_status = "approved"
         self.reviewed_by = reviewer_id
         self.reviewed_at = datetime.now()
@@ -1156,6 +1167,36 @@ class ChatSession(ObjectModel):
         if not source_id:
             raise InvalidInputError("Source ID must be provided")
         return await self.relate("refers_to", source_id)
+
+
+async def remove_duplicate_notebook_links() -> int:
+    """Delete duplicate source->notebook ``reference`` edges, keeping one.
+
+    Until v1.0.7 the "already linked?" check in the link endpoint compared the
+    edge in the wrong direction, so linking a source twice created a second
+    edge and inflated the notebook's source count. That check is fixed; this
+    repairs links duplicated before the fix. Run best-effort at API startup: it
+    is a no-op once the data is clean and can be removed in a later release.
+    Returns the number of edges removed.
+    """
+    groups = await repo_query(
+        "SELECT in, out, count() AS n FROM reference GROUP BY in, out"
+    )
+    removed = 0
+    for group in groups or []:
+        if int(group.get("n") or 0) < 2:
+            continue
+        edge_ids = await repo_query(
+            "SELECT VALUE id FROM reference WHERE in = $in AND out = $out",
+            {
+                "in": ensure_record_id(str(group["in"])),
+                "out": ensure_record_id(str(group["out"])),
+            },
+        )
+        for edge_id in (edge_ids or [])[1:]:
+            await repo_query("DELETE $id", {"id": ensure_record_id(str(edge_id))})
+            removed += 1
+    return removed
 
 
 async def resolve_notebook_scope(notebook_ids: List[str]) -> List[str]:

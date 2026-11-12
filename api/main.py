@@ -217,6 +217,17 @@ async def lifespan(app: FastAPI):
 
     await seed_default_admin()
 
+    # One-time data repair (see remove_duplicate_notebook_links). Never blocks
+    # startup: a failure only means the duplicates stay until the next start.
+    try:
+        from open_notebook.domain.notebook import remove_duplicate_notebook_links
+
+        removed = await remove_duplicate_notebook_links()
+        if removed:
+            logger.info(f"Removed {removed} duplicate source-notebook link(s)")
+    except Exception as e:
+        logger.warning(f"Skipped duplicate source-notebook link cleanup: {e}")
+
     from api.auth import auth_disabled
 
     if auth_disabled():

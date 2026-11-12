@@ -1138,7 +1138,9 @@ async def retry_source_processing(source_id: str):
                 content_state=content_state,
                 notebook_ids=notebook_ids,
                 transformations=[],  # Use default transformations on retry
-                embed=True,  # Always embed on retry
+                # Embed on retry, except for a submission still awaiting
+                # approval: that is embedded once, when it is approved.
+                embed=not source.is_pending,
             )
 
             command_id = await CommandService.submit_command_job(

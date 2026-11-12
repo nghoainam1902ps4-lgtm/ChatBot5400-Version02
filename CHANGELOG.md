@@ -41,6 +41,9 @@ trường mới, dữ liệu cũ giữ nguyên (nguồn hiện có được đá
 - Gắn một nguồn đã có trong sổ tay không còn tạo liên kết trùng (trước đây làm
   số nguồn của sổ tay bị đếm sai).
 - Xóa nguồn giờ dọn luôn các liên kết sổ tay của nguồn đó.
+- Khi khởi động, hệ thống tự dọn các liên kết sổ tay bị trùng đã tạo trước đây.
+- Chỉ văn bản đang **chờ duyệt** mới duyệt hoặc từ chối được; văn bản đã duyệt
+  chỉ Quản trị viên xóa được.
 
 ## [1.0.6] - 2026-10-15
 

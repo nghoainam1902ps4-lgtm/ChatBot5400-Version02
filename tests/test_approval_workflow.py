@@ -19,6 +19,7 @@ from open_notebook.domain.notebook import (
     Source,
     _keep_approved_results,
     _search_until_filled,
+    remove_duplicate_notebook_links,
 )
 from open_notebook.exceptions import (
     AuthorizationError,
@@ -93,7 +94,7 @@ class TestSourceReview:
         # The in-memory copy predates extraction (no text); the claim is decided
         # by the DB, which has the text.
         source = Source(id="source:1", approval_status="pending", full_text=None)
-        repo = AsyncMock(side_effect=[[], [{"id": "source:1"}]])
+        repo = AsyncMock(side_effect=[[{"id": "source:1"}], [{"id": "source:1"}]])
         with (
             patch(f"{DOMAIN}.repo_query", new=repo),
             patch.object(Source, "save", new=AsyncMock()) as save,
@@ -114,7 +115,7 @@ class TestSourceReview:
         # Claim returns nothing: text not extracted yet, or the processing job
         # already claimed the embedding. Either way approve() must not queue it.
         source = Source(id="source:1", approval_status="pending", full_text="x")
-        repo = AsyncMock(side_effect=[[], []])
+        repo = AsyncMock(side_effect=[[{"id": "source:1"}], []])
         with (
             patch(f"{DOMAIN}.repo_query", new=repo),
             patch(f"{DOMAIN}.submit_command") as submit,
@@ -164,25 +165,51 @@ class TestSourceReview:
             assert field not in data
         assert data["title"] == "t"
 
-    def test_update_save_rejects_edited_approval_fields(self):
+    @pytest.mark.asyncio
+    async def test_update_save_rejects_edited_approval_fields(self):
         # Editing an approval field and calling save() must fail loudly rather
         # than silently writing nothing.
         source = Source(id="source:1", approval_status="pending")
         source.assigned_approver = "user:p"
-        with pytest.raises(InvalidInputError, match="assigned_approver"):
-            source._prepare_save_data()
+        update = AsyncMock()
+        with patch(f"{BASE}.repo_update", new=update):
+            # The caller must get InvalidInputError itself, not a generic
+            # DatabaseOperationError wrapping it.
+            with pytest.raises(InvalidInputError, match="assigned_approver"):
+                await source.save()
+        update.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_save_after_approve_is_allowed(self):
         # approve() refreshes the snapshot, so a later ordinary save() of the
         # same object (e.g. a title edit) is not mistaken for an approval edit.
         source = Source(id="source:1", approval_status="pending")
-        with patch(f"{DOMAIN}.repo_query", new=AsyncMock(side_effect=[[], []])):
+        with patch(
+            f"{DOMAIN}.repo_query",
+            new=AsyncMock(side_effect=[[{"id": "source:1"}], []]),
+        ):
             await source.approve("user:admin")
         source.title = "renamed"
-        data = source._prepare_save_data()
-        assert data["title"] == "renamed"
-        assert "approval_status" not in data
+        update = AsyncMock(return_value=[{"id": "source:1", "title": "renamed"}])
+        with patch(f"{BASE}.repo_update", new=update):
+            await source.save()
+        written = update.await_args.args[2]
+        assert written["title"] == "renamed"
+        assert "approval_status" not in written
+
+    @pytest.mark.asyncio
+    async def test_approve_refuses_a_source_that_is_not_pending(self):
+        # The conditional UPDATE matched nothing: already approved (or gone).
+        source = Source(id="source:1", approval_status="approved")
+        repo = AsyncMock(return_value=[])
+        with (
+            patch(f"{DOMAIN}.repo_query", new=repo),
+            patch(f"{DOMAIN}.submit_command") as submit,
+        ):
+            with pytest.raises(InvalidInputError, match="awaiting approval"):
+                await source.approve("user:p")
+        assert "WHERE approval_status = 'pending'" in repo.await_args.args[0]
+        submit.assert_not_called()
 
     def test_create_save_writes_approval_fields(self):
         source = Source(approval_status="pending", submitted_by="user:c")
@@ -517,6 +544,7 @@ class TestAssignedReviewer:
 
     @pytest.mark.asyncio
     async def test_reviewer_must_be_eligible(self):
+        approvals_service.invalidate_scope_cache()
         eligible = [ReviewerResponse(id="user:p", username="p")]
         with patch.object(
             approvals_service,
@@ -531,19 +559,114 @@ class TestAssignedReviewer:
 
 
 class TestReleaseApprover:
+    RELEASE = (
+        "UPDATE notebook SET managers -= $uid",
+        "SET assigned_approver = NONE",
+        "approval_status = 'pending'",
+    )
+
     @pytest.mark.asyncio
-    async def test_removes_manager_and_unassigns_pending(self):
+    async def test_demotion_is_one_transaction(self):
         repo = AsyncMock(return_value=[])
         with patch("api.approvals_service.repo_query", new=repo):
-            await approvals_service.release_approver("user:p")
-        queries = [c.args[0] for c in repo.await_args_list]
-        assert any(
-            q.startswith("UPDATE notebook SET managers -= $uid") for q in queries
+            await approvals_service.demote_approver("user:p", "user")
+        assert repo.await_count == 1
+        query, params = repo.await_args.args
+        assert query.startswith("BEGIN TRANSACTION;")
+        assert query.endswith("COMMIT TRANSACTION;")
+        for clause in (*self.RELEASE, "UPDATE $uid SET role = $role"):
+            assert clause in query
+        assert params["role"] == "user"
+
+    @pytest.mark.asyncio
+    async def test_deletion_is_one_transaction(self):
+        repo = AsyncMock(return_value=[])
+        with patch("api.approvals_service.repo_query", new=repo):
+            await approvals_service.delete_approver("user:p")
+        assert repo.await_count == 1
+        query = repo.await_args.args[0]
+        assert query.startswith("BEGIN TRANSACTION;")
+        for clause in (*self.RELEASE, "DELETE $uid"):
+            assert clause in query
+
+
+class TestReviewGuards:
+    @pytest.mark.asyncio
+    async def test_assignment_grants_nothing_once_approved(self):
+        # assigned_approver stays on the record after approval; it must not let
+        # that approver act on (e.g. reject = delete) the approved document.
+        approver = TokenUser(id="user:p", username="p", role="approver")
+        source = Source(
+            id="source:1", approval_status="approved", assigned_approver="user:p"
         )
-        assert any(
-            "SET assigned_approver = NONE" in q and "approval_status = 'pending'" in q
-            for q in queries
+        with patch.object(
+            Notebook, "managed_scope_ids", new=AsyncMock(return_value=[])
+        ):
+            with pytest.raises(AuthorizationError):
+                await approvals_service.assert_can_review_source(approver, source)
+
+    def test_reject_refuses_an_approved_source(self):
+        from fastapi.testclient import TestClient
+
+        from api.main import app
+
+        approved = Source(id="source:1", approval_status="approved")
+        with (
+            patch(
+                "api.routers.approvals.Source.get",
+                new=AsyncMock(return_value=approved),
+            ),
+            patch.object(Source, "delete", new=AsyncMock()) as delete,
+        ):
+            response = TestClient(app).post(
+                "/api/approvals/sources/source:1/reject", json={}
+            )
+        assert response.status_code == 400
+        delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_reviewer_validation_is_cached_for_a_batch(self):
+        approvals_service.invalidate_scope_cache()
+        lookup = AsyncMock(return_value=[ReviewerResponse(id="user:p", username="p")])
+        with patch.object(approvals_service, "_eligible_reviewers", new=lookup):
+            for _ in range(5):  # five files of one batch upload
+                await approvals_service.assert_valid_reviewer("user:p", ["notebook:1"])
+            assert lookup.await_count == 1
+            approvals_service.invalidate_scope_cache()
+            await approvals_service.assert_valid_reviewer("user:p", ["notebook:1"])
+            assert lookup.await_count == 2
+
+
+class TestDuplicateLinkRepair:
+    @pytest.mark.asyncio
+    async def test_keeps_one_edge_per_source_notebook_pair(self):
+        repo = AsyncMock(
+            side_effect=[
+                # groups: one duplicated pair, one clean pair
+                [
+                    {"in": "source:1", "out": "notebook:1", "n": 3},
+                    {"in": "source:2", "out": "notebook:1", "n": 1},
+                ],
+                ["reference:a", "reference:b", "reference:c"],
+                [],
+                [],
+            ]
         )
+        with patch(f"{DOMAIN}.repo_query", new=repo):
+            removed = await remove_duplicate_notebook_links()
+        assert removed == 2
+        deletes = [c for c in repo.await_args_list if c.args[0] == "DELETE $id"]
+        assert [str(c.args[1]["id"]) for c in deletes] == [
+            "reference:b",
+            "reference:c",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_clean_data_is_a_single_read(self):
+        repo = AsyncMock(return_value=[{"in": "source:1", "out": "notebook:1", "n": 1}])
+        with patch(f"{DOMAIN}.repo_query", new=repo):
+            assert await remove_duplicate_notebook_links() == 0
+        assert repo.await_count == 1
 
 
 class TestJobSurvivesDeletedSource:

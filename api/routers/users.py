@@ -80,6 +80,8 @@ async def create_user(request: UserCreateRequest):
         role=request.role,  # type: ignore[arg-type]
         name=request.name,
     )
+    if user.role == "approver":
+        approvals_service.invalidate_scope_cache()  # new eligible reviewer
     logger.info(f"Admin created user '{user.username}' (role={user.role})")
     return _to_response(user)
 
@@ -112,17 +114,21 @@ async def update_user(user_id: str, request: UserUpdateRequest):
                 f"Username '{request.username}' already exists"
             )
         user.username = request.username.strip()
-    was_approver = user.role == "approver"
+    role_changed = request.role is not None and request.role != user.role
+    # Leaving the approver role drops the categories they managed and
+    # un-assigns their pending submissions - in one transaction with the role
+    # change itself, so the two can never get out of sync.
+    if role_changed and user.role == "approver" and user.id and request.role:
+        await approvals_service.demote_approver(user.id, request.role)
     if request.role is not None:
         user.role = request.role  # type: ignore[assignment]
     if request.name is not None:
         user.name = request.name
 
     await user.save()
-    # Leaving the approver role drops the categories they managed and
-    # un-assigns their pending submissions.
-    if was_approver and user.role != "approver" and user.id:
-        await approvals_service.release_approver(user.id)
+    if role_changed:
+        # Reviewer lists / scopes depend on roles.
+        approvals_service.invalidate_scope_cache()
     logger.info(f"Admin updated user '{user.username}'")
     return _to_response(user)
 
@@ -140,8 +146,10 @@ async def delete_user(
         raise InvalidInputError("Cannot delete the last remaining admin")
 
     if user.role == "approver" and user.id:
-        await approvals_service.release_approver(user.id)
-    await user.delete()
+        # Account deletion and scope release happen in one transaction.
+        await approvals_service.delete_approver(user.id)
+    else:
+        await user.delete()
     logger.info(f"Admin deleted user '{user.username}'")
     return {"success": True, "message": "User deleted successfully"}
 

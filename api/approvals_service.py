@@ -27,6 +27,7 @@ from open_notebook.exceptions import (
 # managers change in this process (see invalidate_scope_cache callers).
 _SCOPE_CACHE_TTL_SECONDS = 10.0
 _scope_cache: Dict[str, tuple[float, List[str]]] = {}
+_reviewer_cache: Dict[tuple[str, ...], tuple[float, set[str]]] = {}
 
 
 async def _managed_scope_cached(user_id: str) -> List[str]:
@@ -40,8 +41,10 @@ async def _managed_scope_cached(user_id: str) -> List[str]:
 
 
 def invalidate_scope_cache() -> None:
-    """Drop cached approver scopes (call after changing managers/hierarchy)."""
+    """Drop cached approver scopes and reviewer lists (call after changing
+    managers, hierarchy or user roles)."""
     _scope_cache.clear()
+    _reviewer_cache.clear()
 
 
 async def scope_ids_for(user: TokenUser) -> Optional[List[str]]:
@@ -184,6 +187,23 @@ async def eligible_reviewers(notebook_ids: List[str]) -> List[ReviewerResponse]:
         return []
 
 
+async def _eligible_reviewer_ids_cached(notebook_ids: List[str]) -> set[str]:
+    """Eligible reviewer ids for a notebook set, cached briefly.
+
+    A batch upload creates one source per file with the same notebooks and
+    reviewer; without this every item would repeat the same three lookups.
+    Cleared together with the scope cache when managers or roles change.
+    """
+    key = tuple(sorted(notebook_ids))
+    now = time.monotonic()
+    hit = _reviewer_cache.get(key)
+    if hit is not None and now - hit[0] < _SCOPE_CACHE_TTL_SECONDS:
+        return hit[1]
+    ids = {r.id for r in await _eligible_reviewers(notebook_ids)}
+    _reviewer_cache[key] = (now, ids)
+    return ids
+
+
 async def assert_valid_reviewer(reviewer_id: str, notebook_ids: List[str]) -> None:
     """Reject a submission routed to someone who is not an eligible reviewer.
 
@@ -191,30 +211,45 @@ async def assert_valid_reviewer(reviewer_id: str, notebook_ids: List[str]) -> No
     assigned to a non-approver (nobody could act on it) or to an approver
     unrelated to the chosen notebooks.
     """
-    eligible = {r.id for r in await _eligible_reviewers(notebook_ids)}
-    if str(reviewer_id) not in eligible:
+    if str(reviewer_id) not in await _eligible_reviewer_ids_cached(notebook_ids):
         raise InvalidInputError(
             "The selected reviewer cannot review documents for the chosen notebooks"
         )
 
 
-async def release_approver(user_id: str) -> None:
-    """Detach a user from everything tied to the approver role.
+# Detaching a user from the approver role and changing the account itself must
+# succeed or fail together: otherwise a failed second step leaves an approver
+# who silently lost their categories, or a demoted user still listed as manager.
+# Same single-request transaction pattern as api/feedback_service.py.
+_RELEASE_APPROVER_STATEMENTS = (
+    # Drop them from every category so a later re-promotion does not silently
+    # restore the old scope and no dangling record link is left behind.
+    "UPDATE notebook SET managers -= $uid WHERE $uid IN managers; "
+    # Un-assign their pending submissions so those fall back to the approvers
+    # managing the notebook instead of being visible to admins only.
+    "UPDATE source SET assigned_approver = NONE "
+    "WHERE assigned_approver = $uid AND approval_status = 'pending'; "
+)
 
-    Called when an approver is demoted or deleted: removes them from every
-    category's ``managers`` (so a later re-promotion does not silently restore
-    the old scope, and no dangling record link is left behind) and un-assigns
-    their pending submissions so those fall back to the approvers managing the
-    notebook instead of being visible to admins only.
-    """
-    uid = ensure_record_id(user_id)
+
+async def demote_approver(user_id: str, new_role: str) -> None:
+    """Atomically move an approver to another role and release their scope."""
     await repo_query(
-        "UPDATE notebook SET managers -= $uid WHERE $uid IN managers", {"uid": uid}
+        "BEGIN TRANSACTION; "
+        + _RELEASE_APPROVER_STATEMENTS
+        + "UPDATE $uid SET role = $role; COMMIT TRANSACTION;",
+        {"uid": ensure_record_id(user_id), "role": new_role},
     )
+    invalidate_scope_cache()
+
+
+async def delete_approver(user_id: str) -> None:
+    """Atomically delete an approver account and release their scope."""
     await repo_query(
-        "UPDATE source SET assigned_approver = NONE "
-        "WHERE assigned_approver = $uid AND approval_status = 'pending'",
-        {"uid": uid},
+        "BEGIN TRANSACTION; "
+        + _RELEASE_APPROVER_STATEMENTS
+        + "DELETE $uid; COMMIT TRANSACTION;",
+        {"uid": ensure_record_id(user_id)},
     )
     invalidate_scope_cache()
 
@@ -228,7 +263,13 @@ async def assert_can_review_source(user: TokenUser, source: Source) -> None:
     # The approver a contributor routed this submission to may always act on
     # it, even when it sits in no notebook they manage (e.g. submitted without
     # a notebook). The assignment is validated when the source is created.
-    if source.assigned_approver and str(source.assigned_approver) == user.id:
+    # Only while it is pending: the assignment stays on the record afterwards
+    # and must not grant anything on an approved document.
+    if (
+        source.is_pending
+        and source.assigned_approver
+        and str(source.assigned_approver) == user.id
+    ):
         return
     scope = await Notebook.managed_scope_ids(user.id)
     if not scope:
