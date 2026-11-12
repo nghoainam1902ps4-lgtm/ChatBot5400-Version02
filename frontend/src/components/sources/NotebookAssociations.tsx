@@ -14,12 +14,16 @@ interface NotebookAssociationsProps {
   sourceId: string
   currentNotebookIds: string[]
   onSave?: () => void
+  /** When true, each toggle is persisted immediately (no batch "Save" button).
+   * Used in the review window so ticking a notebook takes effect at once. */
+  autoSave?: boolean
 }
 
 export function NotebookAssociations({
   sourceId,
   currentNotebookIds,
   onSave,
+  autoSave = false,
 }: NotebookAssociationsProps) {
   const { t } = useTranslation()
   const { isAdmin, canReview, user } = useAuth()
@@ -65,11 +69,28 @@ export function NotebookAssociations({
     return false
   }, [currentNotebookIds, selectedNotebookIds])
 
-  const handleToggleNotebook = (notebookId: string) => {
+  const handleToggleNotebook = async (notebookId: string) => {
+    const isLinked = selectedNotebookIds.includes(notebookId)
+    if (autoSave) {
+      // Optimistic toggle, persisted straight away.
+      setSelectedNotebookIds(prev =>
+        isLinked ? prev.filter(id => id !== notebookId) : [...prev, notebookId]
+      )
+      try {
+        if (isLinked) {
+          await removeFromNotebook.mutateAsync({ notebookId, sourceId })
+        } else {
+          await addSources.mutateAsync({ notebookId, sourceIds: [sourceId] })
+        }
+        onSave?.()
+      } catch {
+        // Revert the optimistic change; the mutation hook shows the error toast.
+        setSelectedNotebookIds(currentNotebookIds)
+      }
+      return
+    }
     setSelectedNotebookIds(prev =>
-      prev.includes(notebookId)
-        ? prev.filter(id => id !== notebookId)
-        : [...prev, notebookId]
+      isLinked ? prev.filter(id => id !== notebookId) : [...prev, notebookId]
     )
   }
 
@@ -210,7 +231,7 @@ export function NotebookAssociations({
           </div>
         </ScrollArea>
 
-        {hasChanges && (
+        {!autoSave && hasChanges && (
           <div className="flex items-center justify-end gap-2 pt-2 border-t">
             <Button
               variant="outline"

@@ -89,16 +89,24 @@ async def reject_source(
     request: RejectSourceRequest,
     current_user: TokenUser = Depends(require_approver),
 ):
-    """Reject a pending source with an optional reason for the submitter."""
+    """Reject a pending source and DELETE it from the system.
+
+    A rejected submission is discarded entirely (record, file, embeddings,
+    insights and notebook links) so it does not linger as clutter. The reason is
+    logged server-side for audit.
+    """
     try:
         source = await Source.get(source_id)
         await approvals_service.assert_can_review_source(current_user, source)
-        await source.reject(current_user.id, request.reason)
-        logger.info(f"Source {source_id} rejected by '{current_user.username}'")
+        logger.info(
+            f"Source {source_id} rejected by '{current_user.username}' "
+            f"(reason: {request.reason or '-'}); deleting it"
+        )
+        await source.delete()
         return ReviewActionResponse(
             source_id=source_id,
             approval_status="rejected",
-            message="Source rejected",
+            message="Source rejected and removed",
         )
     except NotFoundError:
         raise

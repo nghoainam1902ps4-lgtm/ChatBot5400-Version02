@@ -75,6 +75,8 @@ interface SourceDetailContentProps {
   showChatButton?: boolean
   onChatClick?: () => void
   onClose?: () => void
+  /** Persist notebook-association toggles immediately (used in the review window). */
+  manageNotebooksAutoSave?: boolean
 }
 
 const safeExternalHref = (url: string | null | undefined): string | null => {
@@ -131,7 +133,8 @@ function SourceDetailContentInner({
   sourceId,
   showChatButton = false,
   onChatClick,
-  onClose
+  onClose,
+  manageNotebooksAutoSave = false,
 }: SourceDetailContentProps) {
   const { t, language } = useTranslation()
   const { isAdmin } = useAuth()
@@ -851,6 +854,7 @@ function SourceDetailContentInner({
               sourceId={sourceId}
               currentNotebookIds={source.notebooks || []}
               onSave={() => void refetchSource()}
+              autoSave={manageNotebooksAutoSave}
             />
           </TabsContent>
         </Tabs>

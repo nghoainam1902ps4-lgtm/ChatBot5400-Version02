@@ -82,6 +82,7 @@ export function ReviewSourceDialog({
                 sourceId={idWithPrefix}
                 showChatButton={false}
                 onClose={() => onOpenChange(false)}
+                manageNotebooksAutoSave
               />
             </div>
 

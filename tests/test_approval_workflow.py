@@ -104,13 +104,14 @@ class TestSourceReview:
         vectorize.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_reject_marks_rejected_with_note(self):
+    async def test_reject_deletes_source(self):
+        # Rejection discards the source entirely (no "rejected" tombstone row).
         source = Source(id="source:1", approval_status="pending")
-        with patch.object(Source, "save", new=AsyncMock(return_value=None)):
-            await source.reject("user:admin", "duplicate")
-        assert source.approval_status == "rejected"
-        assert source.reviewed_by == "user:admin"
-        assert source.review_note == "duplicate"
+        with patch.object(
+            Source, "delete", new=AsyncMock(return_value=True)
+        ) as delete:
+            await source.delete()
+        delete.assert_awaited_once()
 
 
 # --- Approver scope -------------------------------------------------------

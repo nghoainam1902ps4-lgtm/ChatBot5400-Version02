@@ -817,14 +817,6 @@ class Source(ObjectModel):
             logger.warning(f"Failed to embed source {self.id} on approval: {e}")
         return ""
 
-    async def reject(self, reviewer_id: str, note: Optional[str] = None) -> None:
-        """Reject a pending source with an optional reason."""
-        self.approval_status = "rejected"
-        self.reviewed_by = reviewer_id
-        self.reviewed_at = datetime.now()
-        self.review_note = note
-        await self.save()
-
     @staticmethod
     def _pending_scope(
         scope_ids: Optional[List[str]], reviewer_id: Optional[str]
@@ -937,7 +929,8 @@ class Source(ObjectModel):
                     f"File {file_path} not found for source {self.id}, skipping cleanup"
                 )
 
-        # Delete associated embeddings and insights to prevent orphaned records
+        # Delete associated embeddings, insights and notebook links to prevent
+        # orphaned records / dangling graph edges.
         try:
             source_id = ensure_record_id(self.id)
             await repo_query(
@@ -948,11 +941,17 @@ class Source(ObjectModel):
                 "DELETE source_insight WHERE source = $source_id",
                 {"source_id": source_id},
             )
-            logger.debug(f"Deleted embeddings and insights for source {self.id}")
+            await repo_query(
+                "DELETE reference WHERE in = $source_id",
+                {"source_id": source_id},
+            )
+            logger.debug(
+                f"Deleted embeddings, insights and references for source {self.id}"
+            )
         except Exception as e:
             logger.warning(
-                f"Failed to delete embeddings/insights for source {self.id}: {e}. "
-                "Continuing with source deletion."
+                f"Failed to delete embeddings/insights/references for source "
+                f"{self.id}: {e}. Continuing with source deletion."
             )
 
         # Call parent delete to remove database record
