@@ -22,11 +22,28 @@ export function NotebookAssociations({
   onSave,
 }: NotebookAssociationsProps) {
   const { t } = useTranslation()
-  const { isAdmin } = useAuth()
+  const { isAdmin, canReview, user } = useAuth()
   const [selectedNotebookIds, setSelectedNotebookIds] = useState<string[]>(currentNotebookIds)
   const [isSaving, setIsSaving] = useState(false)
 
   const { data: notebooks, isLoading } = useNotebooks()
+
+  // Admins manage every notebook; an approver only the categories assigned to
+  // them and the sub-notebooks inside those categories.
+  const manageableNotebooks = useMemo(() => {
+    const all = notebooks ?? []
+    if (isAdmin) return all
+    const myId = user?.id
+    if (!myId) return []
+    const managedCategoryIds = new Set(
+      all.filter((nb) => (nb.managers ?? []).includes(myId)).map((nb) => nb.id)
+    )
+    return all.filter(
+      (nb) =>
+        managedCategoryIds.has(nb.id) ||
+        (nb.parent ? managedCategoryIds.has(nb.parent) : false)
+    )
+  }, [notebooks, isAdmin, user?.id])
   const addSources = useAddSourcesToNotebook()
   const removeFromNotebook = useRemoveSourceFromNotebook()
 
@@ -105,8 +122,8 @@ export function NotebookAssociations({
     setSelectedNotebookIds(currentNotebookIds)
   }
 
-  // Managing a source's notebook associations is admin-only (RBAC).
-  if (!isAdmin) {
+  // Managing a source's notebook associations is for reviewers (admin/approver).
+  if (!canReview) {
     return null
   }
 
@@ -127,7 +144,7 @@ export function NotebookAssociations({
     )
   }
 
-  if (!notebooks || notebooks.length === 0) {
+  if (manageableNotebooks.length === 0) {
     return (
       <section className="mt-6 border-t border-border pt-5">
         <h3 className="flex items-center gap-2 text-[15.5px] font-medium">
@@ -154,7 +171,7 @@ export function NotebookAssociations({
       <div className="mt-4 space-y-4">
         <ScrollArea className="h-[300px] border rounded-md p-4">
           <div className="space-y-3">
-            {notebooks
+            {manageableNotebooks
               .filter(nb => !nb.archived)
               .map((notebook) => {
                 const isSelected = selectedNotebookIds.includes(notebook.id)

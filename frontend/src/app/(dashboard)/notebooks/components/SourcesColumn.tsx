@@ -69,7 +69,7 @@ export function SourcesColumn({
   mobile = false,
 }: SourcesColumnProps) {
   const { t } = useTranslation()
-  const { isAdmin } = useAuth()
+  const { canSubmit, canReview } = useAuth()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addExistingDialogOpen, setAddExistingDialogOpen] = useState(false)
@@ -216,7 +216,7 @@ export function SourcesColumn({
           </DropdownMenuContent>
         </DropdownMenu>
       )}
-      {isAdmin && (
+      {(canSubmit || canReview) && (
         <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
           <DropdownMenuTrigger asChild>
             <Button size="sm">
@@ -226,14 +226,20 @@ export function SourcesColumn({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
-              <Plus className="h-4 w-4 mr-2" />
-              {t('sources.addSource')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
-              <Link2 className="h-4 w-4 mr-2" />
-              {t('sources.addExistingTitle')}
-            </DropdownMenuItem>
+            {/* New source: submitters (admin/contributor) only. */}
+            {canSubmit && (
+              <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
+                <Plus className="h-4 w-4 mr-2" />
+                {t('sources.addSource')}
+              </DropdownMenuItem>
+            )}
+            {/* Link an existing source (no approval): reviewers (admin/approver). */}
+            {canReview && (
+              <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
+                <Link2 className="h-4 w-4 mr-2" />
+                {t('sources.addExistingTitle')}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -363,7 +369,7 @@ export function SourcesColumn({
                 {t('sources.inContextCount', { count: inContext })}
               </span>
             )}
-            {isAdmin && (
+            {(canSubmit || canReview) && (
               <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                 <DropdownMenuTrigger asChild>
                   <button type="button" className="ml-auto inline-flex h-11 flex-shrink-0 items-center">
@@ -375,14 +381,18 @@ export function SourcesColumn({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    {t('sources.addSource')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
-                    <Link2 className="h-4 w-4 mr-2" />
-                    {t('sources.addExistingTitle')}
-                  </DropdownMenuItem>
+                  {canSubmit && (
+                    <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      {t('sources.addSource')}
+                    </DropdownMenuItem>
+                  )}
+                  {canReview && (
+                    <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
+                      <Link2 className="h-4 w-4 mr-2" />
+                      {t('sources.addExistingTitle')}
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

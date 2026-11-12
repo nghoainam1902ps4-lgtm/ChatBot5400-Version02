@@ -494,13 +494,22 @@ async def add_source_to_notebook(
 
 @router.delete(
     "/notebooks/{notebook_id}/sources/{source_id}",
-    dependencies=[Depends(require_admin)],
 )
-async def remove_source_from_notebook(notebook_id: str, source_id: str):
-    """Remove a source from a notebook (delete the reference)."""
+async def remove_source_from_notebook(
+    notebook_id: str,
+    source_id: str,
+    current_user: TokenUser = Depends(require_approver),
+):
+    """Remove a source from a notebook (delete the reference).
+
+    Admins may unlink from any notebook; an approver may unlink within a
+    notebook they manage.
+    """
     try:
         # Verify the notebook exists (raises NotFoundError -> 404)
         await Notebook.get(notebook_id)
+        # Approvers are limited to their managed categories (admins bypass).
+        await approvals_service.assert_can_manage_notebook(current_user, notebook_id)
 
         # Delete the reference record linking source to notebook
         await repo_query(

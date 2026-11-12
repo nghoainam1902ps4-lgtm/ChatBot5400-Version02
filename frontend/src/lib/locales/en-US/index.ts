@@ -273,6 +273,8 @@ export const enUS = {
     loadErrorTitle: "Could not load approvals",
     loadErrorDesc: "Please try again.",
     pendingNotice: "You have {{count}} document(s) awaiting your approval",
+    reviewTitle: "Review document",
+    openReview: "Open to review",
     reviewer: "Reviewer",
     chooseReviewer: "Choose a reviewer",
     chooseReviewerDesc: "Pick the controller who will approve this document.",

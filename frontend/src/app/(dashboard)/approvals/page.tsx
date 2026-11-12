@@ -30,6 +30,7 @@ import { LoadingSkeleton } from '@/components/common/LoadingSkeleton'
 import { ErrorState } from '@/components/common/ErrorState'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AccessDenied } from '@/components/common/AccessDenied'
+import { ReviewSourceDialog } from '@/components/sources/ReviewSourceDialog'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import {
@@ -50,6 +51,7 @@ export default function ApprovalsPage() {
 
   const [rejecting, setRejecting] = useState<ApprovalItem | null>(null)
   const [reason, setReason] = useState('')
+  const [reviewingId, setReviewingId] = useState<string | null>(null)
 
   const formatDate = (value?: string | null) => {
     if (!value) return '—'
@@ -190,8 +192,15 @@ export default function ApprovalsPage() {
             <DataTableBody>
               {items.map((item) => (
                 <DataTableRow key={item.id} className="last:border-b-0">
-                  <DataTableCell className="truncate font-medium">
-                    {item.title || t('approvals.untitled')}
+                  <DataTableCell className="font-medium">
+                    <button
+                      type="button"
+                      onClick={() => setReviewingId(item.id)}
+                      className="block max-w-full truncate text-left text-fern hover:underline"
+                      title={t('approvals.openReview')}
+                    >
+                      {item.title || t('approvals.untitled')}
+                    </button>
                   </DataTableCell>
                   <DataTableCell>{typeLabel(item.type)}</DataTableCell>
                   <DataTableCell>{renderNotebooks(item)}</DataTableCell>
@@ -218,7 +227,15 @@ export default function ApprovalsPage() {
             <DataListItem
               key={item.id}
               className="px-3"
-              title={item.title || t('approvals.untitled')}
+              title={
+                <button
+                  type="button"
+                  onClick={() => setReviewingId(item.id)}
+                  className="truncate text-left text-fern hover:underline"
+                >
+                  {item.title || t('approvals.untitled')}
+                </button>
+              }
               meta={[
                 typeLabel(item.type),
                 item.submitted_by_name,
@@ -304,6 +321,13 @@ export default function ApprovalsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full review window: content + manage-notebooks + approve/reject */}
+      <ReviewSourceDialog
+        open={reviewingId !== null}
+        onOpenChange={(o) => !o && setReviewingId(null)}
+        sourceId={reviewingId}
+      />
     </AppShell>
   )
 }

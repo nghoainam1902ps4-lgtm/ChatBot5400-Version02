@@ -276,6 +276,8 @@ export const viVN = {
     loadErrorTitle: "Không tải được danh sách duyệt",
     loadErrorDesc: "Vui lòng thử lại.",
     pendingNotice: "Bạn có {{count}} văn bản đang chờ duyệt",
+    reviewTitle: "Duyệt văn bản",
+    openReview: "Mở để duyệt",
     reviewer: "Người duyệt",
     chooseReviewer: "Chọn người phê duyệt",
     chooseReviewerDesc: "Chọn người kiểm soát sẽ phê duyệt văn bản này.",
