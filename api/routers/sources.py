@@ -193,6 +193,7 @@ def parse_source_form_data(
     embed: str = Form("false"),  # Accept as string, convert to bool
     delete_source: str = Form("false"),  # Accept as string, convert to bool
     async_processing: str = Form("false"),  # Accept as string, convert to bool
+    reviewer_id: Optional[str] = Form(None),  # Approver chosen by a contributor
     file: Optional[UploadFile] = File(None),
 ) -> tuple[SourceCreate, Optional[UploadFile]]:
     """Parse form data into SourceCreate model and return upload file separately."""
@@ -241,6 +242,7 @@ def parse_source_form_data(
             embed=embed_bool,
             delete_source=delete_source_bool,
             async_processing=async_processing_bool,
+            reviewer_id=reviewer_id or None,
         )
     except ValidationError as e:
         errors = "; ".join(err.get("msg", "invalid value") for err in e.errors())

@@ -804,3 +804,94 @@ class TestNotebookRouterGuards:
         assert "in = $source_id AND out = $notebook_id" in queries[0]
         # ...so an existing link is found and no second edge is created.
         assert not any(q.startswith("RELATE") for q in queries)
+
+
+class TestReviewerReachesTheApi:
+    """The add-source form is multipart: the chosen reviewer must survive form
+    parsing (it was silently dropped before, so no submission was ever routed)."""
+
+    def _parse(self, **overrides):
+        from api.routers.sources import parse_source_form_data
+
+        fields = dict(
+            type="text",
+            notebook_id=None,
+            notebooks=None,
+            url=None,
+            content="x",
+            title="t",
+            transformations=None,
+            embed="false",
+            delete_source="false",
+            async_processing="true",
+            reviewer_id=None,
+            file=None,
+        )
+        fields.update(overrides)
+        source_data, _file = parse_source_form_data(**fields)
+        return source_data
+
+    def test_reviewer_id_is_parsed_from_the_form(self):
+        assert self._parse(reviewer_id="user:p").reviewer_id == "user:p"
+
+    def test_missing_or_blank_reviewer_is_none(self):
+        assert self._parse().reviewer_id is None
+        assert self._parse(reviewer_id="").reviewer_id is None
+
+    def test_multipart_post_routes_to_chosen_reviewer(self, monkeypatch):
+        """End to end through the HTTP form: a contributor's submission with a
+        reviewer is created pending and assigned to that reviewer."""
+        from fastapi.testclient import TestClient
+
+        from api.auth import create_access_token
+        from api.main import app
+        from api.routers import sources as sources_router
+
+        monkeypatch.delenv("OPEN_NOTEBOOK_DISABLE_AUTH", raising=False)
+        monkeypatch.setenv("OPEN_NOTEBOOK_JWT_SECRET", "test-secret-key")
+        token = create_access_token("user:c", "guivbtd", "contributor")
+
+        captured = {}
+
+        async def fake_async_path(
+            source_data,
+            content_state,
+            transformation_ids,
+            file_path,
+            approval_status="approved",
+            submitted_by=None,
+            assigned_approver=None,
+        ):
+            captured.update(
+                status=approval_status,
+                submitted_by=submitted_by,
+                assigned=assigned_approver,
+            )
+            raise RuntimeError("stop after capture")
+
+        with (
+            patch.object(
+                approvals_service, "assert_valid_reviewer", new=AsyncMock()
+            ) as validate,
+            patch.object(
+                sources_router, "_create_source_async_path", new=fake_async_path
+            ),
+        ):
+            TestClient(app, raise_server_exceptions=False).post(
+                "/api/sources",
+                headers={"Authorization": f"Bearer {token}"},
+                data={
+                    "type": "text",
+                    "title": "TEST-B7",
+                    "content": "KIEMTRA107",
+                    "notebooks": "[]",
+                    "async_processing": "true",
+                    "reviewer_id": "user:p",
+                },
+            )
+        assert captured == {
+            "status": "pending",
+            "submitted_by": "user:c",
+            "assigned": "user:p",
+        }
+        validate.assert_awaited_once_with("user:p", [])
