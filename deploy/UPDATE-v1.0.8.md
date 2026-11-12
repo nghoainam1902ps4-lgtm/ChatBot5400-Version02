@@ -1,6 +1,6 @@
-# Hướng dẫn cập nhật lên ChatBot 5400 v1.0.7
+# Hướng dẫn cập nhật lên ChatBot 5400 v1.0.8
 
-Bản **v1.0.7** bổ sung **quy trình duyệt văn bản** và **phân quyền 4 vai trò**:
+Bản **v1.0.8** bổ sung **quy trình duyệt văn bản** và **phân quyền 4 vai trò**:
 
 - Vai trò mới: **Quản lý sổ tay** (gửi văn bản, phải được duyệt) và **Kiểm
   soát** (duyệt văn bản, quản lý chuyên mục được giao, tạo sổ tay con, gắn nguồn
@@ -11,7 +11,11 @@ Bản **v1.0.7** bổ sung **quy trình duyệt văn bản** và **phân quyền
 - Trang **Duyệt văn bản** (có số đếm ở menu, thông báo khi đăng nhập, cửa sổ
   duyệt xem nội dung và đổi sổ tay).
 
-Chi tiết: xem [CHANGELOG.md](../CHANGELOG.md), mục 1.0.7.
+Chi tiết: xem [CHANGELOG.md](../CHANGELOG.md), mục 1.0.8.
+
+> Máy đã chạy bản thử nghiệm của tính năng này (trước khi phát hành, sidebar
+> hiện "Phiên bản 1.0.7") đã có sẵn migration 31–33: chỉ cần chạy khối lệnh thứ hai
+> dưới (khối lệnh `git checkout v1.0.8` ở mục VPS), không cần sao lưu lại.
 
 > ⚠️ **Bản này CÓ migration cơ sở dữ liệu (31, 32, 33)** — khác các bản 1.0.5 và
 > 1.0.6. Migration chạy **tự động** khi API khởi động. Thay đổi chỉ **thêm**
@@ -37,7 +41,7 @@ ls -lh backup-*.tgz
 ```bash
 cd /opt/chatbot5400
 git fetch origin --tags
-git checkout v1.0.7
+git checkout v1.0.8
 cd deploy
 docker image prune -af
 docker compose -f docker-compose.prod.yml up -d --build
@@ -59,7 +63,7 @@ curl -sS https://api.5491sotay.io.vn/health    # {"status":"healthy"}
 cd <repo>
 docker compose down
 git fetch origin --tags
-git checkout v1.0.7
+git checkout v1.0.8
 docker compose up -d --build
 curl -sS http://localhost:5055/health
 ```
@@ -70,7 +74,7 @@ curl -sS http://localhost:5055/health
 cd <repo>
 make stop-all 2>/dev/null || true
 git fetch origin --tags
-git checkout v1.0.7
+git checkout v1.0.8
 uv sync
 cd frontend && npm ci && npm run build && cd ..
 make start-all
@@ -88,7 +92,7 @@ make start-all
 
 ## Kiểm tra sau khi lên bản
 
-- Góc dưới sidebar hiển thị **Phiên bản 1.0.7**.
+- Góc dưới sidebar hiển thị **Phiên bản 1.0.8**.
 - **Quản lý sổ tay** thêm một văn bản (bước cuối chọn người phê duyệt) → văn bản
   **không** xuất hiện với người dùng thường, tìm kiếm không ra.
 - **Kiểm soát** đăng nhập → có thông báo và số đếm ở menu **Duyệt văn bản** → bấm
@@ -112,5 +116,5 @@ cd /opt/chatbot5400 && git checkout v1.0.6
 cd deploy && docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-> Nếu chưa tạo tag `v1.0.7`, xem mục 0 trong [UPDATE-v1.0.5.md](UPDATE-v1.0.5.md)
+> Nếu chưa tạo tag `v1.0.8`, xem mục 0 trong [UPDATE-v1.0.5.md](UPDATE-v1.0.5.md)
 > (cách tạo tag), hoặc tạo tag ngay khi Publish GitHub Release.

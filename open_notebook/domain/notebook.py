@@ -1193,7 +1193,7 @@ class ChatSession(ObjectModel):
 async def remove_duplicate_notebook_links() -> int:
     """Delete duplicate source->notebook ``reference`` edges, keeping one.
 
-    Until v1.0.7 the "already linked?" check in the link endpoint compared the
+    Before v1.0.8 the "already linked?" check in the link endpoint compared the
     edge in the wrong direction, so linking a source twice created a second
     edge and inflated the notebook's source count. That check is fixed; this
     repairs links duplicated before the fix. Run best-effort at API startup: it

@@ -2,12 +2,12 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
-## [1.0.7] - 2026-11-12
+## [1.0.8] - 2026-11-12
 
 Bổ sung **quy trình duyệt văn bản** và **phân quyền 4 vai trò**. Bản này **có
 migration cơ sở dữ liệu (31, 32, 33)**, chạy tự động khi API khởi động; chỉ thêm
 trường mới, dữ liệu cũ giữ nguyên (nguồn hiện có được đánh dấu "đã duyệt"). Xem
-[deploy/UPDATE-v1.0.7.md](deploy/UPDATE-v1.0.7.md) trước khi nâng cấp.
+[deploy/UPDATE-v1.0.8.md](deploy/UPDATE-v1.0.8.md) trước khi nâng cấp.
 
 ### Vai trò và phân quyền
 
@@ -44,6 +44,12 @@ trường mới, dữ liệu cũ giữ nguyên (nguồn hiện có được đá
 - Khi khởi động, hệ thống tự dọn các liên kết sổ tay bị trùng đã tạo trước đây.
 - Chỉ văn bản đang **chờ duyệt** mới duyệt hoặc từ chối được; văn bản đã duyệt
   chỉ Quản trị viên xóa được.
+- Build Docker không còn hỏng với lỗi "Turbopack is not supported on this
+  platform" khi mạng chập chờn làm `npm ci` bỏ sót trình biên dịch của Next.js;
+  bước cài đặt tự thử lại.
+
+> Không có bản phát hành 1.0.7: số phiên bản này chỉ dùng khi thử nghiệm trên
+> máy chủ test, bản chính thức là 1.0.8.
 
 ## [1.0.6] - 2026-10-15
 

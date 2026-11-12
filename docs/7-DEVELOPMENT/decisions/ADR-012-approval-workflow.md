@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-11
-- **Related**: [PDR-001](PDR-001-single-user-first.md), [ADR-008](ADR-008-notebook-scoped-search.md), migrations 31–33, [CHANGELOG 1.0.7](../../../CHANGELOG.md)
+- **Related**: [PDR-001](PDR-001-single-user-first.md), [ADR-008](ADR-008-notebook-scoped-search.md), migrations 31–33, [CHANGELOG 1.0.8](../../../CHANGELOG.md)
 
 ## Context
 
