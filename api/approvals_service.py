@@ -13,7 +13,11 @@ from api.auth import TokenUser, auth_disabled
 from api.models import ApprovalItemResponse, ApprovalNotebookRef, ReviewerResponse
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
-from open_notebook.exceptions import AuthorizationError, NotFoundError
+from open_notebook.exceptions import (
+    AuthorizationError,
+    InvalidInputError,
+    NotFoundError,
+)
 
 # Read-visibility checks run on every single-source request, including the
 # status endpoint the UI polls every ~2s while a source is processing. The
@@ -119,60 +123,100 @@ async def count_pending(user: TokenUser) -> int:
     return await Source.count_pending(scope, reviewer_id)
 
 
-async def eligible_reviewers(notebook_ids: List[str]) -> List[ReviewerResponse]:
+async def _eligible_reviewers(notebook_ids: List[str]) -> List[ReviewerResponse]:
     """Approvers a contributor may route a submission to: those managing the
     category (top-level notebook) of any selected notebook.
 
     An empty ``notebook_ids`` returns every approver (the submission has no
     notebook scope yet, so any approver is a valid target).
     """
+    category_ids: set[str] = set()
+    if notebook_ids:
+        rows = await repo_query(
+            "SELECT id, parent FROM notebook WHERE id IN $ids",
+            {"ids": [ensure_record_id(x) for x in notebook_ids]},
+        )
+        for row in rows or []:
+            parent = row.get("parent")
+            # A sub-notebook inherits its category (parent); a top-level
+            # notebook is its own category.
+            category_ids.add(str(parent) if parent else str(row.get("id")))
+
+    if category_ids:
+        manager_rows = await repo_query(
+            "SELECT VALUE managers FROM notebook WHERE id IN $ids",
+            {"ids": [ensure_record_id(x) for x in category_ids]},
+        )
+        user_ids: set[str] = set()
+        for managers in manager_rows or []:
+            for m in managers or []:
+                user_ids.add(str(m))
+        if not user_ids:
+            return []
+        users = await repo_query(
+            "SELECT id, name, username FROM user "
+            "WHERE id IN $ids AND role = 'approver' ORDER BY username ASC",
+            {"ids": [ensure_record_id(u) for u in user_ids]},
+        )
+    else:
+        # No notebook scope yet: any approver is eligible.
+        users = await repo_query(
+            "SELECT id, name, username FROM user "
+            "WHERE role = 'approver' ORDER BY username ASC"
+        )
+
+    return [
+        ReviewerResponse(
+            id=str(u.get("id")),
+            username=u.get("username") or "",
+            name=u.get("name"),
+        )
+        for u in (users or [])
+    ]
+
+
+async def eligible_reviewers(notebook_ids: List[str]) -> List[ReviewerResponse]:
+    """Reviewer choices for the add-source wizard (see _eligible_reviewers)."""
     try:
-        category_ids: set[str] = set()
-        if notebook_ids:
-            rows = await repo_query(
-                "SELECT id, parent FROM notebook WHERE id IN $ids",
-                {"ids": [ensure_record_id(x) for x in notebook_ids]},
-            )
-            for row in rows or []:
-                parent = row.get("parent")
-                # A sub-notebook inherits its category (parent); a top-level
-                # notebook is its own category.
-                category_ids.add(str(parent) if parent else str(row.get("id")))
-
-        if category_ids:
-            manager_rows = await repo_query(
-                "SELECT VALUE managers FROM notebook WHERE id IN $ids",
-                {"ids": [ensure_record_id(x) for x in category_ids]},
-            )
-            user_ids: set[str] = set()
-            for managers in manager_rows or []:
-                for m in managers or []:
-                    user_ids.add(str(m))
-            if not user_ids:
-                return []
-            users = await repo_query(
-                "SELECT id, name, username FROM user "
-                "WHERE id IN $ids AND role = 'approver' ORDER BY username ASC",
-                {"ids": [ensure_record_id(u) for u in user_ids]},
-            )
-        else:
-            # No notebook scope yet: any approver is eligible.
-            users = await repo_query(
-                "SELECT id, name, username FROM user "
-                "WHERE role = 'approver' ORDER BY username ASC"
-            )
-
-        return [
-            ReviewerResponse(
-                id=str(u.get("id")),
-                username=u.get("username") or "",
-                name=u.get("name"),
-            )
-            for u in (users or [])
-        ]
+        return await _eligible_reviewers(notebook_ids)
     except Exception:
         # Reviewer picking is best-effort; never block the add-source flow.
         return []
+
+
+async def assert_valid_reviewer(reviewer_id: str, notebook_ids: List[str]) -> None:
+    """Reject a submission routed to someone who is not an eligible reviewer.
+
+    The id comes from the client. Without this check a submission could be
+    assigned to a non-approver (nobody could act on it) or to an approver
+    unrelated to the chosen notebooks.
+    """
+    eligible = {r.id for r in await _eligible_reviewers(notebook_ids)}
+    if str(reviewer_id) not in eligible:
+        raise InvalidInputError(
+            "The selected reviewer cannot review documents for the chosen notebooks"
+        )
+
+
+async def release_approver(user_id: str) -> None:
+    """Detach a user from everything tied to the approver role.
+
+    Called when an approver is demoted or deleted: removes them from every
+    category's ``managers`` (so a later re-promotion does not silently restore
+    the old scope, and no dangling record link is left behind) and un-assigns
+    their pending submissions so those fall back to the approvers managing the
+    notebook instead of being visible to admins only.
+    """
+    uid = ensure_record_id(user_id)
+    await repo_query(
+        "UPDATE notebook SET managers -= $uid WHERE $uid IN managers", {"uid": uid}
+    )
+    await repo_query(
+        "UPDATE source SET assigned_approver = NONE "
+        "WHERE assigned_approver = $uid AND approval_status = 'pending'",
+        {"uid": uid},
+    )
+    invalidate_scope_cache()
 
 
 async def assert_can_review_source(user: TokenUser, source: Source) -> None:
@@ -181,6 +225,11 @@ async def assert_can_review_source(user: TokenUser, source: Source) -> None:
         return
     if not user.is_approver:
         raise AuthorizationError("Approver privileges required")
+    # The approver a contributor routed this submission to may always act on
+    # it, even when it sits in no notebook they manage (e.g. submitted without
+    # a notebook). The assignment is validated when the source is created.
+    if source.assigned_approver and str(source.assigned_approver) == user.id:
+        return
     scope = await Notebook.managed_scope_ids(user.id)
     if not scope:
         raise AuthorizationError("This source is outside your managed categories")

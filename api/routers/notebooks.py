@@ -184,7 +184,14 @@ async def create_notebook(
 
         if parent:
             # Sub-notebook: the parent must exist and be in the caller's scope.
-            await Notebook.get(parent)  # raises NotFoundError -> 404
+            parent_notebook = await Notebook.get(parent)  # NotFoundError -> 404
+            # The hierarchy is exactly two levels (category -> sub-notebook):
+            # scope resolution and the notebooks page only handle that depth.
+            if parent_notebook.parent:
+                raise InvalidInputError(
+                    "A sub-notebook can only be created directly under a "
+                    "top-level category"
+                )
             await approvals_service.assert_can_manage_notebook(current_user, parent)
         else:
             # Top-level category creation is admin-only.
@@ -462,7 +469,8 @@ async def add_source_to_notebook(
 
         # Check if reference already exists (idempotency)
         existing_ref = await repo_query(
-            "SELECT * FROM reference WHERE out = $source_id AND in = $notebook_id",
+            # Edge direction is source -> reference -> notebook (in = source).
+            "SELECT * FROM reference WHERE in = $source_id AND out = $notebook_id",
             {
                 "notebook_id": ensure_record_id(notebook_id),
                 "source_id": ensure_record_id(source_id),

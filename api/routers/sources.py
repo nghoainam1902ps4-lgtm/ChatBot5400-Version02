@@ -742,6 +742,13 @@ async def create_source(
                     status_code=404, detail=f"Notebook {notebook_id} not found"
                 )
 
+        # A contributor may route the submission to a specific approver; make
+        # sure that person can actually review it (the id is client input).
+        if assigned_approver:
+            await approvals_service.assert_valid_reviewer(
+                assigned_approver, source_data.notebooks or []
+            )
+
         # Handle file upload if provided
         if upload_file and source_data.type == "upload":
             try:

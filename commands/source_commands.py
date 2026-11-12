@@ -5,7 +5,7 @@ from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from surreal_commands import CommandInput, CommandOutput, command
 
-from open_notebook.database.repository import ensure_record_id
+from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import ConfigurationError, ContextLengthExceededError
@@ -139,11 +139,35 @@ async def process_source_command(
         logger.error(f"Source processing failed (permanent): {e}")
         raise
     except Exception as e:
+        # The source can be deleted while this job runs (a reviewer rejecting a
+        # submission deletes it, file included). Every later step then fails,
+        # and retrying 15 times would only re-run the extraction against a
+        # record that is gone - so treat it as a permanent failure.
+        if await _source_is_gone(input_data.source_id):
+            logger.info(
+                f"Source {input_data.source_id} was deleted while processing; "
+                "stopping without retry"
+            )
+            raise ValueError(
+                f"Source '{input_data.source_id}' was deleted while processing"
+            ) from e
         # Transient failure - will be retried (surreal-commands logs final failure)
         logger.debug(
             f"Transient error processing source {input_data.source_id}: {e}"
         )
         raise
+
+
+async def _source_is_gone(source_id: str) -> bool:
+    """True only when the DB positively reports the source no longer exists.
+    Any lookup error counts as "still there", so real outages keep retrying."""
+    try:
+        rows = await repo_query(
+            "SELECT VALUE id FROM $id", {"id": ensure_record_id(source_id)}
+        )
+        return not rows
+    except Exception:
+        return False
 
 
 # =============================================================================

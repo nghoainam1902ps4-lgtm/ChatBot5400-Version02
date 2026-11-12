@@ -185,6 +185,19 @@ export function AddSourceDialog({
     }
   }, [settings, transformations, defaultNotebookId, reset])
 
+  // The eligible reviewers depend on the selected notebooks. If the notebooks
+  // change after a reviewer was picked and that person is no longer eligible,
+  // clear the choice (the API would reject it) so the step asks again.
+  useEffect(() => {
+    if (
+      selectedReviewer &&
+      !reviewersLoading &&
+      !reviewers.some((r) => r.id === selectedReviewer)
+    ) {
+      setSelectedReviewer('')
+    }
+  }, [reviewers, reviewersLoading, selectedReviewer])
+
   // Cleanup effect
   useEffect(() => {
     return () => {

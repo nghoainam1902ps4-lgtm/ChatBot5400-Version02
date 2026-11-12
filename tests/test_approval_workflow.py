@@ -13,6 +13,7 @@ from api.auth import (
     require_approver,
     require_submitter,
 )
+from api.models import ReviewerResponse
 from open_notebook.domain.notebook import (
     Notebook,
     Source,
@@ -332,9 +333,7 @@ class TestSourceVisibility:
     async def test_pending_hidden_from_plain_user(self):
         user = TokenUser(id="user:u", username="u", role="user")
         with pytest.raises(NotFoundError):
-            await approvals_service.assert_can_view_source(
-                user, Source(**self.PENDING)
-            )
+            await approvals_service.assert_can_view_source(user, Source(**self.PENDING))
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -350,7 +349,9 @@ class TestSourceVisibility:
         user = TokenUser(id="user:q", username="q", role="approver")
         with (
             patch.object(
-                Notebook, "managed_scope_ids", new=AsyncMock(return_value=["notebook:1"])
+                Notebook,
+                "managed_scope_ids",
+                new=AsyncMock(return_value=["notebook:1"]),
             ),
             patch.object(
                 Source,
@@ -358,17 +359,13 @@ class TestSourceVisibility:
                 new=AsyncMock(return_value=["notebook:1"]),
             ),
         ):
-            await approvals_service.assert_can_view_source(
-                user, Source(**self.PENDING)
-            )
+            await approvals_service.assert_can_view_source(user, Source(**self.PENDING))
 
     @pytest.mark.asyncio
     async def test_pending_hidden_from_other_contributor(self):
         user = TokenUser(id="user:other", username="o", role="contributor")
         with pytest.raises(NotFoundError):
-            await approvals_service.assert_can_view_source(
-                user, Source(**self.PENDING)
-            )
+            await approvals_service.assert_can_view_source(user, Source(**self.PENDING))
 
     @pytest.mark.asyncio
     async def test_scope_lookup_is_cached_for_view_checks(self):
@@ -390,9 +387,7 @@ class TestSourceVisibility:
                 )
             assert scope.await_count == 1
             approvals_service.invalidate_scope_cache()
-            await approvals_service.assert_can_view_source(
-                user, Source(**self.PENDING)
-            )
+            await approvals_service.assert_can_view_source(user, Source(**self.PENDING))
             assert scope.await_count == 2
 
 
@@ -472,9 +467,7 @@ class TestApproverScope:
         assert params == {}
 
     def test_pending_scope_approver_matches_assignment_or_scope(self):
-        where, nb_filter, params = Source._pending_scope(
-            ["notebook:1"], "user:p"
-        )
+        where, nb_filter, params = Source._pending_scope(["notebook:1"], "user:p")
         assert "assigned_approver = $me" in where
         assert "assigned_approver = NONE" in where
         assert nb_filter == " AND out IN $ids"
@@ -493,3 +486,123 @@ class TestApproverScope:
                 await approvals_service.assert_can_manage_notebook(
                     approver, "notebook:2"
                 )
+
+
+# --- Review findings 5-9 --------------------------------------------------
+class TestAssignedReviewer:
+    @pytest.mark.asyncio
+    async def test_assigned_approver_can_review_outside_scope(self):
+        # Routed directly to this approver and in no notebook they manage
+        # (e.g. submitted without a notebook): they must still be able to act.
+        approver = TokenUser(id="user:p", username="p", role="approver")
+        source = Source(
+            id="source:1", approval_status="pending", assigned_approver="user:p"
+        )
+        scope = AsyncMock(return_value=[])
+        with patch.object(Notebook, "managed_scope_ids", new=scope):
+            await approvals_service.assert_can_review_source(approver, source)
+        scope.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_other_approver_still_blocked(self):
+        other = TokenUser(id="user:q", username="q", role="approver")
+        source = Source(
+            id="source:1", approval_status="pending", assigned_approver="user:p"
+        )
+        with patch.object(
+            Notebook, "managed_scope_ids", new=AsyncMock(return_value=[])
+        ):
+            with pytest.raises(AuthorizationError):
+                await approvals_service.assert_can_review_source(other, source)
+
+    @pytest.mark.asyncio
+    async def test_reviewer_must_be_eligible(self):
+        eligible = [ReviewerResponse(id="user:p", username="p")]
+        with patch.object(
+            approvals_service,
+            "_eligible_reviewers",
+            new=AsyncMock(return_value=eligible),
+        ):
+            await approvals_service.assert_valid_reviewer("user:p", ["notebook:1"])
+            with pytest.raises(InvalidInputError):
+                await approvals_service.assert_valid_reviewer(
+                    "user:someone-else", ["notebook:1"]
+                )
+
+
+class TestReleaseApprover:
+    @pytest.mark.asyncio
+    async def test_removes_manager_and_unassigns_pending(self):
+        repo = AsyncMock(return_value=[])
+        with patch("api.approvals_service.repo_query", new=repo):
+            await approvals_service.release_approver("user:p")
+        queries = [c.args[0] for c in repo.await_args_list]
+        assert any(
+            q.startswith("UPDATE notebook SET managers -= $uid") for q in queries
+        )
+        assert any(
+            "SET assigned_approver = NONE" in q and "approval_status = 'pending'" in q
+            for q in queries
+        )
+
+
+class TestJobSurvivesDeletedSource:
+    @pytest.mark.asyncio
+    async def test_gone_only_when_db_says_so(self):
+        from commands.source_commands import _source_is_gone
+
+        target = "commands.source_commands.repo_query"
+        with patch(target, new=AsyncMock(return_value=[])):
+            assert await _source_is_gone("source:1") is True
+        with patch(target, new=AsyncMock(return_value=["source:1"])):
+            assert await _source_is_gone("source:1") is False
+        # A DB outage must keep the job retrying, not be read as "deleted".
+        with patch(target, new=AsyncMock(side_effect=RuntimeError("db down"))):
+            assert await _source_is_gone("source:1") is False
+
+
+class TestNotebookRouterGuards:
+    @pytest.fixture
+    def client(self):
+        from fastapi.testclient import TestClient
+
+        from api.main import app
+
+        return TestClient(app)
+
+    def test_sub_notebook_cannot_be_nested_two_levels(self, client):
+        child = Notebook(
+            id="notebook:child", name="c", description="", parent="notebook:cat"
+        )
+        with patch(
+            "api.routers.notebooks.Notebook.get", new=AsyncMock(return_value=child)
+        ):
+            response = client.post(
+                "/api/notebooks",
+                json={"name": "grandchild", "parent": "notebook:child"},
+            )
+        assert response.status_code == 400
+        assert "top-level category" in response.json()["detail"]
+
+    def test_linking_an_already_linked_source_creates_no_duplicate(self, client):
+        repo = AsyncMock(return_value=[{"id": "reference:1"}])
+        with (
+            patch(
+                "api.routers.notebooks.Notebook.get",
+                new=AsyncMock(
+                    return_value=Notebook(id="notebook:1", name="n", description="")
+                ),
+            ),
+            patch(
+                "api.routers.notebooks.Source.get",
+                new=AsyncMock(return_value=Source(id="source:1")),
+            ),
+            patch("api.routers.notebooks.repo_query", new=repo),
+        ):
+            response = client.post("/api/notebooks/notebook:1/sources/source:1")
+        assert response.status_code == 200
+        queries = [c.args[0] for c in repo.await_args_list]
+        # The existence check follows the edge direction (source -> notebook)...
+        assert "in = $source_id AND out = $notebook_id" in queries[0]
+        # ...so an existing link is found and no second edge is created.
+        assert not any(q.startswith("RELATE") for q in queries)

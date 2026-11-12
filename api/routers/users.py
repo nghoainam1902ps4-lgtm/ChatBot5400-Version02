@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from api import approvals_service
 from api.auth import TokenUser, require_admin
 from open_notebook.domain.user import User
 from open_notebook.exceptions import InvalidInputError
@@ -111,12 +112,17 @@ async def update_user(user_id: str, request: UserUpdateRequest):
                 f"Username '{request.username}' already exists"
             )
         user.username = request.username.strip()
+    was_approver = user.role == "approver"
     if request.role is not None:
         user.role = request.role  # type: ignore[assignment]
     if request.name is not None:
         user.name = request.name
 
     await user.save()
+    # Leaving the approver role drops the categories they managed and
+    # un-assigns their pending submissions.
+    if was_approver and user.role != "approver" and user.id:
+        await approvals_service.release_approver(user.id)
     logger.info(f"Admin updated user '{user.username}'")
     return _to_response(user)
 
@@ -133,6 +139,8 @@ async def delete_user(
     if user.role == "admin" and await _count_admins() <= 1:
         raise InvalidInputError("Cannot delete the last remaining admin")
 
+    if user.role == "approver" and user.id:
+        await approvals_service.release_approver(user.id)
     await user.delete()
     logger.info(f"Admin deleted user '{user.username}'")
     return {"success": True, "message": "User deleted successfully"}

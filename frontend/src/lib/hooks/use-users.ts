@@ -5,6 +5,7 @@ import {
   UpdateUserRequest,
   usersApi,
 } from '@/lib/api/users'
+import { QUERY_KEYS } from '@/lib/api/query-client'
 import { useToast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
@@ -52,6 +53,8 @@ export function useUpdateUser() {
       usersApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.all })
+      // Leaving the approver role removes the user from notebook managers.
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebooks })
       toast({ title: t('common.success'), description: t('users.userUpdated') })
     },
     onError: (error: unknown) => {
@@ -73,6 +76,8 @@ export function useDeleteUser() {
     mutationFn: (id: string) => usersApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.all })
+      // Deleting an approver removes them from notebook managers.
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebooks })
       toast({ title: t('common.success'), description: t('users.userDeleted') })
     },
     onError: (error: unknown) => {
