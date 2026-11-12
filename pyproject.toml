@@ -78,7 +78,7 @@ docling = ["content-core[docling]>=2.0.7,<3"]
 package-dir = {"open_notebook" = "open_notebook"}
 
 [tool.setuptools.package-data]
-open_notebook = ["ai/assets/*"]
+open_notebook = ["ai/assets/*", "ocr/assets/*"]
 
 
 [build-system]

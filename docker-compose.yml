@@ -67,6 +67,14 @@ services:
       # - CRAWL4AI_API_URL=http://crawl4ai:11235  # use a remote Crawl4AI server instead (no local install)
       # - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN}  # bearer token for that server (required by Crawl4AI >= 0.9.0)
 
+      # OPTIONAL: OCR Engine Manager runtimes (Settings → OCR Engine Manager).
+      # Model weights are downloaded on demand from Settings into ./notebook_data/ocr
+      # and survive restarts/upgrades; these flags only restore the runtimes in a
+      # fresh container. See docs/ocr/OCR_DOCKER_STORAGE.md.
+      # - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true  # Tesseract Vietnamese Fast/Best (apt package)
+      # - OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true    # EasyOCR Vietnamese (needs Docling)
+      # - OCR_OFFLINE=true                         # air-gapped: never download, use offline bundles
+
       # OPTIONAL: max concurrent background tasks the worker processes at once
       # (default 5). Set to 1 for sequential processing on single-GPU / local
       # LLM setups to avoid overloading the model with parallel requests.

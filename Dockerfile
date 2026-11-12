@@ -121,6 +121,20 @@ ENV UV_CACHE_DIR=/app/data/.cache/uv
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/data/.cache/playwright
 ENV HF_HOME=/app/data/.cache/huggingface
 
+# OCR Engine Manager (docs/ocr). Models are downloaded on demand into the data
+# volume; one fixed TESSDATA_PREFIX serves both Tesseract Fast and Best
+# (docs/ocr/DECISIONS.md D-04). No OCR engine is downloaded at build or boot.
+ENV OCR_DATA_DIR=/app/data/ocr
+ENV TESSDATA_PREFIX=/app/data/ocr/models/tesseract
+# Optional build profile: bake the Tesseract executable into the image
+# (docker compose build --build-arg OCR_INSTALL_TESSERACT=true). Without it,
+# OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true installs it at container start.
+ARG OCR_INSTALL_TESSERACT=false
+RUN if [ "$OCR_INSTALL_TESSERACT" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends tesseract-ocr \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 # Data directory (volume-mounted by users) and supervisor log directory
 RUN mkdir -p /app/data /var/log/supervisor \
     && chmod +x /app/scripts/wait-for-api.sh /app/scripts/docker-entrypoint.sh

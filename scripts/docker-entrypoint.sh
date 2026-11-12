@@ -6,6 +6,7 @@
 #
 #   OPEN_NOTEBOOK_ENABLE_DOCLING=true   -> content-core[docling]  (Docling engine, OCR, image sources)
 #   OPEN_NOTEBOOK_ENABLE_CRAWL4AI=true  -> content-core[crawl4ai] + Chromium  (local JS rendering)
+#   OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT / _EASYOCR -> OCR engine runtimes (see below)
 #
 # Design (see docs/7-DEVELOPMENT/decisions/ADR-007-optin-runtimes.md):
 #   - Blocking: installs finish before api/worker/frontend start.
@@ -109,6 +110,21 @@ if is_true "$OPEN_NOTEBOOK_ENABLE_CRAWL4AI"; then
                 fi
             fi
         fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# OCR Engine Manager runtimes (docs/ocr/OCR_DOCKER_STORAGE.md). Model weights
+# live on the /app/data volume and are never downloaded here; this only
+# restores the RUNTIME an admin enabled, which a recreated container lacks:
+#   OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true -> tesseract-ocr (apt, or staged .deb offline)
+#   OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true   -> easyocr==<pinned> (uv cache / staged wheels)
+# Degrade, don't die: failures are logged and the engine shows "runtime missing".
+# ---------------------------------------------------------------------------
+if is_true "$OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT" || is_true "$OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR"; then
+    log "Restoring enabled OCR runtimes..."
+    if ! "$VENV_PY" -m open_notebook.ocr.cli runtime ensure; then
+        log "WARNING: OCR runtime restore reported a problem; see the messages above."
     fi
 fi
 

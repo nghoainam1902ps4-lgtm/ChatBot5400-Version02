@@ -71,6 +71,11 @@ services:
       # very memory-hungry; running several in parallel OOM-kills the worker
       # (exit 137) on a small VPS and leaves sources stuck on "Processing...".
       - OPEN_NOTEBOOK_WORKER_MAX_TASKS=1
+      # OCR Engine Manager runtimes (Settings → OCR Engine Manager). Models live in
+      # ./notebook_data/ocr; these flags restore the runtimes after a recreate.
+      # - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true
+      # - OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true
+      # - OCR_OFFLINE=true
     volumes:
       # Persists uploads, chat checkpoints, and the runtime-installed Docling /
       # PyTorch packages + ML models (under /app/data/.cache) across restarts.
