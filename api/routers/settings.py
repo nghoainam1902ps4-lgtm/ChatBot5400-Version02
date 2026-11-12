@@ -23,6 +23,7 @@ def _settings_response(settings: ContentSettings) -> SettingsResponse:
         docling_vision=settings.docling_vision,
         youtube_preferred_languages=settings.youtube_preferred_languages,
         podcast_enabled=settings.podcast_enabled,
+        docling_ocr_engine=settings.docling_ocr_engine,
     )
 
 

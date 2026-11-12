@@ -38,6 +38,7 @@ from api.routers import (
     models,
     notebooks,
     notes,
+    ocr,
     podcasts,
     providers,
     search,
@@ -447,6 +448,7 @@ app.include_router(feedback.router, prefix="/api", tags=["feedback"])
 app.include_router(credentials.router, prefix="/api", tags=["credentials"])
 app.include_router(providers.router, prefix="/api", tags=["providers"])
 app.include_router(capabilities.router, prefix="/api", tags=["capabilities"])
+app.include_router(ocr.router, prefix="/api", tags=["ocr"])
 app.include_router(languages.router, prefix="/api", tags=["languages"])
 
 

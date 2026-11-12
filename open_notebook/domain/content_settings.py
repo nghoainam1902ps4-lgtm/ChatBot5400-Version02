@@ -34,6 +34,32 @@ class ContentSettings(RecordModel):
             "them. Disable for faster processing of text-native documents."
         ),
     )
+    # --- OCR Engine Manager (docs/ocr) -------------------------------------
+    # Defaults reproduce the pre-existing behaviour exactly (RapidOCR as picked
+    # by Docling's Auto mode, Docling's default threads, no forced full-page
+    # OCR), so existing records without these fields need no migration.
+    # The engine is changed only through POST /api/ocr/engines/{id}/activate,
+    # which refuses engines that are not ready.
+    docling_ocr_engine: Optional[
+        Literal["rapidocr", "tesseract_fast", "tesseract_best", "easyocr"]
+    ] = Field(
+        "rapidocr",
+        description="OCR engine Docling uses for scanned PDFs and images.",
+    )
+    docling_ocr_device: Optional[Literal["cpu"]] = Field(
+        "cpu",
+        description="OCR runs on CPU only (informational; layout/table devices are unchanged).",
+    )
+    docling_ocr_num_threads: Optional[int] = Field(
+        None,
+        ge=1,
+        le=64,
+        description="CPU threads for the Docling pipeline; None keeps Docling's default (4).",
+    )
+    docling_ocr_force_full_page: Optional[bool] = Field(
+        False,
+        description="OCR the whole page even where the PDF has a text layer.",
+    )
     docling_formulas: Optional[bool] = Field(
         False,
         description=(

@@ -15,6 +15,11 @@ from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.domain.notebook import Asset, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.graphs.transformation import graph as transform_graph
+from open_notebook.ocr.docling_extract import (
+    extract_with_selected_ocr,
+    should_use_native_ocr,
+)
+from open_notebook.ocr.options import OcrSettings
 from open_notebook.utils.runtime_capabilities import engine_runtime_missing
 
 # Default preferred languages for YouTube transcript selection, used when
@@ -88,8 +93,14 @@ async def content_process(state: SourceState) -> dict:
     # accepts "auto"/"simple"/"firecrawl"/"jina"/"crawl4ai" for URLs and
     # "auto"/"docling"/"simple" for documents; falling back to "auto" keeps the
     # previous behavior when settings are unset.
+    ocr_settings = OcrSettings()
     try:
+        # ContentSettings is a per-process singleton that loads the DB only once;
+        # drop it so this job sees the admin's latest choices (OCR engine, flags)
+        # without restarting the worker (docs/ocr/DECISIONS.md D-05).
+        ContentSettings.clear_instance()
         settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
+        ocr_settings = OcrSettings.from_content_settings(settings)
         if settings.youtube_preferred_languages:
             config_kwargs["youtube_languages"] = settings.youtube_preferred_languages
         if settings.default_content_processing_engine_url:
@@ -145,15 +156,35 @@ async def content_process(state: SourceState) -> dict:
         f"document_engine={config_kwargs.get('document_engine', 'auto')}, "
         f"docling_ocr={config_kwargs.get('docling_ocr', 'auto')}, "
         f"docling_formulas={config_kwargs.get('docling_formulas', 'auto')}, "
-        f"docling_vision={config_kwargs.get('docling_vision', 'auto')})"
+        f"docling_vision={config_kwargs.get('docling_vision', 'auto')}, "
+        f"ocr_engine={ocr_settings.engine})"
     )
 
-    processed = await extract_content(
-        url=content_state.get("url"),
-        file_path=content_state.get("file_path"),
-        content=content_state.get("content"),
-        config=config,
+    file_path_only = (
+        content_state.get("file_path")
+        and not content_state.get("url")
+        and not content_state.get("content")
     )
+    if file_path_only and await should_use_native_ocr(
+        content_state["file_path"],
+        config_kwargs.get("document_engine", "auto"),
+        ocr_settings,
+    ):
+        # Same Docling pipeline content-core would run, plus the selected OCR
+        # engine (docs/ocr/DECISIONS.md D-02). Default configuration never
+        # takes this branch.
+        processed = await extract_with_selected_ocr(
+            content_state["file_path"],
+            config or ContentCoreConfig(),
+            ocr_settings,
+        )
+    else:
+        processed = await extract_content(
+            url=content_state.get("url"),
+            file_path=content_state.get("file_path"),
+            content=content_state.get("content"),
+            config=config,
+        )
 
     # content-core signals a soft extraction failure (e.g. an unreachable or
     # invalid URL, via the bs4 fallback) by returning title="Error" and content

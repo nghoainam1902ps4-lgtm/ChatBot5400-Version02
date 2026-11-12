@@ -327,6 +327,8 @@ class SettingsResponse(BaseModel):
     docling_vision: Optional[bool] = None
     youtube_preferred_languages: Optional[List[str]] = None
     podcast_enabled: Optional[bool] = None
+    # Read-only here: changed via POST /api/ocr/engines/{id}/activate (ready check).
+    docling_ocr_engine: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -680,6 +682,87 @@ class CapabilitiesResponse(BaseModel):
         ...,
         description="A remote Crawl4AI endpoint is configured via CRAWL4AI_API_URL (no local install needed).",
     )
+
+
+# OCR Engine Manager API models (docs/ocr/OCR_ENGINE_MANAGER.md)
+class OcrEngineStatus(BaseModel):
+    id: str
+    display_name: str
+    description: str
+    languages: List[str]
+    model_name: str
+    model_version: str
+    license: str
+    source_url: str
+    builtin: bool
+    download_size_bytes: int
+    size_bytes: int
+    installed_size_bytes: int
+    runtime: Dict[str, Any]
+    model: Dict[str, Any]
+    state: str = Field(
+        ...,
+        description="not_installed | pending | downloading | installing | requires_restart | ready | failed | incompatible",
+    )
+    ready: bool
+    active: bool
+    job: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    smoke: Optional[Dict[str, Any]] = None
+    last_test: Optional[Dict[str, Any]] = None
+    options: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OcrConfig(BaseModel):
+    docling_ocr: bool = True
+    docling_ocr_engine: str = "rapidocr"
+    docling_ocr_device: str = "cpu"
+    docling_ocr_num_threads: Optional[int] = None
+    docling_ocr_force_full_page: bool = False
+
+
+class OcrConfigUpdate(BaseModel):
+    docling_ocr: Optional[bool] = None
+    # 0 resets to Docling's default thread count.
+    docling_ocr_num_threads: Optional[int] = Field(None, ge=0, le=64)
+    docling_ocr_force_full_page: Optional[bool] = None
+
+
+class OcrGeneralInfo(BaseModel):
+    document_engine: str = "Docling"
+    docling_available: bool
+    docling_version: Optional[str] = None
+    docling_api_compatible: Optional[bool] = None
+    docling_missing_api: List[str] = Field(default_factory=list)
+    layout_model: Optional[str] = None
+    table_model: Optional[str] = None
+    ocr_device: str = "cpu"
+    models_dir: str
+    offline_mode: bool
+
+
+class OcrEnginesResponse(BaseModel):
+    general: OcrGeneralInfo
+    config: OcrConfig
+    engines: List[OcrEngineStatus]
+
+
+class OcrJobResponse(BaseModel):
+    job_id: str
+    engine_id: str
+    state: str
+
+
+class OcrJobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+
+
+class OcrDeleteResponse(BaseModel):
+    engine_id: str
+    removed: List[str]
 
 
 def validate_url_key_provider_required_fields(

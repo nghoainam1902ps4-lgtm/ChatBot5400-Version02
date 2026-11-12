@@ -14,6 +14,7 @@ from .embedding_commands import (
     embed_source_command,
     rebuild_embeddings_command,
 )
+from .ocr_commands import ocr_install_model_command, ocr_test_engine_command
 from .podcast_commands import generate_podcast_command
 from .source_commands import process_source_command
 
@@ -26,4 +27,7 @@ __all__ = [
     # Other commands
     "generate_podcast_command",
     "process_source_command",
+    # OCR Engine Manager
+    "ocr_install_model_command",
+    "ocr_test_engine_command",
 ]

@@ -1,0 +1,108 @@
+"""Compose the truthful lifecycle status of each OCR engine.
+
+``ready`` requires BOTH a working runtime (executable / Python package /
+Docling) AND checksum-verified model files. Lifecycle precedence:
+
+    active job (pending/downloading/installing) > incompatible >
+    failed > requires_restart > ready > not_installed
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from open_notebook.ocr import catalog, runtime, store
+
+
+def engine_status(engine_id: str, active_engine: str | None = None) -> dict[str, Any]:
+    spec = catalog.get_engine(engine_id)
+    rt = runtime.probe_runtime(engine_id)
+    ms = store.model_status(engine_id)
+    st = store.read_state(engine_id)
+
+    job_active = store.job_is_active(st)
+    if job_active:
+        lifecycle = st["state"]
+    elif rt.status == runtime.RUNTIME_INCOMPATIBLE:
+        lifecycle = store.INCOMPATIBLE
+    elif ms.status == "corrupted":
+        lifecycle = store.FAILED
+    elif st.get("state") == store.FAILED and not ms.installed:
+        lifecycle = store.FAILED
+    elif st.get("state") in store.ACTIVE_JOB_STATES and not ms.installed:
+        lifecycle = store.FAILED  # stale job: the worker died mid-install
+    elif ms.installed and rt.status == runtime.RUNTIME_REQUIRES_RESTART:
+        lifecycle = store.REQUIRES_RESTART
+    elif ms.installed and rt.ready:
+        lifecycle = store.READY
+    else:
+        lifecycle = store.NOT_INSTALLED
+
+    error = st.get("error")
+    if ms.status == "corrupted":
+        bad = [f.rel_path for f in ms.files if f.present and not f.verified]
+        error = (
+            f"Model files failed verification: {', '.join(bad)}. Reinstall to repair."
+        )
+    elif lifecycle == store.FAILED and not error:
+        error = (
+            "The previous installation stopped unexpectedly. Retry the installation."
+        )
+
+    return {
+        "id": spec.id,
+        "display_name": spec.display_name,
+        "description": spec.description,
+        "languages": list(spec.languages),
+        "model_name": spec.model_name,
+        "model_version": spec.model_version,
+        "license": spec.license,
+        "source_url": spec.source_url,
+        "builtin": spec.runtime == "builtin",
+        "download_size_bytes": spec.download_size,
+        "size_bytes": spec.total_size,
+        "installed_size_bytes": ms.installed_bytes,
+        "runtime": rt.to_dict(),
+        "model": ms.to_dict(),
+        "state": lifecycle,
+        "ready": lifecycle == store.READY,
+        "active": engine_id == (active_engine or catalog.DEFAULT_ENGINE),
+        "job": {
+            "job_id": st.get("job_id"),
+            "state": st.get("state"),
+            "progress": st.get("progress"),
+            "updated_at": st.get("updated_at"),
+        }
+        if st
+        else None,
+        "error": error,
+        "smoke": st.get("smoke"),
+        "last_test": st.get("last_test"),
+        "options": _safe_describe(engine_id),
+    }
+
+
+def _safe_describe(engine_id: str) -> dict[str, Any]:
+    from open_notebook.ocr.options import describe
+
+    try:
+        return describe(engine_id)
+    except Exception as e:  # pragma: no cover - describe is pure
+        return {"error": str(e)}
+
+
+def assert_engine_ready(engine_id: str) -> None:
+    """Raise ValueError (permanent, user-readable) unless the engine can run now."""
+    spec = catalog.get_engine(engine_id)
+    rt = runtime.probe_runtime(engine_id)
+    if not rt.ready:
+        raise ValueError(
+            f"OCR engine '{spec.display_name}' is selected but its runtime is "
+            f"{rt.status}: {rt.detail or ''} Open Settings → OCR Engine Manager."
+        )
+    ms = store.model_status(engine_id)
+    if not ms.installed:
+        raise ValueError(
+            f"OCR engine '{spec.display_name}' is selected but its model is "
+            f"{ms.status}. Reinstall it in Settings → OCR Engine Manager."
+        )
