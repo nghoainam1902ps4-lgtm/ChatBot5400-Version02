@@ -65,7 +65,7 @@ def describe(engine_id: str) -> dict[str, Any]:
         }[spec.docling_kind],
         "lang": list(catalog.DOCLING_LANGS[engine_id]),
         "device": "cpu"
-        if spec.runtime != "builtin"
+        if spec.runtime != "builtin" or rapidocr_force_cpu()
         else "docling-auto (CPU when no GPU)",
         "model": f"{spec.model_name} {spec.model_version}",
     }
@@ -76,6 +76,38 @@ def describe(engine_id: str) -> dict[str, Any]:
     if spec.runtime == "easyocr":
         info["model_storage_directory"] = str(paths.easyocr_dir())
     return info
+
+
+# RapidOCR device flags Docling sets from the accelerator (docling 2.129
+# rapid_ocr_model.py); forcing them off keeps RapidOCR on CPU while Layout /
+# TableFormer keep Docling's own device choice.
+RAPIDOCR_CPU_PARAMS: dict[str, Any] = {
+    "EngineConfig.torch.use_cuda": False,
+    "EngineConfig.onnxruntime.use_cuda": False,
+    "EngineConfig.paddle.use_cuda": False,
+    "Det.use_cuda": False,
+    "Cls.use_cuda": False,
+    "Rec.use_cuda": False,
+    "Det.use_dml": False,
+    "Cls.use_dml": False,
+    "Rec.use_dml": False,
+}
+
+
+def rapidocr_force_cpu() -> bool:
+    """Opt-in (OCR_RAPIDOCR_FORCE_CPU=true): keep the default engine on CPU on GPU hosts.
+
+    Off by default for backward compatibility: before this feature RapidOCR used
+    CUDA through Docling's AUTO device whenever a CUDA torch build saw a GPU.
+    """
+    import os
+
+    return os.environ.get("OCR_RAPIDOCR_FORCE_CPU", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def build_ocr_options(engine_id: str, force_full_page: bool = False) -> Any:
@@ -91,7 +123,14 @@ def build_ocr_options(engine_id: str, force_full_page: bool = False) -> Any:
     mode = OcrMode.FULL_PAGE if force_full_page else OcrMode.DEFAULT
     lang = list(catalog.DOCLING_LANGS[engine_id])
     if spec.docling_kind == "rapidocr":
-        return RapidOcrOptions(backend=runtime.rapidocr_backend(), lang=lang, mode=mode)
+        extra: dict[str, Any] = {}
+        if rapidocr_force_cpu():
+            # Official RapidOcrOptions.rapidocr_params override the device flags
+            # Docling derives from the pipeline accelerator, for OCR ONLY.
+            extra["rapidocr_params"] = dict(RAPIDOCR_CPU_PARAMS)
+        return RapidOcrOptions(
+            backend=runtime.rapidocr_backend(), lang=lang, mode=mode, **extra
+        )
     if spec.docling_kind == "tesseract":
         ok, detail = runtime.ensure_tessdata_prefix()
         if not ok:

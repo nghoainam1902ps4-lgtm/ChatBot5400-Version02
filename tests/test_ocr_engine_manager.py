@@ -680,6 +680,11 @@ class TestOcrApi:
             return fake
 
         monkeypatch.setattr("api.ocr_service._settings", get_settings)
+
+        async def no_running_jobs():
+            return 0
+
+        monkeypatch.setattr("api.ocr_service._running_source_jobs", no_running_jobs)
         monkeypatch.setattr(
             runtime,
             "docling_info",
@@ -745,6 +750,33 @@ class TestOcrApi:
         fake.docling_ocr_engine = "easyocr"
         r = c.delete("/api/ocr/engines/easyocr/model")
         assert r.status_code == 400 and "in use" in r.json()["detail"]
+
+    @pytest.mark.parametrize(
+        "running,expected", [(2, "being processed"), (None, "Could not verify")]
+    )
+    def test_delete_refused_while_documents_processing(
+        self, client, monkeypatch, running, expected
+    ):
+        c, _ = client
+
+        async def jobs():
+            return running
+
+        monkeypatch.setattr("api.ocr_service._running_source_jobs", jobs)
+        monkeypatch.setattr(
+            installer, "delete_models", lambda *a: pytest.fail("must not delete")
+        )
+        r = c.delete("/api/ocr/engines/tesseract_best/model")
+        assert r.status_code == 400 and expected in r.json()["detail"]
+
+    def test_delete_refused_while_engine_test_pending(self, client, monkeypatch):
+        c, _ = client
+        store.write_state("tesseract_best", {"state": "installed", "test_nonce": "x"})
+        monkeypatch.setattr(
+            installer, "delete_models", lambda *a: pytest.fail("must not delete")
+        )
+        r = c.delete("/api/ocr/engines/tesseract_best/model")
+        assert r.status_code == 400 and "test" in r.json()["detail"]
 
     def test_install_queues_job_with_nonce(self, client, monkeypatch):
         c, _ = client
@@ -1005,3 +1037,42 @@ class TestReviewFixes:
         monkeypatch.setattr(ocr_service.CommandService, "get_command_status", status)
         await ocr_service._reconcile_job("easyocr")
         assert store.read_state("easyocr")["state"] == store.DOWNLOADING
+
+
+class TestCpuMode:
+    def test_rapidocr_default_keeps_previous_device_behaviour(self, monkeypatch):
+        from open_notebook.ocr.options import build_ocr_options, describe
+
+        monkeypatch.delenv("OCR_RAPIDOCR_FORCE_CPU", raising=False)
+        pytest.importorskip("docling")
+        assert build_ocr_options("rapidocr").rapidocr_params == {}
+        assert describe("rapidocr")["device"].startswith("docling-auto")
+
+    def test_rapidocr_force_cpu_is_opt_in_and_ocr_only(self, monkeypatch, ocr_dir):
+        from open_notebook.ocr import docling_extract
+        from open_notebook.ocr.options import (
+            RAPIDOCR_CPU_PARAMS,
+            build_ocr_options,
+            describe,
+        )
+
+        pytest.importorskip("docling")
+        monkeypatch.setenv("OCR_RAPIDOCR_FORCE_CPU", "true")
+        monkeypatch.setattr(runtime, "auto_resolves_to_rapidocr", lambda: True)
+        opts = build_ocr_options("rapidocr")
+        assert opts.rapidocr_params == RAPIDOCR_CPU_PARAMS
+        assert opts.rapidocr_params["EngineConfig.torch.use_cuda"] is False
+        assert describe("rapidocr")["device"] == "cpu"
+        # Needs explicit ocr_options -> the Docling layer, not content-core Auto.
+        assert docling_extract.native_path_required(OcrSettings()) is True
+        # Layout / TableFormer device untouched: no accelerator_options forced.
+        from content_core import ContentCoreConfig
+
+        po = docling_extract.build_pipeline_options(ContentCoreConfig(), OcrSettings())
+        assert str(po.accelerator_options.device).lower().endswith("auto")
+
+    def test_tesseract_and_easyocr_are_cpu(self):
+        from open_notebook.ocr.options import describe
+
+        for e in ("tesseract_fast", "tesseract_best", "easyocr"):
+            assert describe(e)["device"] == "cpu"

@@ -40,17 +40,40 @@ OCR_MIME_TYPES = frozenset(
 )
 
 
-def native_path_required(ocr: OcrSettings) -> bool:
-    """Whether the selected OCR configuration differs from content-core's default."""
-    if not ocr.enabled:
+def native_path_required(ocr: OcrSettings, is_image: bool = False) -> bool:
+    """Whether the selected OCR configuration differs from content-core's default.
+
+    Images: content-core sets no Docling option for images, so Docling OCRs
+    them even when ``docling_ocr`` is off — the engine choice applies to them
+    regardless of that toggle (otherwise an installed EasyOCR could be picked
+    by Auto and download weights while processing).
+    """
+    if not ocr.enabled and not is_image:
         return False
     if ocr.engine != "rapidocr":
         return True
     if not ocr.uses_default_tuning:
         return True
+    from open_notebook.ocr.options import rapidocr_force_cpu
+
+    if rapidocr_force_cpu():
+        return True  # needs explicit ocr_options (content-core cannot pass them)
     # RapidOCR + default tuning: content-core's Auto path is identical only while
     # Auto would really pick RapidOCR (e.g. not after EasyOCR was installed).
-    return not runtime.auto_resolves_to_rapidocr()
+    if runtime.auto_resolves_to_rapidocr():
+        return False
+    from open_notebook.ocr import compat
+
+    found = compat.problems("rapidocr")
+    if found and not compat.override_enabled():
+        # Cannot pin safely on unverified dependencies: keep content-core's
+        # behaviour (the pre-existing default) and say so loudly.
+        logger.warning(
+            "OCR: Docling Auto may not select RapidOCR here, but dependencies are "
+            f"unverified ({'; '.join(found)}); using content-core's default path."
+        )
+        return False
+    return True
 
 
 def _docling_routes(mime: str, document_engine: str) -> bool:
@@ -69,12 +92,21 @@ def _docling_routes(mime: str, document_engine: str) -> bool:
 async def should_use_native_ocr(
     file_path: str, document_engine: str, ocr: OcrSettings
 ) -> bool:
-    if not file_path or not native_path_required(ocr):
+    # Cheap pre-check (is_image=True is the most permissive case).
+    if not file_path or not native_path_required(ocr, is_image=True):
         return False
     from content_core.content.identification import get_file_type
 
     mime = await get_file_type(file_path)
-    return mime in OCR_MIME_TYPES and _docling_routes(mime, document_engine)
+    return _decide(mime, document_engine, ocr)
+
+
+def _decide(mime: str, document_engine: str, ocr: OcrSettings) -> bool:
+    return (
+        mime in OCR_MIME_TYPES
+        and native_path_required(ocr, is_image=mime.startswith("image/"))
+        and _docling_routes(mime, document_engine)
+    )
 
 
 async def should_use_native_ocr_for_url(
@@ -87,12 +119,12 @@ async def should_use_native_ocr_for_url(
     scan would bypass the selected engine (and, once EasyOCR is installed,
     silently switch to it). Web pages / YouTube are unaffected (not OCR MIME).
     """
-    if not url or not native_path_required(ocr):
+    if not url or not native_path_required(ocr, is_image=True):
         return False
     from content_core.processors.url import detect_remote_mime
 
     mime = await detect_remote_mime(url)
-    return mime in OCR_MIME_TYPES and _docling_routes(mime, document_engine)
+    return _decide(mime, document_engine, ocr)
 
 
 async def extract_url_with_selected_ocr(
@@ -223,18 +255,18 @@ async def extract_with_selected_ocr(
     )
     content, meta = convert_file(file_path, cc_config, ocr)
     logger.info(
-        f"Docling OCR finished: engine={ocr.engine} actual_models={meta['ocr_models']} "
-        f"in {meta['ocr_seconds']}s"
+        f"Docling OCR finished: engine={ocr.engine} actual_models={meta.get('ocr_models')} "
+        f"in {meta.get('ocr_seconds')}s"
     )
     expected = {
         "rapidocr": "RapidOcrModel",
         "tesseract": "TesseractOcrCliModel",
         "easyocr": "EasyOcrModel",
     }[catalog.get_engine(ocr.engine).docling_kind]
-    if meta["ocr_models"] and expected not in meta["ocr_models"]:
+    if meta.get("ocr_models") and expected not in meta["ocr_models"]:
         # Defensive: Docling instantiated something other than what we asked for.
         raise ValueError(
-            f"Docling used OCR model(s) {meta['ocr_models']} instead of {expected}; refusing the result."
+            f"Docling used OCR model(s) {meta.get('ocr_models')} instead of {expected}; refusing the result."
         )
     return ExtractionOutput(
         content=content,
