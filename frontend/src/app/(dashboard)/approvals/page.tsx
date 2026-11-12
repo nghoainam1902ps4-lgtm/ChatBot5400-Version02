@@ -4,17 +4,6 @@ import { useState } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import {
   DataTable,
   DataTableBody,
@@ -33,11 +22,7 @@ import { AccessDenied } from '@/components/common/AccessDenied'
 import { ReviewSourceDialog } from '@/components/sources/ReviewSourceDialog'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useAuth } from '@/lib/hooks/use-auth'
-import {
-  usePendingApprovals,
-  useApproveSource,
-  useRejectSource,
-} from '@/lib/hooks/use-approvals'
+import { usePendingApprovals } from '@/lib/hooks/use-approvals'
 import type { ApprovalItem } from '@/lib/api/approvals'
 import { Check, ClipboardCheck, X } from 'lucide-react'
 
@@ -46,11 +31,9 @@ export default function ApprovalsPage() {
   const { canReview, isLoading: authLoading } = useAuth()
 
   const { data: items, isLoading, isError, refetch } = usePendingApprovals(canReview)
-  const approve = useApproveSource()
-  const reject = useRejectSource()
 
-  const [rejecting, setRejecting] = useState<ApprovalItem | null>(null)
-  const [reason, setReason] = useState('')
+  // Approve/Reject and double-click all open the full review window; the actual
+  // approve/reject happens inside it (after the reviewer sees the content).
   const [reviewingId, setReviewingId] = useState<string | null>(null)
 
   const formatDate = (value?: string | null) => {
@@ -76,35 +59,17 @@ export default function ApprovalsPage() {
     }
   }
 
-  const handleApprove = (item: ApprovalItem) => {
-    approve.mutate(item.id)
-  }
-
-  const submitReject = async () => {
-    if (!rejecting) return
-    await reject.mutateAsync({ sourceId: rejecting.id, reason: reason || undefined })
-    setRejecting(null)
-    setReason('')
-  }
+  // Both buttons open the review window (where the reviewer confirms the action
+  // after seeing the document); stopPropagation keeps the row's own handlers out.
+  const openReview = (item: ApprovalItem) => setReviewingId(item.id)
 
   const renderActions = (item: ApprovalItem) => (
     <div className="flex items-center justify-end gap-2">
-      <Button
-        size="sm"
-        onClick={() => handleApprove(item)}
-        disabled={approve.isPending}
-      >
+      <Button size="sm" onClick={() => openReview(item)}>
         <Check className="h-4 w-4" />
         {t('approvals.approve')}
       </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => {
-          setRejecting(item)
-          setReason('')
-        }}
-      >
+      <Button size="sm" variant="outline" onClick={() => openReview(item)}>
         <X className="h-4 w-4" />
         {t('approvals.reject')}
       </Button>
@@ -191,16 +156,14 @@ export default function ApprovalsPage() {
             </DataTableHeader>
             <DataTableBody>
               {items.map((item) => (
-                <DataTableRow key={item.id} className="last:border-b-0">
-                  <DataTableCell className="font-medium">
-                    <button
-                      type="button"
-                      onClick={() => setReviewingId(item.id)}
-                      className="block max-w-full truncate text-left text-fern hover:underline"
-                      title={t('approvals.openReview')}
-                    >
-                      {item.title || t('approvals.untitled')}
-                    </button>
+                <DataTableRow
+                  key={item.id}
+                  className="cursor-pointer last:border-b-0"
+                  onDoubleClick={() => openReview(item)}
+                  title={t('approvals.openReview')}
+                >
+                  <DataTableCell className="truncate font-medium">
+                    {item.title || t('approvals.untitled')}
                   </DataTableCell>
                   <DataTableCell>{typeLabel(item.type)}</DataTableCell>
                   <DataTableCell>{renderNotebooks(item)}</DataTableCell>
@@ -227,15 +190,7 @@ export default function ApprovalsPage() {
             <DataListItem
               key={item.id}
               className="px-3"
-              title={
-                <button
-                  type="button"
-                  onClick={() => setReviewingId(item.id)}
-                  className="truncate text-left text-fern hover:underline"
-                >
-                  {item.title || t('approvals.untitled')}
-                </button>
-              }
+              title={item.title || t('approvals.untitled')}
               meta={[
                 typeLabel(item.type),
                 item.submitted_by_name,
@@ -284,43 +239,6 @@ export default function ApprovalsPage() {
           {renderBody()}
         </PageShell>
       </div>
-
-      {/* Reject dialog */}
-      <Dialog
-        open={rejecting !== null}
-        onOpenChange={(open) => !open && setRejecting(null)}
-      >
-        <DialogContent size="md">
-          <DialogHeader>
-            <DialogTitle>{t('approvals.rejectTitle')}</DialogTitle>
-            <DialogDescription>
-              {rejecting?.title || t('approvals.untitled')}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogBody className="space-y-1.5">
-            <Label htmlFor="reject-reason">{t('approvals.rejectReason')}</Label>
-            <Textarea
-              id="reject-reason"
-              value={reason}
-              placeholder={t('approvals.rejectReasonPlaceholder')}
-              onChange={(e) => setReason(e.target.value)}
-              rows={3}
-            />
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejecting(null)}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={submitReject}
-              disabled={reject.isPending}
-            >
-              {t('approvals.reject')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Full review window: content + manage-notebooks + approve/reject */}
       <ReviewSourceDialog
