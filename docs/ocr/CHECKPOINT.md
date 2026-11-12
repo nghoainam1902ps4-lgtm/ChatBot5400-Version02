@@ -1,6 +1,6 @@
 # Checkpoint
 
-- **Phase hiện tại:** 6 hoàn tất (review độc lập đã xử lý — xem dưới).
+- **Phase hiện tại:** 7 (hardening & acceptance readiness) hoàn tất trong Cloud; chờ nghiệm thu máy thật.
 - **Repository:** nghoainam1902ps4-lgtm/ChatBot5400-Version02
 - **Branch:** `claude/friendly-mendel-a2b6m5` (đã push; không merge main)
 - **Commit gốc (rollback):** `5e042279439302d3ccf39bef4d1d8d402314d194`
@@ -44,3 +44,10 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
 
 1. Nghiệm thu Docker + full pipeline trên máy nội bộ.
 2. Benchmark với tài liệu thật (không đưa lên GitHub) trước khi đổi engine trong Settings.
+
+## Phase 7
+
+- Phát hiện & sửa: xem `OCR_TEST_REPORT.md` §7.1 (P7-1 … P7-11).
+- Hạng mục cần máy thật: full pipeline strict (`OCR_LOCAL_ACCEPTANCE.md` §4.3), Docker E2E/offline/
+  rebuild/upgrade (§5), benchmark pipeline (§8).
+- Điều kiện trước production: xử lý `OCR_COMMANDS_JOBS_RISK.md` (mục 1 và 3).

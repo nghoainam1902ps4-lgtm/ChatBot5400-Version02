@@ -74,3 +74,13 @@ Bundle 3 engine (15 tệp, 211 MB) tạo online; cài vào data dir mới với 
 (`HTTPS_PROXY=http://127.0.0.1:9`, `UV_OFFLINE=1`, `OCR_OFFLINE=true`): model từ `bundle`,
 `dpkg -i` tesseract-ocr, `uv pip install --offline --no-index` 7 wheel ⇒ 4/4 engine `ready`.
 Bundle bị sửa 1 byte ⇒ `verify` và `install` exit 1, không ghi gì. Chi tiết: `OCR_TEST_REPORT.md`.
+
+## 5. Phase 7
+
+- Không có bundle staged nhưng cache uv trên volume đã có wheel (từ lần khởi động online trước):
+  `OCR_OFFLINE=true` ⇒ EasyOCR cài lại bằng `uv pip install --offline -c <constraints>`; Docling cũng
+  cài lại từ cache. Đã kiểm chứng trong Cloud với mạng bị chặn.
+- Mọi cài đặt runtime dùng constraints từ `uv.lock` (`OPEN_NOTEBOOK_RUNTIME_CONSTRAINTS`).
+- Model Docling (Heron/TableFormer): chuẩn bị bằng `scripts/ocr/warm_docling_models.py` trên máy có
+  Internet rồi chép `HF_HOME`; trên máy offline đặt `HF_HUB_OFFLINE=1`. Hướng dẫn đầy đủ:
+  `OCR_LOCAL_ACCEPTANCE.md` §7.

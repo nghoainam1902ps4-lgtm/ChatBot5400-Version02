@@ -116,3 +116,41 @@ Một agent review độc lập toàn bộ diff (không sửa file) báo 11 phá
 Sau sửa: OCR backend 93+11+11+5+8 PASS (4 skip full pipeline), `test_graphs.py` 22/22, frontend
 401/401, tsc/lint/build PASS; integration engine thật PASS; khôi phục runtime offline có/không
 digest ghim đã kiểm chứng thật.
+
+## 7. Phase 7 — Hardening & acceptance readiness
+
+### 7.1 Phát hiện và xử lý
+
+| # | Phát hiện | Mức | Xử lý | Bằng chứng |
+|---|---|---|---|---|
+| P7-1 | Container mới cài Docling **không theo lock**: hôm nay sẽ là Docling 2.150.0 / RapidOCR 3.10.0 / torch 2.15.0 thay vì 2.129.0 / 3.9.2 / 2.14.0 đã kiểm thử | Cao | Constraints xuất từ `uv.lock` (Dockerfile → entrypoint/CLI); extra `ocr-easyocr` khoá EasyOCR (D-14) | `uv pip compile` không/có `-c` (2.150.0 → 2.129.0); `test_entrypoint_installs_docling_with_constraints_and_keeps_cmd` chạy entrypoint thật với stub |
+| P7-2 | Lớp OCR phụ thuộc API nội bộ Content Core/Docling, không có cảnh báo khi thay đổi | Cao | Guard phiên bản + dấu vân tay mã nguồn; lệch ⇒ `incompatible`, không âm thầm (D-14) | `tests/test_ocr_dependency_compat.py` (12) |
+| P7-3 | Ảnh khi tắt OCR vẫn bị Docling OCR qua Auto ⇒ có thể chọn EasyOCR và tải trọng số | Trung bình | Ảnh luôn theo engine đã chọn (D-15) | `test_ocr_disabled_semantics` |
+| P7-4 | Log metadata truy cập khoá trực tiếp (KeyError tiềm ẩn) | Thấp | `.get` | parity tests |
+| P7-5 | Gỡ model khi job đang chạy với engine cũ | Trung bình | Chặn khi có job `running`/test chờ; fail-closed (D-17) | 3 test API |
+| P7-6 | Khôi phục offline sau recreate cần mạng | Trung bình | `--offline` từ cache uv cho Docling/EasyOCR (D-18) | Kiểm chứng thật: mạng chặn, xoá easyocr ⇒ cài lại từ cache |
+| P7-7 | RapidOCR trên máy GPU dùng CUDA (hành vi gốc) | Thông tin | Giữ mặc định; opt-in `OCR_RAPIDOCR_FORCE_CPU` (D-16) | `TestCpuMode` (3); EasyOCR `reader.device == "cpu"` thật |
+| P7-8 | Docker acceptance cũ: ngắt mạng làm mất DB; "update" chỉ là đổi tag; chỉ dùng CLI | Cao (giá trị nghiệm thu) | Viết lại: mạng `internal`, build lại thật + kiểm tra image ID, nâng cấp từ `OLD_REF`, E2E qua API + worker | `bash -n` + ShellCheck sạch; driver kiểm thử với stub (5) |
+| P7-9 | Test full pipeline cũ chỉ kiểm tên model + Markdown không rỗng | Cao (giá trị nghiệm thu) | 7 fixture có ground truth; kiểm nội dung, thứ tự, số liệu, bảng/hàng/cột/ô gộp, phân biệt OCR vs text layer; strict mode | `tests/test_ocr_integration.py` |
+| P7-10 | `POST /api/commands/jobs` (có sẵn): đọc/xoá file tuỳ ý, SSRF qua `process_source` | **Cao** | Không sửa (ngoài phạm vi) — tài liệu + phương án | `OCR_COMMANDS_JOBS_RISK.md` |
+| P7-11 | RapidOCR torch lưu trọng số trong venv ⇒ mất khi recreate (có sẵn) | Thông tin | Ghi nhận giới hạn, không đổi mặc định | `OCR_DOCKER_STORAGE.md` §5 |
+
+### 7.2 Kết quả chạy trong Cloud
+
+| Bộ test | Kết quả |
+|---|---|
+| `test_ocr_engine_manager.py` | 99 passed |
+| `test_ocr_bundle_cli.py` | 11 passed |
+| `test_ocr_docling_parity.py` (gồm parity hành vi với `_extract_file`/`_extract_url`) | 24 passed |
+| `test_ocr_source_graph.py` | 5 passed |
+| `test_ocr_dependency_compat.py` | 12 passed |
+| `test_ocr_acceptance_driver.py` (driver Docker E2E với stub HTTP — **không phải** nghiệm thu sản phẩm) | 5 passed |
+| `test_ocr_doc_commands.py` (24 khối bash trong docs/ocr: `bash -n`) | 2 passed |
+| `test_ocr_integration.py` — OCR stage engine thật | 9 passed |
+| `test_ocr_integration.py` — full pipeline (4 engine × 7 fixture + nhận diện pipeline + attribution) | **39 NOT VERIFIED** (Hugging Face / modelscope bị chặn). Strict mode: 39 FAIL gắn nhãn "NOT VERIFIED", 0 PASS giả |
+| `test_graphs.py` | 22 passed |
+| Regression backend toàn bộ (offline harness như Phase 6) | 951 passed, 10 failed — **đúng 10 lỗi có sẵn ở commit gốc**, 0 lỗi mới |
+| Frontend: tsc / lint / vitest / build | 0 lỗi / 0 error / 401 passed / PASS |
+| mypy + ruff (mã thay đổi) | sạch |
+| ShellCheck 0.11 (`docker-acceptance.sh`, entrypoint; khối lệnh trong tài liệu nghiệm thu, trừ SC2164 có chủ đích) | sạch |
+| Docker build / E2E / offline / rebuild / upgrade | **NOT VERIFIED** — Docker Hub 429, ghcr blob 403, Debian apt 403; tải SurrealDB binary bị chặn bởi chính sách quyền của phiên |

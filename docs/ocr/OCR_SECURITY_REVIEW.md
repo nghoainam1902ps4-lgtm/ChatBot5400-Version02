@@ -46,3 +46,15 @@ Phạm vi: toàn bộ diff của tính năng (`open_notebook/ocr/`, `api/routers
    hết thời gian rồi mới khởi động (không chặn boot). Dùng build arg hoặc `OCR_OFFLINE=true`.
 2. Lỗ hổng phân quyền có sẵn của `/api/commands/jobs` cho các command không phải OCR.
 3. Image chạy root (có sẵn).
+
+## Phase 7 — Bổ sung
+
+| # | Tình huống | Đánh giá | Biện pháp / bằng chứng |
+|---|---|---|---|
+| 18 | Job OCR đang chạy, admin chuyển engine rồi gỡ model cũ | Job lấy snapshot Settings lúc bắt đầu ⇒ vẫn dùng engine cũ; Tesseract đọc traineddata **mỗi trang** ⇒ gỡ giữa chừng làm job lỗi | API từ chối gỡ khi có `process_source` đang `running` hoặc test đang chờ; không truy vấn được DB ⇒ từ chối (D-17). `test_delete_refused_while_documents_processing`, `test_delete_refused_while_engine_test_pending` |
+| 19 | Nhiều worker cùng tải / cài / gỡ | `flock` theo engine + lock riêng tệp dùng chung (osd, có chờ); ghi model bằng `os.replace` nguyên tử; job trùng ⇒ `LockBusy` ⇒ `failed` có thể thử lại; API đối chiếu job đã kết thúc | Hợp lệ khi các worker dùng chung volume trên **cùng máy** (flock). Volume mạng (NFS) không bảo đảm flock ⇒ chỉ chạy một worker cài đặt |
+| 20 | Settings thay đổi đồng thời | `ContentSettings.update()` ghi toàn bộ bản ghi (có sẵn, cũng áp dụng cho `/api/settings`) ⇒ hai admin sửa cùng lúc có thể mất một thay đổi | Rủi ro thấp (chỉ admin); job xử lý đọc snapshot nhất quán. Ghi nhận, không đổi trong phạm vi này |
+| 21 | Model được cập nhật khi đang xử lý PDF | Cài/sửa model: staging + checksum + `os.replace` ⇒ tiến trình đang đọc thấy inode cũ hoặc mới, nội dung giống hệt (sha256 ghim) | An toàn; EasyOCR nạp trọng số vào RAM khi khởi tạo |
+| 22 | Nguồn URL đi qua lớp OCR mới | Cùng URL đã qua `validate_url()` ở API; tải bằng chính `_download_remote_file` của Content Core (aiohttp, theo redirect như trước), thêm 1 HEAD như Content Core vốn làm; tệp tạm luôn bị xoá (kể cả khi lỗi) | Không thêm bề mặt SSRF mới; `test_url_output_and_cleanup_match_content_core`, `test_url_temp_file_removed_when_conversion_fails`. Rủi ro có sẵn: worker không kiểm tra lại URL — xem `OCR_COMMANDS_JOBS_RISK.md` |
+| 23 | Dependency runtime bị thay đổi | Container mới trước đây cài Docling mới nhất (2.150) ⇒ hành vi khác bản đã kiểm thử | Constraints từ `uv.lock` + guard phiên bản/dấu vân tay (D-14); override phải tường minh; gói staged cần digest ghim |
+| 24 | `POST /api/commands/jobs` (có sẵn) | **Cao**: user thường có thể chạy `process_source` với `file_path`/`delete_source` ⇒ đọc/xoá file tuỳ ý dưới quyền root, SSRF; các command khác ⇒ chi phí/ghi dữ liệu | Không sửa trong Phase 7 (ngoài phạm vi). Phân tích + phương án: `OCR_COMMANDS_JOBS_RISK.md`. **Khuyến nghị bắt buộc xử lý trước production** |

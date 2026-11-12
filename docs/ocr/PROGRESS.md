@@ -24,3 +24,10 @@
 | 5 | Regression backend + frontend | DONE (4 file cần tiktoken: BLOCKED do mạng) |
 | 6 | Security review, tài liệu bàn giao, rollback | DONE |
 | 6 | Review độc lập toàn bộ diff | DONE (xem CHECKPOINT) |
+| 7 | Khoá dependency (constraints từ uv.lock, extra ocr-easyocr) + guard tương thích | DONE |
+| 7 | Review & parity hành vi docling_extract với Content Core; sửa ảnh khi OCR tắt | DONE |
+| 7 | Fixture nghiệm thu có ground truth + full pipeline strict mode | DONE (chạy thật: BLOCKED — HF) |
+| 7 | Viết lại Docker acceptance (internal network, rebuild thật, upgrade, E2E API+worker) | DONE (chạy thật: BLOCKED — registry/apt) |
+| 7 | CPU mode (RapidOCR opt-in CPU, EasyOCR device thật) | DONE |
+| 7 | Security bổ sung + tài liệu `/api/commands/jobs` | DONE |
+| 7 | `OCR_LOCAL_ACCEPTANCE.md` + kiểm tra cú pháp lệnh | DONE |

@@ -54,11 +54,24 @@ không xoá `notebook_data` hay `surreal_data`.
 ## 4. Nghiệm thu Docker trên máy nội bộ
 
 ```bash
-docker build --target runtime --build-arg OCR_INSTALL_TESSERACT=true -t chatbot5400:ocr-test .
-IMAGE=chatbot5400:ocr-test scripts/ocr/docker-acceptance.sh
+SCENARIOS="tesseract_best easyocr" OLD_REF=5e042279439302d3ccf39bef4d1d8d402314d194 bash scripts/ocr/docker-acceptance.sh
 ```
 
-Script chạy trong compose project và thư mục dữ liệu **tạm riêng**, không đụng tới triển khai
-hiện có, và kiểm tra: cài mới không tải engine; cài một engine không tải engine khác; restart,
-recreate, image mới giữ model (không tải lại); gỡ Fast giữ osd cho Best; cài thất bại không ảnh
-hưởng engine sẵn sàng; khởi động offline.
+Script tự build image, dùng compose project + thư mục dữ liệu **tạm riêng** (không đụng triển khai
+hiện có), và kiểm tra qua **API + worker thật**: nâng cấp từ bản đang chạy, không tải engine lúc khởi
+động, cài/kích hoạt/test/upload/xử lý từng engine, restart, offline bằng mạng `internal` (DB vẫn kết
+nối, Internet bị chặn), build lại image thật và recreate. Chi tiết: `OCR_LOCAL_ACCEPTANCE.md` §5.
+
+## 5. Phase 7 — khoá phiên bản và offline
+
+- Image có `/app/runtime-constraints.txt` (xuất từ `uv.lock` lúc build). Entrypoint cài Docling và CLI
+  cài EasyOCR với `-c` file này ⇒ container mới luôn nhận `docling==2.129.0`, `rapidocr==3.9.2`,
+  `torch==2.14.0` (+cpu với `UV_TORCH_BACKEND=cpu`), `easyocr==1.7.2`. Log khởi động in
+  `Using locked runtime constraints: ...`.
+- Máy không Internet: đặt `OCR_OFFLINE=true` (Docling/EasyOCR cài lại từ cache uv trên volume với
+  `--offline`) và `HF_HUB_OFFLINE=1` (Docling dùng Heron/TableFormer đã có trong `HF_HOME`).
+- **Giới hạn có sẵn (không do tính năng này):** RapidOCR backend torch tải trọng số PP-OCR từ
+  modelscope.cn vào **thư mục gói trong venv** ⇒ mất khi recreate container. Trên máy không Internet,
+  engine mặc định RapidOCR sẽ không tải lại được sau recreate. Engine Tesseract/EasyOCR không bị ảnh
+  hưởng (model nằm trên volume). Không thay đổi trong phạm vi này để giữ nguyên hành vi mặc định.
+- Nghiệm thu thực tế: `docs/ocr/OCR_LOCAL_ACCEPTANCE.md`.

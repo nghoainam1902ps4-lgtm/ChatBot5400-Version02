@@ -27,6 +27,10 @@ cũ. Không ghi gì vào DB cho tới khi admin lưu.
 | `OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT` | – | Entrypoint khôi phục `tesseract-ocr` |
 | `OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR` | – | Entrypoint khôi phục `easyocr==1.7.2` |
 | `OCR_TRUSTED_WHEELS_SHA256` / `OCR_TRUSTED_DEBS_SHA256` | – | Digest ghim (in ra bởi `bundle install`) để cho phép cài gói đã stage offline |
+| `OPEN_NOTEBOOK_RUNTIME_CONSTRAINTS` | `/app/runtime-constraints.txt` (Docker) | Constraints xuất từ `uv.lock`, áp dụng khi cài Docling/EasyOCR lúc chạy (D-14) |
+| `OCR_ALLOW_UNVERIFIED_DEPENDENCIES` | – | `true` = cho phép engine khác RapidOCR khi Content Core/Docling khác bộ đã kiểm chứng (chỉ sau khi tự kiểm chứng lại) |
+| `OCR_RAPIDOCR_FORCE_CPU` | – | `true` = RapidOCR chạy CPU kể cả khi có GPU (chỉ OCR; D-16). Mặc định giữ hành vi cũ |
+| `HF_HUB_OFFLINE` | – | `1` cho máy không Internet: Docling chỉ dùng model Heron/TableFormer đã có trong `HF_HOME` |
 | Build arg `OCR_INSTALL_TESSERACT` | `false` | Nướng Tesseract vào image |
 
 ## 3. Ánh xạ engine → Docling (đã xác minh trên Docling 2.129.0)

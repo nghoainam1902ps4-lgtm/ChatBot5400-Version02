@@ -116,3 +116,50 @@ Mỗi quyết định: bối cảnh → quyết định → phương án bị lo
   model của Docling qua `get_ocr_factory()` (factory chính thức) trên trang đã render bởi
   backend PDF của Docling. Full pipeline: `scripts/ocr/acceptance_full_pipeline.py` chạy trên
   máy triển khai. Kết quả Cloud ghi rõ phạm vi.
+
+## D-14. Khoá phiên bản runtime + guard tương thích (Phase 7)
+
+- **Bối cảnh:** image cơ sở theo `uv.lock` (`uv sync --frozen`), nhưng Docling được entrypoint cài lúc
+  khởi động bằng `uv pip install content-core[docling]==2.0.7` **không theo lock** ⇒ một container mới
+  hôm nay sẽ nhận Docling **2.150.0**, RapidOCR 3.10.0, torch 2.15.0 (đã kiểm chứng bằng
+  `uv pip compile`), không phải 2.129.0 / 3.9.2 / 2.14.0 đã kiểm thử. EasyOCR cũng không được khoá.
+- **Quyết định:**
+  1. Thêm extra `ocr-easyocr = ["easyocr==1.7.2"]` vào `pyproject.toml` ⇒ EasyOCR và phụ thuộc nằm
+     trong `uv.lock` (không phiên bản cũ nào thay đổi — đã so sánh).
+  2. Dockerfile `uv export --frozen ... --extra docling --extra ocr-easyocr` ⇒
+     `/app/runtime-constraints.txt`; entrypoint (Docling) và CLI (EasyOCR) cài với `-c` ⇒ container
+     mới nhận đúng phiên bản trong lock. Dev: CLI tự export từ `uv.lock`. Không có constraints ⇒ CLI
+     từ chối cài EasyOCR (trừ khi override).
+  3. `open_notebook/ocr/compat.py`: phiên bản đã kiểm chứng + **dấu vân tay mã nguồn** (SHA-256 của
+     `inspect.getsource`) của các hàm nội bộ Content Core mà lớp OCR mô phỏng/tái dùng
+     (`extract_docling`, `_extract_file`, `_extract_url`, `_route_for_mime`, `_download_remote_file`,
+     `_fetch_remote_file`, `detect_remote_mime`) và hành vi Docling dựa vào (Auto OCR, Tesseract CLI
+     list-langs/run). Lệch ⇒ engine khác RapidOCR = `incompatible`, đường mặc định vẫn đi Content Core;
+     chỉ bỏ qua bằng `OCR_ALLOW_UNVERIFIED_DEPENDENCIES=true` (tường minh).
+- **Loại bỏ:** siết `content-core==2.0.7` trong `pyproject.toml` (lock đã khoá; guard bắt cả bản vá
+  cùng số phiên bản); fork Content Core (chưa cần).
+
+## D-15. Ảnh luôn theo engine đã chọn
+
+- Content Core không đặt option cho ảnh ⇒ Docling luôn OCR ảnh (kể cả khi tắt `docling_ocr`). Nếu
+  giữ đường Content Core cho ảnh khi OCR tắt, cài EasyOCR sẽ khiến Auto chọn EasyOCR và **tải trọng số
+  khi xử lý**. ⇒ Ảnh luôn đi lớp OCR với engine đã chọn; PDF khi tắt OCR vẫn đi Content Core.
+
+## D-16. RapidOCR trên CPU: giữ mặc định, thêm lựa chọn tường minh
+
+- Docling đặt thiết bị RapidOCR theo `accelerator_options.device` (AUTO ⇒ CUDA nếu torch thấy GPU).
+  Production dùng torch CPU (`UV_TORCH_BACKEND=cpu`) ⇒ chạy CPU. Ép CPU mặc định sẽ đổi hành vi trên
+  máy có GPU ⇒ **không làm mặc định**. `OCR_RAPIDOCR_FORCE_CPU=true` dùng `RapidOcrOptions.rapidocr_params`
+  (API chính thức) tắt `use_cuda`/`use_dml` **chỉ cho OCR**; Layout/TableFormer giữ thiết bị của Docling.
+
+## D-17. Không gỡ model khi tài liệu đang được xử lý
+
+- Tesseract đọc traineddata ở mỗi trang ⇒ job đang chạy (bắt đầu trước khi đổi engine) có thể hỏng
+  nếu gỡ model. API từ chối gỡ khi có `process_source` đang `running`, hoặc đang có test của engine;
+  không kiểm tra được DB ⇒ từ chối (fail closed). Job đang chờ (`new`) an toàn vì đọc Settings khi bắt đầu.
+
+## D-18. Khôi phục offline từ cache
+
+- `OCR_OFFLINE=true`: entrypoint cài Docling với `uv --offline` (cache uv trên volume); CLI cài
+  EasyOCR từ gói staged (cần digest ghim) hoặc, nếu không có, từ cache uv với `--offline`. Docker
+  acceptance kiểm tra bằng mạng `internal` (DB vẫn tới được, Internet bị chặn).

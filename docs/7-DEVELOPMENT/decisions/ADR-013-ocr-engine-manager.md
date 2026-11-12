@@ -32,3 +32,6 @@ exposes no way to pass `ocr_options`.
 - The layer must be re-aligned (or removed) if content-core changes its Docling options or
   gains OCR options upstream.
 - Worker now re-reads content settings per job (fixes stale settings in the worker).
+- Runtime installs (Docling, EasyOCR) are constrained to `uv.lock` via an exported constraints file,
+  and a compatibility guard (versions + source fingerprints of the content-core internals the layer
+  mirrors) disables non-default engines on drift instead of failing silently (docs/ocr D-14).
