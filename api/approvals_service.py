@@ -6,6 +6,7 @@ rows map to the API response. Admins have global scope; approvers are limited
 to the categories (and their sub-notebooks) an admin assigned to them.
 """
 
+import time
 from typing import Any, Dict, List, Optional
 
 from api.auth import TokenUser, auth_disabled
@@ -13,6 +14,30 @@ from api.models import ApprovalItemResponse, ApprovalNotebookRef, ReviewerRespon
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import AuthorizationError, NotFoundError
+
+# Read-visibility checks run on every single-source request, including the
+# status endpoint the UI polls every ~2s while a source is processing. The
+# managed scope changes rarely, so it is cached briefly per approver for those
+# READ checks only; approve / reject / link / unlink always resolve it fresh.
+# The cache is per process and cleared whenever a notebook's hierarchy or
+# managers change in this process (see invalidate_scope_cache callers).
+_SCOPE_CACHE_TTL_SECONDS = 10.0
+_scope_cache: Dict[str, tuple[float, List[str]]] = {}
+
+
+async def _managed_scope_cached(user_id: str) -> List[str]:
+    now = time.monotonic()
+    hit = _scope_cache.get(user_id)
+    if hit is not None and now - hit[0] < _SCOPE_CACHE_TTL_SECONDS:
+        return hit[1]
+    scope = await Notebook.managed_scope_ids(user_id)
+    _scope_cache[user_id] = (now, scope)
+    return scope
+
+
+def invalidate_scope_cache() -> None:
+    """Drop cached approver scopes (call after changing managers/hierarchy)."""
+    _scope_cache.clear()
 
 
 async def scope_ids_for(user: TokenUser) -> Optional[List[str]]:
@@ -182,11 +207,11 @@ async def assert_can_view_source(user: TokenUser, source: Source) -> None:
     if user.is_approver:
         if source.assigned_approver and str(source.assigned_approver) == user.id:
             return
-        try:
-            await assert_can_review_source(user, source)
+        scope = await _managed_scope_cached(user.id)
+        if scope and not set(await source.referenced_notebook_ids()).isdisjoint(
+            scope
+        ):
             return
-        except AuthorizationError:
-            pass
     raise NotFoundError("Source not found")
 
 

@@ -206,6 +206,7 @@ async def create_notebook(
             managers=managers,
         )
         await new_notebook.save()
+        approvals_service.invalidate_scope_cache()
 
         return NotebookResponse(
             id=new_notebook.id or "",
@@ -379,6 +380,8 @@ async def update_notebook(
             notebook.managers = notebook_update.managers
 
         await notebook.save()
+        if notebook_update.managers is not None:
+            approvals_service.invalidate_scope_cache()
 
         # Query with counts after update. Note count is scoped to the current
         # user (per-user data); source count stays global (shared data).
@@ -561,6 +564,7 @@ async def delete_notebook(
         result = await notebook.delete(
             delete_exclusive_sources=delete_exclusive_sources
         )
+        approvals_service.invalidate_scope_cache()
 
         return NotebookDeleteResponse(
             message="Notebook deleted successfully",

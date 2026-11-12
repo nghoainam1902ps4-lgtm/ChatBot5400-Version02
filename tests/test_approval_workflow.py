@@ -13,8 +13,17 @@ from api.auth import (
     require_approver,
     require_submitter,
 )
-from open_notebook.domain.notebook import Notebook, Source, _drop_unapproved_results
-from open_notebook.exceptions import AuthorizationError, NotFoundError
+from open_notebook.domain.notebook import (
+    Notebook,
+    Source,
+    _keep_approved_results,
+    _search_until_filled,
+)
+from open_notebook.exceptions import (
+    AuthorizationError,
+    InvalidInputError,
+    NotFoundError,
+)
 
 DOMAIN = "open_notebook.domain.notebook"
 BASE = "open_notebook.domain.base"
@@ -79,37 +88,58 @@ class TestApprovalDependencies:
 # --- Source approve / reject ---------------------------------------------
 class TestSourceReview:
     @pytest.mark.asyncio
-    async def test_approve_is_targeted_update_and_embeds_fresh_text(self):
-        # The in-memory copy predates extraction (no text); the DB now has it.
+    async def test_approve_is_targeted_update_and_embeds_when_claim_won(self):
+        # The in-memory copy predates extraction (no text); the claim is decided
+        # by the DB, which has the text.
         source = Source(id="source:1", approval_status="pending", full_text=None)
-        repo = AsyncMock(side_effect=[[], ["extracted text"]])
+        repo = AsyncMock(side_effect=[[], [{"id": "source:1"}]])
         with (
             patch(f"{DOMAIN}.repo_query", new=repo),
             patch.object(Source, "save", new=AsyncMock()) as save,
-            patch.object(
-                Source, "vectorize", new=AsyncMock(return_value="command:9")
-            ) as vectorize,
+            patch(f"{DOMAIN}.submit_command", return_value="command:9") as submit,
         ):
             cmd = await source.approve("user:admin")
         # Approval is written with a targeted UPDATE, never a full-record save.
         save.assert_not_awaited()
         assert "SET approval_status = 'approved'" in repo.await_args_list[0].args[0]
+        assert "approval_embed_queued" in repo.await_args_list[1].args[0]
         assert source.approval_status == "approved"
         assert source.reviewed_by == "user:admin"
         assert cmd == "command:9"
-        vectorize.assert_awaited_once()
+        submit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_approve_while_still_processing_skips_embed(self):
-        source = Source(id="source:1", approval_status="pending", full_text=None)
-        repo = AsyncMock(side_effect=[[], [None]])
+    async def test_approve_does_not_embed_when_claim_lost(self):
+        # Claim returns nothing: text not extracted yet, or the processing job
+        # already claimed the embedding. Either way approve() must not queue it.
+        source = Source(id="source:1", approval_status="pending", full_text="x")
+        repo = AsyncMock(side_effect=[[], []])
         with (
             patch(f"{DOMAIN}.repo_query", new=repo),
-            patch.object(Source, "vectorize", new=AsyncMock()) as vectorize,
+            patch(f"{DOMAIN}.submit_command") as submit,
         ):
             cmd = await source.approve("user:admin")
         assert cmd == ""
-        vectorize.assert_not_awaited()
+        submit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_claim_review_embed_is_single_conditional_update(self):
+        source = Source(id="source:1")
+        repo = AsyncMock(return_value=[{"id": "source:1"}])
+        with patch(f"{DOMAIN}.repo_query", new=repo):
+            assert await source.claim_review_embed() is True
+        query = repo.await_args.args[0]
+        assert query.startswith("UPDATE $id SET approval_embed_queued = true")
+        # Only review-approved sources with text, and only once.
+        for clause in (
+            "approval_status = 'approved'",
+            "reviewed_at != NONE",
+            "full_text",
+            "approval_embed_queued != true",
+        ):
+            assert clause in query
+        with patch(f"{DOMAIN}.repo_query", new=AsyncMock(return_value=[])):
+            assert await source.claim_review_embed() is False
 
     def test_update_save_never_writes_approval_fields(self):
         # A stale copy (e.g. the processing job's) must not revert an approval.
@@ -133,24 +163,31 @@ class TestSourceReview:
             assert field not in data
         assert data["title"] == "t"
 
+    def test_update_save_rejects_edited_approval_fields(self):
+        # Editing an approval field and calling save() must fail loudly rather
+        # than silently writing nothing.
+        source = Source(id="source:1", approval_status="pending")
+        source.assigned_approver = "user:p"
+        with pytest.raises(InvalidInputError, match="assigned_approver"):
+            source._prepare_save_data()
+
+    @pytest.mark.asyncio
+    async def test_save_after_approve_is_allowed(self):
+        # approve() refreshes the snapshot, so a later ordinary save() of the
+        # same object (e.g. a title edit) is not mistaken for an approval edit.
+        source = Source(id="source:1", approval_status="pending")
+        with patch(f"{DOMAIN}.repo_query", new=AsyncMock(side_effect=[[], []])):
+            await source.approve("user:admin")
+        source.title = "renamed"
+        data = source._prepare_save_data()
+        assert data["title"] == "renamed"
+        assert "approval_status" not in data
+
     def test_create_save_writes_approval_fields(self):
         source = Source(approval_status="pending", submitted_by="user:c")
         data = source._prepare_save_data()
         assert data["approval_status"] == "pending"
         assert str(data["submitted_by"]) == "user:c"
-
-    @pytest.mark.asyncio
-    async def test_was_approved_by_review(self):
-        source = Source(id="source:1")
-        cases = [
-            ([{"approval_status": "approved", "reviewed_at": "2026-01-01"}], True),
-            # Added directly by an admin: approved but never reviewed.
-            ([{"approval_status": "approved", "reviewed_at": None}], False),
-            ([{"approval_status": "pending", "reviewed_at": None}], False),
-        ]
-        for rows, expected in cases:
-            with patch(f"{DOMAIN}.repo_query", new=AsyncMock(return_value=rows)):
-                assert await source.was_approved_by_review() is expected
 
     @pytest.mark.asyncio
     async def test_delete_removes_notebook_links(self):
@@ -169,11 +206,12 @@ class TestSourceReview:
 class TestSearchHidesPending:
     @pytest.mark.asyncio
     async def test_drops_pending_source_and_its_insights(self):
+        # Text-search shape: an insight hit's parent_id is the insight itself.
         results = [
             {"id": "source:ok", "title": "approved"},
             {"id": "source:pend", "title": "pending"},
-            {"id": "source_insight:i1", "title": "insight of pending"},
-            {"id": "source_insight:i2", "title": "insight of approved"},
+            {"id": "source_insight:i1", "parent_id": "source_insight:i1"},
+            {"id": "source_insight:i2", "parent_id": "source_insight:i2"},
             {"id": "note:n1", "title": "note"},
         ]
         repo = AsyncMock(
@@ -186,7 +224,7 @@ class TestSearchHidesPending:
             ]
         )
         with patch(f"{DOMAIN}.repo_query", new=repo):
-            kept = await _drop_unapproved_results(results, limit=10)
+            kept = await _keep_approved_results(results)
         assert [r["id"] for r in kept] == [
             "source:ok",
             "source_insight:i2",
@@ -194,11 +232,79 @@ class TestSearchHidesPending:
         ]
 
     @pytest.mark.asyncio
-    async def test_truncates_to_requested_count(self):
-        results = [{"id": f"note:{i}"} for i in range(6)]
-        with patch(f"{DOMAIN}.repo_query", new=AsyncMock(return_value=[])):
-            kept = await _drop_unapproved_results(results, limit=3)
-        assert len(kept) == 3
+    async def test_vector_hits_need_single_query(self):
+        # Vector-search shape: parent_id already names the owning source, so no
+        # insight lookup is needed, just the one approval query.
+        results = [
+            {"id": "source:ok", "parent_id": "source:ok"},
+            {"id": "source_insight:i1", "parent_id": "source:pend"},
+        ]
+        repo = AsyncMock(return_value=["source:pend"])
+        with patch(f"{DOMAIN}.repo_query", new=repo):
+            kept = await _keep_approved_results(results)
+        assert [r["id"] for r in kept] == ["source:ok"]
+        assert repo.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_notes_only_results_cost_no_query(self):
+        repo = AsyncMock()
+        with patch(f"{DOMAIN}.repo_query", new=repo):
+            kept = await _keep_approved_results([{"id": "note:1"}, {"id": "note:2"}])
+        assert len(kept) == 2
+        repo.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fetches_more_when_pending_hits_underfill_the_page(self):
+        # Ranked index: 3 pending hits on top, approved ones below.
+        index = [{"id": f"source:p{i}"} for i in range(3)] + [
+            {"id": f"source:a{i}"} for i in range(5)
+        ]
+        requested = []
+
+        async def fetch(count):
+            requested.append(count)
+            return index[:count]
+
+        async def keep(rows):
+            return [r for r in rows if not r["id"].startswith("source:p")]
+
+        with patch(f"{DOMAIN}._keep_approved_results", new=keep):
+            kept = await _search_until_filled(fetch, 2)
+        # First window (2) was all pending, so a larger one was fetched.
+        assert requested == [2, 8]
+        assert [r["id"] for r in kept] == ["source:a0", "source:a1"]
+
+    @pytest.mark.asyncio
+    async def test_single_fetch_when_nothing_is_dropped(self):
+        requested = []
+
+        async def fetch(count):
+            requested.append(count)
+            return [{"id": "note:1"}]  # fewer than requested, none pending
+
+        async def keep(rows):
+            return rows
+
+        with patch(f"{DOMAIN}._keep_approved_results", new=keep):
+            kept = await _search_until_filled(fetch, 5)
+        assert requested == [5]
+        assert kept == [{"id": "note:1"}]
+
+    @pytest.mark.asyncio
+    async def test_stops_when_index_is_exhausted(self):
+        requested = []
+
+        async def fetch(count):
+            requested.append(count)
+            return [{"id": "source:p0"}]  # the only hit, and it is pending
+
+        async def keep(rows):
+            return []
+
+        with patch(f"{DOMAIN}._keep_approved_results", new=keep):
+            kept = await _search_until_filled(fetch, 3)
+        assert requested == [3, 12]
+        assert kept == []
 
 
 class TestSourceVisibility:
@@ -206,6 +312,7 @@ class TestSourceVisibility:
     def _enforce_auth(self, monkeypatch: pytest.MonkeyPatch):
         # The suite disables auth globally; visibility rules only apply with it on.
         monkeypatch.delenv("OPEN_NOTEBOOK_DISABLE_AUTH", raising=False)
+        approvals_service.invalidate_scope_cache()
 
     PENDING = dict(
         id="source:1",
@@ -262,6 +369,31 @@ class TestSourceVisibility:
             await approvals_service.assert_can_view_source(
                 user, Source(**self.PENDING)
             )
+
+    @pytest.mark.asyncio
+    async def test_scope_lookup_is_cached_for_view_checks(self):
+        # The UI polls a processing source every ~2s; the approver's scope must
+        # not be re-resolved on every poll.
+        user = TokenUser(id="user:q", username="q", role="approver")
+        scope = AsyncMock(return_value=["notebook:1"])
+        with (
+            patch.object(Notebook, "managed_scope_ids", new=scope),
+            patch.object(
+                Source,
+                "referenced_notebook_ids",
+                new=AsyncMock(return_value=["notebook:1"]),
+            ),
+        ):
+            for _ in range(3):
+                await approvals_service.assert_can_view_source(
+                    user, Source(**self.PENDING)
+                )
+            assert scope.await_count == 1
+            approvals_service.invalidate_scope_cache()
+            await approvals_service.assert_can_view_source(
+                user, Source(**self.PENDING)
+            )
+            assert scope.await_count == 2
 
 
 # --- Approver scope -------------------------------------------------------

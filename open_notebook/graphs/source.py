@@ -223,13 +223,7 @@ async def save_source(state: SourceState) -> dict:
     # NOTE: Notebook associations are created by the API immediately for UI responsiveness
     # No need to create them here to avoid duplicate edges
 
-    # A pending submission is processed with embedding off. If a reviewer
-    # approved it while it was still processing, approve() found no text to
-    # embed, so embed now that the text exists. (If approval lands after this
-    # check, approve() re-reads the saved text and embeds it itself.)
-    should_embed = state["embed"] or await source.was_approved_by_review()
-
-    if should_embed:
+    if state["embed"]:
         if source.full_text and source.full_text.strip():
             logger.debug("Embedding content for vector search")
             await source.vectorize()
@@ -237,6 +231,19 @@ async def save_source(state: SourceState) -> dict:
             logger.warning(
                 f"Source {source.id} has no text content to embed, skipping vectorization"
             )
+    else:
+        # A contributor's submission is processed with embedding off. If a
+        # reviewer approved it while it was still processing there was no text
+        # to embed at that moment, so embed now. claim_review_embed() is atomic
+        # and shared with Source.approve(), so exactly one side queues the job.
+        try:
+            if await source.claim_review_embed():
+                logger.debug("Source was approved during processing; embedding now")
+                await source.vectorize()
+        except Exception as e:
+            # Never fail (and retry) the whole extraction over this: if the
+            # claim lost a write race, approve() claims and embeds instead.
+            logger.warning(f"Could not queue review embedding for {source.id}: {e}")
 
     return {"source": source}
 
