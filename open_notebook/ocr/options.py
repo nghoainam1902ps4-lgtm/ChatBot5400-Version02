@@ -94,6 +94,23 @@ RAPIDOCR_CPU_PARAMS: dict[str, Any] = {
 }
 
 
+def rapidocr_persistent() -> bool:
+    """Opt-in (OCR_RAPIDOCR_PERSISTENT=true): keep RapidOCR weights on the data volume.
+
+    Default off: RapidOCR keeps downloading into its package directory (the
+    venv), exactly as before. When on, weights live in <OCR_MODELS_DIR>/rapidocr
+    and survive container recreation (no re-download after an update).
+    """
+    import os
+
+    return os.environ.get("OCR_RAPIDOCR_PERSISTENT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def rapidocr_force_cpu() -> bool:
     """Opt-in (OCR_RAPIDOCR_FORCE_CPU=true): keep the default engine on CPU on GPU hosts.
 
@@ -124,10 +141,17 @@ def build_ocr_options(engine_id: str, force_full_page: bool = False) -> Any:
     lang = list(catalog.DOCLING_LANGS[engine_id])
     if spec.docling_kind == "rapidocr":
         extra: dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if rapidocr_force_cpu():
             # Official RapidOcrOptions.rapidocr_params override the device flags
             # Docling derives from the pipeline accelerator, for OCR ONLY.
-            extra["rapidocr_params"] = dict(RAPIDOCR_CPU_PARAMS)
+            params.update(RAPIDOCR_CPU_PARAMS)
+        if rapidocr_persistent():
+            # RapidOCR's own Global.model_root_dir: same PP-OCR models, same
+            # URLs, SHA-256 checked by RapidOCR, stored on the data volume.
+            params["Global.model_root_dir"] = str(paths.rapidocr_dir())
+        if params:
+            extra["rapidocr_params"] = params
         return RapidOcrOptions(
             backend=runtime.rapidocr_backend(), lang=lang, mode=mode, **extra
         )

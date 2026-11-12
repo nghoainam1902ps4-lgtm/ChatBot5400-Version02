@@ -400,3 +400,68 @@ def delete_models(engine_id: str, active_engine: str | None) -> list[str]:
             engine_id, {"state": store.NOT_INSTALLED, "removed_at": time.time()}
         )
     return removed
+
+
+def rapidocr_package_model_dir() -> Path | None:
+    """Where RapidOCR stores weights by default (inside the installed package)."""
+    import importlib.util
+
+    spec = importlib.util.find_spec("rapidocr")
+    if spec is None or not spec.origin:
+        return None
+    return Path(spec.origin).parent / "models"
+
+
+def rapidocr_known_checksums() -> dict[str, str]:
+    """file name -> SHA-256 from RapidOCR's own default_models.yaml (trust anchor)."""
+    import yaml  # type: ignore[import-untyped]  # PyYAML ships with the Docling stack
+
+    pkg = rapidocr_package_model_dir()
+    if pkg is None:
+        return {}
+    data = yaml.safe_load(
+        (pkg.parent / "default_models.yaml").read_text(encoding="utf-8")
+    )
+    out: dict[str, str] = {}
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            url, sha = node.get("model_dir"), node.get("SHA256")
+            if isinstance(url, str) and isinstance(sha, str):
+                out[url.rstrip("/").rsplit("/", 1)[-1]] = sha.lower()
+            for v in node.values():
+                walk(v)
+
+    walk(data)
+    return out
+
+
+def import_rapidocr_weights() -> dict[str, str]:
+    """Copy already-downloaded RapidOCR weights from the venv into the persistent dir.
+
+    Only files whose SHA-256 matches RapidOCR's own list are copied (atomic
+    replace); nothing is downloaded here. RapidOCR re-checks the same hashes
+    when it loads them.
+    """
+    src = rapidocr_package_model_dir()
+    if src is None or not src.is_dir():
+        return {}
+    known = rapidocr_known_checksums()
+    dest = paths.rapidocr_dir()
+    dest.mkdir(parents=True, exist_ok=True)
+    result: dict[str, str] = {}
+    for f in sorted(src.iterdir()):
+        if not f.is_file() or f.is_symlink() or f.name not in known:
+            continue
+        target = dest / f.name
+        if target.is_file() and store.sha256_file(target) == known[f.name]:
+            result[f.name] = "existing"
+            continue
+        if store.sha256_file(f) != known[f.name]:
+            result[f.name] = "skipped (checksum mismatch)"
+            continue
+        tmp = dest / f".{f.name}.import.tmp"
+        shutil.copyfile(f, tmp)
+        os.replace(tmp, target)
+        result[f.name] = "imported"
+    return result

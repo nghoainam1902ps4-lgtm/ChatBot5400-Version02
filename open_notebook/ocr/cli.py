@@ -317,6 +317,55 @@ def cmd_runtime(args: argparse.Namespace) -> int:
     return 0 if install_tesseract_runtime(args.offline or paths.offline_mode()) else 1
 
 
+def cmd_prepare(args: argparse.Namespace) -> int:
+    """Online preparation of the selected engines (docs/ocr/OCR_ONLINE_PREPARATION.md)."""
+    from open_notebook.ocr import readiness
+
+    failed = 0
+    for engine_id in args.engines:
+        spec = catalog.get_engine(engine_id)
+        if args.install_runtime and spec.runtime in ("tesseract", "easyocr"):
+            ok = (
+                install_tesseract_runtime
+                if spec.runtime == "tesseract"
+                else install_easyocr_runtime
+            )(False)
+            if not ok:
+                _log(f"[{engine_id}] runtime install failed")
+        result = readiness.prepare(
+            engine_id, allow_download=not args.no_download, log=_log
+        )
+        state = (result.get("readiness") or {}).get("state", "error")
+        _log(f"[{engine_id}] {state} steps={json.dumps(result['steps'], default=str)}")
+        if result.get("error"):
+            _log(f"[{engine_id}] ERROR: {result['error']}")
+        if state != readiness.OFFLINE_READY:
+            failed += 1
+    return 1 if failed else 0
+
+
+def cmd_readiness(args: argparse.Namespace) -> int:
+    from open_notebook.ocr import readiness
+
+    engines = args.engines or list(catalog.ENGINE_IDS)
+    rows = []
+    for engine_id in engines:
+        if args.check:
+            readiness.check(engine_id)
+        rows.append(readiness.readiness_status(engine_id))
+    if args.json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2, default=str))
+    else:
+        for r in rows:
+            last = r.get("last_check") or {}
+            print(
+                f"{r['engine']:<15} {r['state']:<22} ocr={r['ocr_ok']!s:<5} pipeline={r['pipeline_ok']!s:<5} "
+                f"local_only={r['local_only_verified']!s:<5} offline={r['offline_verified']!s:<5} "
+                f"stale={r['stale']!s:<5} last={last.get('mode', '-')}"
+            )
+    return 0 if all(r["state"] == readiness.OFFLINE_READY for r in rows) else 1
+
+
 def cmd_bundle(args: argparse.Namespace) -> int:
     from open_notebook.ocr import bundle
 
@@ -376,6 +425,32 @@ def main(argv: list[str] | None = None) -> int:
         "engine", choices=[e for e in catalog.ENGINE_IDS if catalog.ENGINES[e].files]
     )
     s.set_defaults(func=cmd_remove_model)
+
+    s = sub.add_parser(
+        "prepare",
+        help="ONLINE: install missing models, warm Docling/RapidOCR weights, verify offline readiness",
+    )
+    s.add_argument(
+        "--engines", nargs="+", required=True, choices=list(catalog.ENGINE_IDS)
+    )
+    s.add_argument(
+        "--install-runtime",
+        action="store_true",
+        help="also install a missing Tesseract/EasyOCR runtime (root / venv access)",
+    )
+    s.add_argument(
+        "--no-download", action="store_true", help="never download; only verify"
+    )
+    s.set_defaults(func=cmd_prepare)
+
+    s = sub.add_parser(
+        "readiness",
+        help="offline readiness status (add --check to run the local-only check)",
+    )
+    s.add_argument("--engines", nargs="*", choices=list(catalog.ENGINE_IDS))
+    s.add_argument("--check", action="store_true")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_readiness)
 
     s = sub.add_parser("runtime", help="install or restore runtimes")
     rs = s.add_subparsers(dest="action", required=True)

@@ -106,3 +106,66 @@ async def ocr_test_engine_command(input_data: OcrJobInput) -> OcrJobOutput:
         result=result,
         error_message=result.get("error"),
     )
+
+
+@command("ocr_prepare_engine", app="open_notebook", retry={"max_attempts": 1})
+async def ocr_prepare_engine_command(input_data: OcrJobInput) -> OcrJobOutput:
+    """Online preparation: missing model files, Docling/RapidOCR weights, checks.
+
+    Never installs system or Python runtimes (admin CLI / image only).
+    """
+    engine_id = input_data.engine_id
+    if engine_id not in catalog.ENGINES:
+        return OcrJobOutput(
+            success=False, engine_id=engine_id, error_message="Unknown engine"
+        )
+    if not _authorised(engine_id, input_data.nonce, "prepare_nonce"):
+        logger.warning(f"Rejected unauthorised OCR prepare job for {engine_id}")
+        return OcrJobOutput(
+            success=False, engine_id=engine_id, error_message="Unauthorised job"
+        )
+    from open_notebook.ocr import readiness
+
+    try:
+        result = await asyncio.to_thread(
+            readiness.prepare, engine_id, True, logger.info
+        )
+    except Exception as e:  # reported, never left half-recorded
+        result = {"engine": engine_id, "error": f"{type(e).__name__}: {e}"[:1000]}
+    finally:
+        store.update_state(engine_id, prepare_nonce=None)
+    ok = (result.get("readiness") or {}).get("state") == readiness.OFFLINE_READY
+    return OcrJobOutput(
+        success=ok,
+        engine_id=engine_id,
+        result=result,
+        error_message=result.get("error"),
+    )
+
+
+@command("ocr_check_readiness", app="open_notebook", retry={"max_attempts": 1})
+async def ocr_check_readiness_command(input_data: OcrJobInput) -> OcrJobOutput:
+    """Offline-readiness check only (no downloads): local_only, or offline if no Internet."""
+    engine_id = input_data.engine_id
+    if engine_id not in catalog.ENGINES:
+        return OcrJobOutput(
+            success=False, engine_id=engine_id, error_message="Unknown engine"
+        )
+    if not _authorised(engine_id, input_data.nonce, "readiness_nonce"):
+        logger.warning(f"Rejected unauthorised OCR readiness job for {engine_id}")
+        return OcrJobOutput(
+            success=False, engine_id=engine_id, error_message="Unauthorised job"
+        )
+    from open_notebook.ocr import readiness
+
+    try:
+        result = await asyncio.to_thread(readiness.check, engine_id)
+    except Exception as e:
+        result = {"engine": engine_id, "error": f"{type(e).__name__}: {e}"[:1000]}
+    finally:
+        store.update_state(engine_id, readiness_nonce=None)
+    ok = (result.get("readiness") or {}).get("state") == readiness.OFFLINE_READY
+    err = result.get("error") or (result.get("check") or {}).get("error")
+    return OcrJobOutput(
+        success=ok, engine_id=engine_id, result=result, error_message=err
+    )

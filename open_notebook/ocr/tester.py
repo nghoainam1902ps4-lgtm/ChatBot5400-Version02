@@ -55,6 +55,8 @@ def run_engine_test(engine_id: str, base: OcrSettings | None = None) -> dict[str
             ocr,
         )
         result["ocr_models"] = meta.get("ocr_models")
+        for key in ("layout_model", "table_model", "table_mode"):
+            result[key] = meta.get(key)
         result["text"] = text[:4000]
         gt = SAMPLE_GT.read_text(encoding="utf-8")
         result["cer"] = round(metrics.cer(gt, text), 4)

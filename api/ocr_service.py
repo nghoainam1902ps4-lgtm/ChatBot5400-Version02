@@ -21,7 +21,12 @@ from open_notebook.exceptions import InvalidInputError, NotFoundError
 from open_notebook.ocr import catalog, compat, installer, paths, runtime, store
 from open_notebook.ocr.status import engine_status
 
-_OCR_COMMANDS = ("ocr_install_model", "ocr_test_engine")
+_OCR_COMMANDS = (
+    "ocr_install_model",
+    "ocr_test_engine",
+    "ocr_prepare_engine",
+    "ocr_check_readiness",
+)
 # Serialises state transitions inside this API process (install/test/delete).
 _lock = asyncio.Lock()
 
@@ -212,6 +217,37 @@ async def test(engine_id: str) -> dict[str, Any]:
     return {"job_id": job_id, "engine_id": engine_id, "state": store.PENDING}
 
 
+async def _queue_readiness_job(
+    engine_id: str, command: str, prefix: str
+) -> dict[str, Any]:
+    _require_engine(engine_id)
+    async with _lock:
+        st = store.read_state(engine_id)
+        if st.get(f"{prefix}_nonce"):
+            raise InvalidInputError(
+                "This action is already queued or running for this engine."
+            )
+        nonce = secrets.token_urlsafe(32)
+        store.update_state(engine_id, **{f"{prefix}_nonce": nonce})
+        try:
+            job_id = await _submit(command, engine_id, nonce)
+        except Exception:
+            store.update_state(engine_id, **{f"{prefix}_nonce": None})
+            raise
+        store.update_state(engine_id, **{f"{prefix}_job_id": job_id})
+    return {"job_id": job_id, "engine_id": engine_id, "state": store.PENDING}
+
+
+async def prepare(engine_id: str) -> dict[str, Any]:
+    """Queue online preparation (models + Docling/RapidOCR weights + checks)."""
+    return await _queue_readiness_job(engine_id, "ocr_prepare_engine", "prepare")
+
+
+async def readiness_check(engine_id: str) -> dict[str, Any]:
+    """Queue an offline-readiness check (never downloads)."""
+    return await _queue_readiness_job(engine_id, "ocr_check_readiness", "readiness")
+
+
 async def delete_model(engine_id: str) -> list[str]:
     spec = _require_engine(engine_id)
     if spec.runtime == "builtin":
@@ -290,7 +326,7 @@ async def job_status(job_id: str) -> dict[str, Any]:
         v
         for e in catalog.ENGINE_IDS
         for k, v in store.read_state(e).items()
-        if k in ("job_id", "test_job_id") and v
+        if k in ("job_id", "test_job_id", "prepare_job_id", "readiness_job_id") and v
     }
     if job_id not in known:
         raise NotFoundError("Unknown OCR job")

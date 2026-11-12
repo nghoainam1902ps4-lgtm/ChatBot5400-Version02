@@ -60,6 +60,24 @@ async def test_engine(engine_id: str):
     return await ocr_service.test(engine_id)
 
 
+@router.post(
+    "/engines/{engine_id}/prepare", response_model=OcrJobResponse, status_code=202
+)
+async def prepare_engine(engine_id: str):
+    """Online preparation; needs Internet for anything missing (never installs runtimes)."""
+    return await ocr_service.prepare(engine_id)
+
+
+@router.post(
+    "/engines/{engine_id}/readiness-check",
+    response_model=OcrJobResponse,
+    status_code=202,
+)
+async def readiness_check(engine_id: str):
+    """Offline-readiness check with network access disabled for the check itself."""
+    return await ocr_service.readiness_check(engine_id)
+
+
 @router.delete("/engines/{engine_id}/model", response_model=OcrDeleteResponse)
 async def delete_engine_model(engine_id: str):
     removed = await ocr_service.delete_model(engine_id)

@@ -54,9 +54,9 @@ def native_path_required(ocr: OcrSettings, is_image: bool = False) -> bool:
         return True
     if not ocr.uses_default_tuning:
         return True
-    from open_notebook.ocr.options import rapidocr_force_cpu
+    from open_notebook.ocr.options import rapidocr_force_cpu, rapidocr_persistent
 
-    if rapidocr_force_cpu():
+    if rapidocr_force_cpu() or rapidocr_persistent():
         return True  # needs explicit ocr_options (content-core cannot pass them)
     # RapidOCR + default tuning: content-core's Auto path is identical only while
     # Auto would really pick RapidOCR (e.g. not after EasyOCR was installed).
@@ -226,8 +226,26 @@ def convert_file(
         "ocr_engine": ocr.engine,
         "ocr_models": actual_ocr_models(converter),
         "ocr_seconds": round(time.time() - started, 2),
+        **pipeline_identity(converter),
     }
     return output, meta
+
+
+def pipeline_identity(converter: Any) -> dict[str, Any]:
+    """Layout / table models Docling actually configured (evidence for readiness)."""
+    for pipeline in getattr(converter, "initialized_pipelines", {}).values():
+        po = getattr(pipeline, "pipeline_options", None)
+        if po is None:
+            continue
+        lo = getattr(po, "layout_options", None)
+        to = getattr(po, "table_structure_options", None)
+        mode = getattr(to, "mode", None)
+        return {
+            "layout_model": getattr(getattr(lo, "model_spec", None), "name", None),
+            "table_model": getattr(to, "kind", None),
+            "table_mode": getattr(mode, "value", mode),
+        }
+    return {}
 
 
 async def extract_with_selected_ocr(

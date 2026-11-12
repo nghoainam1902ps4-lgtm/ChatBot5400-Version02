@@ -121,7 +121,19 @@ def engine_status(
         "last_test": st.get("last_test"),
         "options": _safe_describe(engine_id),
         "dependency_problems": deps,
+        "readiness": _safe_readiness(engine_id, rt.status, ms.status),
     }
+
+
+def _safe_readiness(
+    engine_id: str, rt_status: str, model_status: str
+) -> dict[str, Any]:
+    from open_notebook.ocr.readiness import readiness_status
+
+    try:
+        return readiness_status(engine_id, rt_status, model_status)
+    except Exception as e:  # pragma: no cover - status must always render
+        return {"state": "unknown", "error": str(e)}
 
 
 def _safe_describe(engine_id: str) -> dict[str, Any]:

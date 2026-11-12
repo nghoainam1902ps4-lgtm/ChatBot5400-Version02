@@ -712,6 +712,8 @@ class OcrEngineStatus(BaseModel):
     last_test: Optional[Dict[str, Any]] = None
     options: Dict[str, Any] = Field(default_factory=dict)
     dependency_problems: List[str] = Field(default_factory=list)
+    # Offline readiness (docs/ocr/OCR_ONLINE_PREPARATION.md)
+    readiness: Dict[str, Any] = Field(default_factory=dict)
 
 
 class OcrConfig(BaseModel):

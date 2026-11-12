@@ -62,6 +62,11 @@ def tessdata_dir() -> Path:
     return models_dir() / "tesseract"
 
 
+def rapidocr_dir() -> Path:
+    """RapidOCR weights when OCR_RAPIDOCR_PERSISTENT=true (RapidOCR model_root_dir)."""
+    return models_dir() / "rapidocr"
+
+
 def easyocr_dir() -> Path:
     return models_dir() / "easyocr"
 

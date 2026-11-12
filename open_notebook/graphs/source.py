@@ -21,6 +21,7 @@ from open_notebook.ocr.docling_extract import (
     should_use_native_ocr_for_url,
 )
 from open_notebook.ocr.options import OcrSettings
+from open_notebook.ocr.readiness import explain_offline_failure
 from open_notebook.utils.job_input_guard import (
     resolve_upload_path,
     safe_delete_upload,
@@ -179,41 +180,51 @@ async def content_process(state: SourceState) -> dict:
         and not content_state.get("url")
         and not content_state.get("content")
     )
-    if file_path_only and await should_use_native_ocr(
-        content_state["file_path"],
-        config_kwargs.get("document_engine", "auto"),
-        ocr_settings,
-    ):
-        # Same Docling pipeline content-core would run, plus the selected OCR
-        # engine (docs/ocr/DECISIONS.md D-02). Default configuration never
-        # takes this branch.
-        processed = await extract_with_selected_ocr(
+    try:
+        if file_path_only and await should_use_native_ocr(
             content_state["file_path"],
-            config or ContentCoreConfig(),
-            ocr_settings,
-        )
-    elif (
-        content_state.get("url")
-        and not content_state.get("content")
-        and await should_use_native_ocr_for_url(
-            content_state["url"],
             config_kwargs.get("document_engine", "auto"),
             ocr_settings,
-        )
-    ):
-        # A remote PDF/scan content-core would download and OCR via Docling.
-        processed = await extract_url_with_selected_ocr(
-            content_state["url"],
-            config or ContentCoreConfig(),
-            ocr_settings,
-        )
-    else:
-        processed = await extract_content(
-            url=content_state.get("url"),
-            file_path=content_state.get("file_path"),
-            content=content_state.get("content"),
-            config=config,
-        )
+        ):
+            # Same Docling pipeline content-core would run, plus the selected OCR
+            # engine (docs/ocr/DECISIONS.md D-02). Default configuration never
+            # takes this branch.
+            processed = await extract_with_selected_ocr(
+                content_state["file_path"],
+                config or ContentCoreConfig(),
+                ocr_settings,
+            )
+        elif (
+            content_state.get("url")
+            and not content_state.get("content")
+            and await should_use_native_ocr_for_url(
+                content_state["url"],
+                config_kwargs.get("document_engine", "auto"),
+                ocr_settings,
+            )
+        ):
+            # A remote PDF/scan content-core would download and OCR via Docling.
+            processed = await extract_url_with_selected_ocr(
+                content_state["url"],
+                config or ContentCoreConfig(),
+                ocr_settings,
+            )
+        else:
+            processed = await extract_content(
+                url=content_state.get("url"),
+                file_path=content_state.get("file_path"),
+                content=content_state.get("content"),
+                config=config,
+            )
+    except ValueError:
+        raise
+    except Exception as e:
+        # A model that is not available locally while offline: fail fast with
+        # guidance instead of retrying a download that cannot succeed (8A-D3).
+        message = explain_offline_failure(e)
+        if message:
+            raise ValueError(message) from e
+        raise
 
     # content-core signals a soft extraction failure (e.g. an unreachable or
     # invalid URL, via the bs4 fallback) by returning title="Error" and content
