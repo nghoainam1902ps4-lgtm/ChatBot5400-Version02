@@ -1,0 +1,124 @@
+name: Agribank Lam Dong Prompt A/B (GPT-5.6 Sol)
+
+# Real-model A/B first pass for the Agribank Lâm Đồng system prompts.
+# Runs ONLY when the marker file .github/eval-trigger/gpt56.txt changes on the
+# feature branch — adding this workflow alone must NOT trigger any model call.
+#
+# Secret required (repo/environment secret): OPENAI_API_KEY_AB_TEST
+# It is mapped to AB_API_KEY at runtime and never printed. No production DB/creds.
+
+on:
+  push:
+    branches:
+      - feature/agribank-lamdong-system-prompts
+    paths:
+      - ".github/eval-trigger/gpt56.txt"
+  workflow_dispatch: {}   # manual run allowed; still gated by the guards below
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agribank-lamdong-gpt56-ab
+  cancel-in-progress: false
+
+jobs:
+  real-ab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Frozen prompt references and fixed A/B config.
+      AB_PROVIDER: openai
+      AB_BASE_URL: https://api.openai.com/v1
+      AB_MODEL_ID: gpt-5.6-sol
+      OLD_REF: 887e55e23bd306686b8cd55ae960af3e77a5a3bf
+      NEW_REF: 1fcbde4922e950716b82d937f086ba45ad30e644
+      OLD_NB_SHA: 416c498540d2cf5a39175fe6ad10cdc1a7737e98502bd1921a3577aca8167487
+      OLD_SRC_SHA: 981fc890bc924bcdfc6864d733a8715e0ad45b6d5779acbf45f7c22d30f4c1e4
+      NEW_NB_SHA: d7879db5d131581a2e3ee01d62d4cd4a821048dce7d62f47776ac7d47eb0f752
+      NEW_SRC_SHA: 4fd1342866d7457fef85cd140c1f7cc8245325594b00a2b99ebd4731ed8fcf49
+    steps:
+      - name: Checkout triggering commit (full history for frozen git show)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Report HEAD and verify frozen NEW commit is present
+        run: |
+          set -euo pipefail
+          echo "HEAD = $(git rev-parse HEAD)"
+          git cat-file -e "${NEW_REF}^{commit}"
+          git cat-file -e "${OLD_REF}^{commit}"
+          test -f tests/evals/agribank_lamdong_ab/run_real_ab.py
+          test -f tests/evals/agribank_lamdong_ab/fixtures.py
+          echo "runner + fixtures present"
+
+      - name: Verify frozen prompt SHA256 hashes (abort on drift)
+        run: |
+          set -euo pipefail
+          check() { # <sha> <path> <expected>
+            got="$(git show "$1:$2" | sha256sum | cut -d' ' -f1)"
+            if [ "$got" != "$3" ]; then
+              echo "HASH DRIFT for $1:$2"; echo "  expected $3"; echo "  got      $got"; exit 1
+            fi
+            echo "OK $1:$2 sha256=$got"
+          }
+          check "$OLD_REF" prompts/chat/system.jinja        "$OLD_NB_SHA"
+          check "$OLD_REF" prompts/source_chat/system.jinja  "$OLD_SRC_SHA"
+          check "$NEW_REF" prompts/chat/system.jinja        "$NEW_NB_SHA"
+          check "$NEW_REF" prompts/source_chat/system.jinja  "$NEW_SRC_SHA"
+
+      - name: Set up uv + Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen || uv sync
+
+      - name: Pre-flight dry-run (ZERO model calls)
+        env:
+          AB_API_KEY: ${{ secrets.OPENAI_API_KEY_AB_TEST }}
+        run: |
+          set -euo pipefail
+          # Secret is mapped to AB_API_KEY only; never echoed. Dry-run makes no calls.
+          out="$(uv run python tests/evals/agribank_lamdong_ab/run_real_ab.py --model "gpt-5.6-sol" --dry-run)"
+          echo "$out"
+          echo "$out" | grep -q "MODEL            = gpt-5.6-sol"
+          echo "$out" | grep -q "PROVIDER         = openai"
+          echo "$out" | grep -q "CASES            = 28"
+          echo "$out" | grep -q "EXPECTED_CALLS   = 56"
+          echo "$out" | grep -q "CREDENTIAL       = PRESENT"
+          echo "$out" | grep -q "PRODUCTION_DB    = NO"
+          echo "$out" | grep -q "REAL_CALLS_EXECUTED = 0"
+          echo "dry-run guards passed"
+
+      - name: Real A/B run (56 calls max) + report generation
+        env:
+          AB_API_KEY: ${{ secrets.OPENAI_API_KEY_AB_TEST }}
+        run: |
+          set -euo pipefail
+          uv run python tests/evals/agribank_lamdong_ab/run_real_ab.py --model "gpt-5.6-sol"
+
+      - name: Collect artifacts (synthetic outputs only)
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p ab_artifact
+          # Raw JSON results (gitignored in-repo; copied out for the artifact only)
+          cp -f tests/evals/agribank_lamdong_ab/results/real_ab_*.json ab_artifact/ 2>/dev/null || true
+          cp -f docs/evals/AGRIBANK_LAMDONG_SYSTEM_PROMPT_REAL_AB.md ab_artifact/ 2>/dev/null || true
+          cp -f docs/evals/AGRIBANK_LAMDONG_SYSTEM_PROMPT_REAL_AB_BLIND.md ab_artifact/ 2>/dev/null || true
+          # Safety: never ship env/key material in the artifact.
+          rm -f ab_artifact/.env ab_artifact/*.key 2>/dev/null || true
+          ls -1 ab_artifact || true
+
+      - name: Upload A/B artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agribank-lamdong-gpt56-ab
+          path: ab_artifact/
+          retention-days: 7
+          if-no-files-found: warn
