@@ -924,6 +924,27 @@ class Source(ObjectModel):
             logger.warning(f"Failed to embed source {self.id} on approval: {e}")
         return ""
 
+    async def reject(self) -> None:
+        """Reject a pending source and delete it.
+
+        The pending -> rejected transition is one conditional UPDATE, the same
+        guard approve() uses, so a concurrent approve and reject cannot both
+        succeed: whichever runs second matches nothing and is refused. Only
+        then is the source deleted (record, file, embeddings, insights, links).
+        """
+        rows = await repo_query(
+            "UPDATE $id SET approval_status = 'rejected' "
+            "WHERE approval_status = 'pending' RETURN id",
+            {"id": ensure_record_id(self.id)},
+        )
+        if not rows:
+            raise InvalidInputError(
+                "Only a document awaiting approval can be rejected"
+            )
+        self.approval_status = "rejected"
+        self._snapshot_approval()
+        await self.delete()
+
     @staticmethod
     def _pending_scope(
         scope_ids: Optional[List[str]], reviewer_id: Optional[str]
@@ -1186,15 +1207,26 @@ async def remove_duplicate_notebook_links() -> int:
     for group in groups or []:
         if int(group.get("n") or 0) < 2:
             continue
-        edge_ids = await repo_query(
-            "SELECT VALUE id FROM reference WHERE in = $in AND out = $out",
+        source_id, notebook_id = str(group["in"]), str(group["out"])
+        # Parameters are deliberately not named $in/$out (the names of a
+        # relation's own endpoints).
+        edges = await repo_query(
+            "SELECT id, in, out FROM reference "
+            "WHERE in = $src_id AND out = $nb_id",
             {
-                "in": ensure_record_id(str(group["in"])),
-                "out": ensure_record_id(str(group["out"])),
+                "src_id": ensure_record_id(source_id),
+                "nb_id": ensure_record_id(notebook_id),
             },
         )
-        for edge_id in (edge_ids or [])[1:]:
-            await repo_query("DELETE $id", {"id": ensure_record_id(str(edge_id))})
+        # Only ever delete an edge that is verifiably the same source->notebook
+        # pair, so an unexpected query result can never remove a valid link.
+        same_pair = [
+            edge
+            for edge in edges or []
+            if str(edge.get("in")) == source_id and str(edge.get("out")) == notebook_id
+        ]
+        for edge in same_pair[1:]:
+            await repo_query("DELETE $id", {"id": ensure_record_id(str(edge["id"]))})
             removed += 1
     return removed
 

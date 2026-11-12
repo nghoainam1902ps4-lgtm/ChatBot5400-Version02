@@ -23,6 +23,7 @@ from open_notebook.domain.notebook import (
 )
 from open_notebook.exceptions import (
     AuthorizationError,
+    DatabaseOperationError,
     InvalidInputError,
     NotFoundError,
 )
@@ -567,11 +568,12 @@ class TestReleaseApprover:
 
     @pytest.mark.asyncio
     async def test_demotion_is_one_transaction(self):
-        repo = AsyncMock(return_value=[])
+        # 1st call: the transaction; 2nd: the outcome check (role is now "user").
+        repo = AsyncMock(side_effect=[[], ["user"]])
         with patch("api.approvals_service.repo_query", new=repo):
             await approvals_service.demote_approver("user:p", "user")
-        assert repo.await_count == 1
-        query, params = repo.await_args.args
+        assert repo.await_count == 2
+        query, params = repo.await_args_list[0].args
         assert query.startswith("BEGIN TRANSACTION;")
         assert query.endswith("COMMIT TRANSACTION;")
         for clause in (*self.RELEASE, "UPDATE $uid SET role = $role"):
@@ -580,14 +582,33 @@ class TestReleaseApprover:
 
     @pytest.mark.asyncio
     async def test_deletion_is_one_transaction(self):
-        repo = AsyncMock(return_value=[])
+        # 1st call: the transaction; 2nd: the outcome check (account is gone).
+        repo = AsyncMock(side_effect=[[], []])
         with patch("api.approvals_service.repo_query", new=repo):
             await approvals_service.delete_approver("user:p")
-        assert repo.await_count == 1
-        query = repo.await_args.args[0]
+        assert repo.await_count == 2
+        query = repo.await_args_list[0].args[0]
         assert query.startswith("BEGIN TRANSACTION;")
         for clause in (*self.RELEASE, "DELETE $uid"):
             assert clause in query
+
+
+class TestSilentTransactionFailure:
+    """A cancelled transaction that does not raise must not pass as success."""
+
+    @pytest.mark.asyncio
+    async def test_demotion_that_did_not_apply_is_an_error(self):
+        repo = AsyncMock(side_effect=[[], ["approver"]])  # role unchanged
+        with patch("api.approvals_service.repo_query", new=repo):
+            with pytest.raises(DatabaseOperationError):
+                await approvals_service.demote_approver("user:p", "user")
+
+    @pytest.mark.asyncio
+    async def test_deletion_that_did_not_apply_is_an_error(self):
+        repo = AsyncMock(side_effect=[[], ["user:p"]])  # account still there
+        with patch("api.approvals_service.repo_query", new=repo):
+            with pytest.raises(DatabaseOperationError):
+                await approvals_service.delete_approver("user:p")
 
 
 class TestReviewGuards:
@@ -611,17 +632,47 @@ class TestReviewGuards:
         from api.main import app
 
         approved = Source(id="source:1", approval_status="approved")
+        # The conditional UPDATE in Source.reject() matches nothing.
+        repo = AsyncMock(return_value=[])
         with (
             patch(
                 "api.routers.approvals.Source.get",
                 new=AsyncMock(return_value=approved),
             ),
+            patch(f"{DOMAIN}.repo_query", new=repo),
             patch.object(Source, "delete", new=AsyncMock()) as delete,
         ):
             response = TestClient(app).post(
                 "/api/approvals/sources/source:1/reject", json={}
             )
         assert response.status_code == 400
+        delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_reject_claims_pending_atomically_then_deletes(self):
+        source = Source(id="source:1", approval_status="pending")
+        repo = AsyncMock(return_value=[{"id": "source:1"}])
+        with (
+            patch(f"{DOMAIN}.repo_query", new=repo),
+            patch.object(Source, "delete", new=AsyncMock()) as delete,
+        ):
+            await source.reject()
+        query = repo.await_args.args[0]
+        assert "SET approval_status = 'rejected'" in query
+        assert "WHERE approval_status = 'pending'" in query
+        delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_reject_loses_to_a_concurrent_approve(self):
+        # Loaded as pending, but approved by someone else before the UPDATE:
+        # the guard matches nothing, so nothing is deleted.
+        source = Source(id="source:1", approval_status="pending")
+        with (
+            patch(f"{DOMAIN}.repo_query", new=AsyncMock(return_value=[])),
+            patch.object(Source, "delete", new=AsyncMock()) as delete,
+        ):
+            with pytest.raises(InvalidInputError):
+                await source.reject()
         delete.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -647,7 +698,11 @@ class TestDuplicateLinkRepair:
                     {"in": "source:1", "out": "notebook:1", "n": 3},
                     {"in": "source:2", "out": "notebook:1", "n": 1},
                 ],
-                ["reference:a", "reference:b", "reference:c"],
+                [
+                    {"id": "reference:a", "in": "source:1", "out": "notebook:1"},
+                    {"id": "reference:b", "in": "source:1", "out": "notebook:1"},
+                    {"id": "reference:c", "in": "source:1", "out": "notebook:1"},
+                ],
                 [],
                 [],
             ]
@@ -660,6 +715,26 @@ class TestDuplicateLinkRepair:
             "reference:b",
             "reference:c",
         ]
+
+    @pytest.mark.asyncio
+    async def test_never_deletes_an_edge_of_another_pair(self):
+        # If the lookup ever returned rows of a different source/notebook, they
+        # must be ignored rather than deleted.
+        repo = AsyncMock(
+            side_effect=[
+                [{"in": "source:1", "out": "notebook:1", "n": 2}],
+                [
+                    {"id": "reference:a", "in": "source:1", "out": "notebook:1"},
+                    {"id": "reference:x", "in": "source:9", "out": "notebook:1"},
+                    {"id": "reference:y", "in": "source:1", "out": "notebook:7"},
+                ],
+            ]
+        )
+        with patch(f"{DOMAIN}.repo_query", new=repo):
+            assert await remove_duplicate_notebook_links() == 0
+        assert not any(c.args[0] == "DELETE $id" for c in repo.await_args_list)
+        lookup = repo.await_args_list[1].args[0]
+        assert "$in" not in lookup and "$out" not in lookup
 
     @pytest.mark.asyncio
     async def test_clean_data_is_a_single_read(self):

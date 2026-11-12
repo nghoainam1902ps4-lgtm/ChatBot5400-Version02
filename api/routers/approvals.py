@@ -20,11 +20,7 @@ from api.models import (
     ReviewerResponse,
 )
 from open_notebook.domain.notebook import Source
-from open_notebook.exceptions import (
-    InvalidInputError,
-    NotFoundError,
-    OpenNotebookError,
-)
+from open_notebook.exceptions import NotFoundError, OpenNotebookError
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -103,16 +99,13 @@ async def reject_source(
         source = await Source.get(source_id)
         await approvals_service.assert_can_review_source(current_user, source)
         # Rejecting deletes the document, so it is only allowed while it is
-        # still awaiting approval; removing approved content stays admin-only.
-        if not source.is_pending:
-            raise InvalidInputError(
-                "Only a document awaiting approval can be rejected"
-            )
+        # still awaiting approval (checked atomically in Source.reject);
+        # removing approved content stays admin-only.
+        await source.reject()
         logger.info(
             f"Source {source_id} rejected by '{current_user.username}' "
-            f"(reason: {request.reason or '-'}); deleting it"
+            f"(reason: {request.reason or '-'}); deleted"
         )
-        await source.delete()
         return ReviewActionResponse(
             source_id=source_id,
             approval_status="rejected",

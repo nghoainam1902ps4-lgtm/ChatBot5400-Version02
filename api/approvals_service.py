@@ -15,6 +15,7 @@ from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import (
     AuthorizationError,
+    DatabaseOperationError,
     InvalidInputError,
     NotFoundError,
 )
@@ -240,6 +241,16 @@ async def demote_approver(user_id: str, new_role: str) -> None:
         + "UPDATE $uid SET role = $role; COMMIT TRANSACTION;",
         {"uid": ensure_record_id(user_id), "role": new_role},
     )
+    # A statement failing inside the block cancels the whole transaction, and
+    # that is not guaranteed to surface as an exception. Confirm the outcome
+    # instead of assuming it, so the caller never continues on a silent no-op.
+    rows = await repo_query(
+        "SELECT VALUE role FROM $uid", {"uid": ensure_record_id(user_id)}
+    )
+    if not rows or rows[0] != new_role:
+        raise DatabaseOperationError(
+            "Changing the approver's role did not complete; no change was applied"
+        )
     invalidate_scope_cache()
 
 
@@ -251,6 +262,14 @@ async def delete_approver(user_id: str) -> None:
         + "DELETE $uid; COMMIT TRANSACTION;",
         {"uid": ensure_record_id(user_id)},
     )
+    # See demote_approver: confirm the account is really gone.
+    rows = await repo_query(
+        "SELECT VALUE id FROM $uid", {"uid": ensure_record_id(user_id)}
+    )
+    if rows:
+        raise DatabaseOperationError(
+            "Deleting the approver did not complete; no change was applied"
+        )
     invalidate_scope_cache()
 
 
