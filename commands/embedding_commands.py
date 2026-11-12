@@ -433,6 +433,17 @@ async def create_insight_command(
             f"type={input_data.insight_type}"
         )
 
+        # The source may have been deleted since the transformation started
+        # (e.g. a rejected submission): do not leave an orphan insight behind.
+        source_rows = await repo_query(
+            "SELECT VALUE id FROM $id",
+            {"id": ensure_record_id(input_data.source_id)},
+        )
+        if not source_rows:
+            raise ValueError(
+                f"Source '{input_data.source_id}' no longer exists; insight skipped"
+            )
+
         # 1. Create insight record in database
         result = await repo_query(
             """

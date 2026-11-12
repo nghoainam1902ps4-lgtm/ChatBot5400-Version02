@@ -2,6 +2,55 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.0.8] - 2026-11-12
+
+Bổ sung **quy trình duyệt văn bản** và **phân quyền 4 vai trò**. Bản này **có
+migration cơ sở dữ liệu (31, 32, 33)**, chạy tự động khi API khởi động; chỉ thêm
+trường mới, dữ liệu cũ giữ nguyên (nguồn hiện có được đánh dấu "đã duyệt"). Xem
+[deploy/UPDATE-v1.0.8.md](deploy/UPDATE-v1.0.8.md) trước khi nâng cấp.
+
+### Vai trò và phân quyền
+
+- Thêm hai vai trò bên cạnh Quản trị viên và Người dùng:
+  - **Quản lý sổ tay**: gửi văn bản/nguồn vào hệ thống; văn bản phải được duyệt.
+  - **Kiểm soát**: duyệt văn bản, quản lý các chuyên mục được Quản trị viên
+    giao, tạo sổ tay con, gắn nguồn có sẵn vào sổ tay (không cần duyệt lại).
+    Kiểm soát không tự thêm nguồn mới.
+- Quản trị viên gán chuyên mục cho Kiểm soát trong **Quản lý người dùng**. Khi
+  hạ vai trò hoặc xóa tài khoản Kiểm soát, hệ thống tự gỡ họ khỏi các chuyên mục
+  và bỏ gán các văn bản đang chờ họ duyệt.
+
+### Sổ tay cha–con
+
+- Sổ tay cấp cao nhất là **chuyên mục**; bên trong có **sổ tay con** (đúng 2
+  cấp). Trang Sổ tay hiển thị sổ tay con lồng dưới chuyên mục.
+
+### Quy trình duyệt văn bản
+
+- Văn bản do Quản lý sổ tay gửi ở trạng thái **chờ duyệt**: không hiển thị với
+  người khác, không vào tìm kiếm, Hỏi đáp hay trò chuyện, và chưa được embed.
+  Người gửi chọn **người phê duyệt** ở bước cuối khi thêm nguồn.
+- Trang **Duyệt văn bản** cho Kiểm soát và Quản trị viên: số đếm ở menu, thông
+  báo khi đăng nhập. Bấm Duyệt/Từ chối hoặc double-click để mở **cửa sổ duyệt**
+  (xem nội dung, insight, đổi sổ tay ngay khi duyệt).
+- **Duyệt**: văn bản hiển thị và được embed để tìm kiếm. **Từ chối**: văn bản bị
+  **xóa hẳn** (bản ghi, file, embedding, insight, liên kết sổ tay).
+
+### Sửa lỗi
+
+- Gắn một nguồn đã có trong sổ tay không còn tạo liên kết trùng (trước đây làm
+  số nguồn của sổ tay bị đếm sai).
+- Xóa nguồn giờ dọn luôn các liên kết sổ tay của nguồn đó.
+- Khi khởi động, hệ thống tự dọn các liên kết sổ tay bị trùng đã tạo trước đây.
+- Chỉ văn bản đang **chờ duyệt** mới duyệt hoặc từ chối được; văn bản đã duyệt
+  chỉ Quản trị viên xóa được.
+- Build Docker không còn hỏng với lỗi "Turbopack is not supported on this
+  platform" khi mạng chập chờn làm `npm ci` bỏ sót trình biên dịch của Next.js;
+  bước cài đặt tự thử lại.
+
+> Không có bản phát hành 1.0.7: số phiên bản này chỉ dùng khi thử nghiệm trên
+> máy chủ test, bản chính thức là 1.0.8.
+
 ## [1.0.6] - 2026-10-15
 
 Bản vá giao diện và phân quyền tiếp nối v1.0.5. **Không** thay đổi

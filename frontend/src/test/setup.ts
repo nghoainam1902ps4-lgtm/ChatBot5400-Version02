@@ -57,7 +57,26 @@ vi.mock('@/lib/hooks/use-auth', () => ({
     logout: vi.fn(),
     isLoading: false,
     isAdmin: true,
+    isApprover: false,
+    isContributor: false,
+    canReview: true,
+    canSubmit: true,
   })),
+}))
+
+// Mock @/lib/hooks/use-approvals (TanStack queries/mutations) so components
+// using the approval badge/queue render without a QueryClientProvider.
+vi.mock('@/lib/hooks/use-approvals', () => ({
+  useApprovalCount: vi.fn(() => ({ data: 0 })),
+  usePendingApprovals: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
+  useEligibleReviewers: vi.fn(() => ({ data: [], isLoading: false })),
+  useApproveSource: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useRejectSource: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
 }))
 
 // Mock @/lib/stores/sidebar-store

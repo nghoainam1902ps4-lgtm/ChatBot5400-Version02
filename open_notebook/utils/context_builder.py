@@ -295,6 +295,12 @@ async def build_notebook_context(
                 except Exception:
                     continue
 
+                # The ids come from the client: never feed a submission that
+                # is still awaiting approval into notebook chat context (the
+                # notebook's own source list already excludes them).
+                if not source.is_approved:
+                    continue
+
                 if "insights" in status:
                     source_context = await source.get_context(context_size="short")
                     context_data["sources"].append(source_context)

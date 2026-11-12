@@ -1,0 +1,22 @@
+-- Rollback migration 31: remove the approval-workflow additions and restore
+-- the original two-role RBAC domain.
+
+-- Source approval fields + indexes.
+REMOVE INDEX IF EXISTS idx_source_submitted_by ON TABLE source;
+REMOVE INDEX IF EXISTS idx_source_approval_status ON TABLE source;
+REMOVE FIELD IF EXISTS reviewed_at ON TABLE source;
+REMOVE FIELD IF EXISTS submitted_at ON TABLE source;
+REMOVE FIELD IF EXISTS review_note ON TABLE source;
+REMOVE FIELD IF EXISTS reviewed_by ON TABLE source;
+REMOVE FIELD IF EXISTS submitted_by ON TABLE source;
+REMOVE FIELD IF EXISTS approval_status ON TABLE source;
+
+-- Notebook hierarchy + category management.
+REMOVE INDEX IF EXISTS idx_notebook_parent ON TABLE notebook;
+REMOVE FIELD IF EXISTS managers ON TABLE notebook;
+REMOVE FIELD IF EXISTS parent ON TABLE notebook;
+
+-- Demote any approver/contributor accounts to plain users before tightening the
+-- role domain, so the stricter ASSERT below does not reject existing rows.
+UPDATE user SET role = 'user' WHERE role IN ['approver', 'contributor'];
+DEFINE FIELD OVERWRITE role ON TABLE user TYPE string DEFAULT 'user' ASSERT $value IN ['admin', 'user'];

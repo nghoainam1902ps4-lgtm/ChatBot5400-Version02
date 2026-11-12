@@ -30,6 +30,13 @@ vi.mock('@/lib/hooks/use-users', () => ({
   useResetUserPassword: () => ({ mutateAsync: resetMutate, isPending: false }),
 }))
 
+// Managed-category assignment uses the notebooks hooks (TanStack). Mock them so
+// the page renders without a QueryClientProvider.
+vi.mock('@/lib/hooks/use-notebooks', () => ({
+  useNotebooks: () => ({ data: [] }),
+  useUpdateNotebook: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+
 const u = (id: string, username: string, role: 'admin' | 'user', extra: Partial<User> = {}): User => ({
   id,
   username,

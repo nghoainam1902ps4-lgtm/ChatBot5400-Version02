@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from api import approvals_service
 from api.auth import TokenUser, require_admin
 from open_notebook.domain.user import User
 from open_notebook.exceptions import InvalidInputError
@@ -34,13 +35,13 @@ class UserResponse(BaseModel):
 class UserCreateRequest(BaseModel):
     username: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
-    role: str = Field("user", pattern="^(admin|user)$")
+    role: str = Field("user", pattern="^(admin|approver|contributor|user)$")
     name: Optional[str] = None
 
 
 class UserUpdateRequest(BaseModel):
     username: Optional[str] = Field(None, min_length=1)
-    role: Optional[str] = Field(None, pattern="^(admin|user)$")
+    role: Optional[str] = Field(None, pattern="^(admin|approver|contributor|user)$")
     name: Optional[str] = None
 
 
@@ -79,6 +80,8 @@ async def create_user(request: UserCreateRequest):
         role=request.role,  # type: ignore[arg-type]
         name=request.name,
     )
+    if user.role == "approver":
+        approvals_service.invalidate_scope_cache()  # new eligible reviewer
     logger.info(f"Admin created user '{user.username}' (role={user.role})")
     return _to_response(user)
 
@@ -111,12 +114,21 @@ async def update_user(user_id: str, request: UserUpdateRequest):
                 f"Username '{request.username}' already exists"
             )
         user.username = request.username.strip()
+    role_changed = request.role is not None and request.role != user.role
+    # Leaving the approver role drops the categories they managed and
+    # un-assigns their pending submissions - in one transaction with the role
+    # change itself, so the two can never get out of sync.
+    if role_changed and user.role == "approver" and user.id and request.role:
+        await approvals_service.demote_approver(user.id, request.role)
     if request.role is not None:
         user.role = request.role  # type: ignore[assignment]
     if request.name is not None:
         user.name = request.name
 
     await user.save()
+    if role_changed:
+        # Reviewer lists / scopes depend on roles.
+        approvals_service.invalidate_scope_cache()
     logger.info(f"Admin updated user '{user.username}'")
     return _to_response(user)
 
@@ -133,7 +145,11 @@ async def delete_user(
     if user.role == "admin" and await _count_admins() <= 1:
         raise InvalidInputError("Cannot delete the last remaining admin")
 
-    await user.delete()
+    if user.role == "approver" and user.id:
+        # Account deletion and scope release happen in one transaction.
+        await approvals_service.delete_approver(user.id)
+    else:
+        await user.delete()
     logger.info(f"Admin deleted user '{user.username}'")
     return {"success": True, "message": "User deleted successfully"}
 

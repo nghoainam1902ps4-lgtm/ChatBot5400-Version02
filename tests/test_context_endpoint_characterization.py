@@ -34,7 +34,7 @@ def _notebook(**overrides):
 
 
 def _source(source_id="source:s1", context=None):
-    src = SimpleNamespace(id=source_id)
+    src = SimpleNamespace(id=source_id, is_approved=True)
     src.get_context = AsyncMock(
         return_value=context if context is not None else {"id": source_id, "title": "T"}
     )
@@ -227,3 +227,34 @@ async def test_missing_notebook_returns_404(client):
         )
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_config_pending_source_is_excluded(client):
+    """A client-supplied id of a source still awaiting approval must not be
+    fed into notebook chat context."""
+    pending = _source("source:pending")
+    pending.is_approved = False
+    ok_source = _source("source:ok")
+
+    async def get_source(full_id):
+        return pending if full_id == "source:pending" else ok_source
+
+    with (
+        patch(PATCH_NOTEBOOK, new=AsyncMock(return_value=_notebook())),
+        patch(PATCH_SOURCE, new=AsyncMock(side_effect=get_source)),
+    ):
+        response = client.post(
+            "/api/chat/context",
+            json={
+                "notebook_id": "notebook:1",
+                "context_config": {
+                    "sources": {"pending": "full content", "ok": "insights"},
+                    "notes": {},
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["context"]["sources"] == [{"id": "source:ok", "title": "T"}]
+    pending.get_context.assert_not_awaited()

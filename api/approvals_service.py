@@ -1,0 +1,342 @@
+"""Approval-workflow helpers for ChatBot5400.
+
+Centralises the scope logic shared by the sources, notebooks and approvals
+routers: what an approver is allowed to review/manage, and how pending-source
+rows map to the API response. Admins have global scope; approvers are limited
+to the categories (and their sub-notebooks) an admin assigned to them.
+"""
+
+import time
+from typing import Any, Dict, List, Optional
+
+from api.auth import TokenUser, auth_disabled
+from api.models import ApprovalItemResponse, ApprovalNotebookRef, ReviewerResponse
+from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.domain.notebook import Notebook, Source
+from open_notebook.exceptions import (
+    AuthorizationError,
+    DatabaseOperationError,
+    InvalidInputError,
+    NotFoundError,
+)
+
+# Read-visibility checks run on every single-source request, including the
+# status endpoint the UI polls every ~2s while a source is processing. The
+# managed scope changes rarely, so it is cached briefly per approver for those
+# READ checks only; approve / reject / link / unlink always resolve it fresh.
+# The cache is per process and cleared whenever a notebook's hierarchy or
+# managers change in this process (see invalidate_scope_cache callers).
+_SCOPE_CACHE_TTL_SECONDS = 10.0
+_scope_cache: Dict[str, tuple[float, List[str]]] = {}
+_reviewer_cache: Dict[tuple[str, ...], tuple[float, set[str]]] = {}
+
+
+async def _managed_scope_cached(user_id: str) -> List[str]:
+    now = time.monotonic()
+    hit = _scope_cache.get(user_id)
+    if hit is not None and now - hit[0] < _SCOPE_CACHE_TTL_SECONDS:
+        return hit[1]
+    scope = await Notebook.managed_scope_ids(user_id)
+    _scope_cache[user_id] = (now, scope)
+    return scope
+
+
+def invalidate_scope_cache() -> None:
+    """Drop cached approver scopes and reviewer lists (call after changing
+    managers, hierarchy or user roles)."""
+    _scope_cache.clear()
+    _reviewer_cache.clear()
+
+
+async def scope_ids_for(user: TokenUser) -> Optional[List[str]]:
+    """Notebook-id scope for a reviewer.
+
+    Returns ``None`` for an admin (global scope), the managed notebook ids for
+    an approver, or ``[]`` for anyone else (no review scope).
+    """
+    if user.is_admin:
+        return None
+    if user.is_approver:
+        return await Notebook.managed_scope_ids(user.id)
+    return []
+
+
+def _derive_type(asset: Optional[Dict[str, Any]]) -> str:
+    if not asset:
+        return "text"
+    if asset.get("url"):
+        return "link"
+    if asset.get("file_path"):
+        return "upload"
+    return "text"
+
+
+def _map_pending_row(row: Dict[str, Any]) -> ApprovalItemResponse:
+    submitter = row.get("submitted_by")
+    submitter_id = None
+    submitter_name = None
+    if isinstance(submitter, dict):
+        submitter_id = str(submitter.get("id")) if submitter.get("id") else None
+        submitter_name = submitter.get("name") or submitter.get("username")
+    elif submitter:
+        submitter_id = str(submitter)
+
+    notebooks = []
+    for nb in row.get("notebooks") or []:
+        if isinstance(nb, dict) and nb.get("id"):
+            notebooks.append(
+                ApprovalNotebookRef(
+                    id=str(nb.get("id")), name=nb.get("name") or "Untitled"
+                )
+            )
+
+    submitted_at = row.get("submitted_at")
+    return ApprovalItemResponse(
+        id=str(row.get("id")),
+        title=row.get("title"),
+        type=_derive_type(row.get("asset")),
+        approval_status=row.get("approval_status") or "pending",
+        submitted_by_id=submitter_id,
+        submitted_by_name=submitter_name,
+        submitted_at=str(submitted_at) if submitted_at else None,
+        notebooks=notebooks,
+    )
+
+
+def _reviewer_id_for(user: TokenUser) -> Optional[str]:
+    """The approver id to match directed submissions against (None for admin)."""
+    return None if user.is_admin else user.id
+
+
+async def list_pending(user: TokenUser) -> List[ApprovalItemResponse]:
+    """Pending sources awaiting this reviewer's action."""
+    scope = await scope_ids_for(user)
+    reviewer_id = _reviewer_id_for(user)
+    if scope is not None and not scope and not reviewer_id:
+        return []
+    rows = await Source.get_pending(scope, reviewer_id)
+    return [_map_pending_row(row) for row in rows]
+
+
+async def count_pending(user: TokenUser) -> int:
+    """Number of pending sources awaiting this reviewer's action."""
+    scope = await scope_ids_for(user)
+    reviewer_id = _reviewer_id_for(user)
+    if scope is not None and not scope and not reviewer_id:
+        return 0
+    return await Source.count_pending(scope, reviewer_id)
+
+
+async def _eligible_reviewers(notebook_ids: List[str]) -> List[ReviewerResponse]:
+    """Approvers a contributor may route a submission to: those managing the
+    category (top-level notebook) of any selected notebook.
+
+    An empty ``notebook_ids`` returns every approver (the submission has no
+    notebook scope yet, so any approver is a valid target).
+    """
+    category_ids: set[str] = set()
+    if notebook_ids:
+        rows = await repo_query(
+            "SELECT id, parent FROM notebook WHERE id IN $ids",
+            {"ids": [ensure_record_id(x) for x in notebook_ids]},
+        )
+        for row in rows or []:
+            parent = row.get("parent")
+            # A sub-notebook inherits its category (parent); a top-level
+            # notebook is its own category.
+            category_ids.add(str(parent) if parent else str(row.get("id")))
+
+    if category_ids:
+        manager_rows = await repo_query(
+            "SELECT VALUE managers FROM notebook WHERE id IN $ids",
+            {"ids": [ensure_record_id(x) for x in category_ids]},
+        )
+        user_ids: set[str] = set()
+        for managers in manager_rows or []:
+            for m in managers or []:
+                user_ids.add(str(m))
+        if not user_ids:
+            return []
+        users = await repo_query(
+            "SELECT id, name, username FROM user "
+            "WHERE id IN $ids AND role = 'approver' ORDER BY username ASC",
+            {"ids": [ensure_record_id(u) for u in user_ids]},
+        )
+    else:
+        # No notebook scope yet: any approver is eligible.
+        users = await repo_query(
+            "SELECT id, name, username FROM user "
+            "WHERE role = 'approver' ORDER BY username ASC"
+        )
+
+    return [
+        ReviewerResponse(
+            id=str(u.get("id")),
+            username=u.get("username") or "",
+            name=u.get("name"),
+        )
+        for u in (users or [])
+    ]
+
+
+async def eligible_reviewers(notebook_ids: List[str]) -> List[ReviewerResponse]:
+    """Reviewer choices for the add-source wizard (see _eligible_reviewers)."""
+    try:
+        return await _eligible_reviewers(notebook_ids)
+    except Exception:
+        # Reviewer picking is best-effort; never block the add-source flow.
+        return []
+
+
+async def _eligible_reviewer_ids_cached(notebook_ids: List[str]) -> set[str]:
+    """Eligible reviewer ids for a notebook set, cached briefly.
+
+    A batch upload creates one source per file with the same notebooks and
+    reviewer; without this every item would repeat the same three lookups.
+    Cleared together with the scope cache when managers or roles change.
+    """
+    key = tuple(sorted(notebook_ids))
+    now = time.monotonic()
+    hit = _reviewer_cache.get(key)
+    if hit is not None and now - hit[0] < _SCOPE_CACHE_TTL_SECONDS:
+        return hit[1]
+    ids = {r.id for r in await _eligible_reviewers(notebook_ids)}
+    _reviewer_cache[key] = (now, ids)
+    return ids
+
+
+async def assert_valid_reviewer(reviewer_id: str, notebook_ids: List[str]) -> None:
+    """Reject a submission routed to someone who is not an eligible reviewer.
+
+    The id comes from the client. Without this check a submission could be
+    assigned to a non-approver (nobody could act on it) or to an approver
+    unrelated to the chosen notebooks.
+    """
+    if str(reviewer_id) not in await _eligible_reviewer_ids_cached(notebook_ids):
+        raise InvalidInputError(
+            "The selected reviewer cannot review documents for the chosen notebooks"
+        )
+
+
+# Detaching a user from the approver role and changing the account itself must
+# succeed or fail together: otherwise a failed second step leaves an approver
+# who silently lost their categories, or a demoted user still listed as manager.
+# Same single-request transaction pattern as api/feedback_service.py.
+_RELEASE_APPROVER_STATEMENTS = (
+    # Drop them from every category so a later re-promotion does not silently
+    # restore the old scope and no dangling record link is left behind.
+    "UPDATE notebook SET managers -= $uid WHERE $uid IN managers; "
+    # Un-assign their pending submissions so those fall back to the approvers
+    # managing the notebook instead of being visible to admins only.
+    "UPDATE source SET assigned_approver = NONE "
+    "WHERE assigned_approver = $uid AND approval_status = 'pending'; "
+)
+
+
+async def demote_approver(user_id: str, new_role: str) -> None:
+    """Atomically move an approver to another role and release their scope."""
+    await repo_query(
+        "BEGIN TRANSACTION; "
+        + _RELEASE_APPROVER_STATEMENTS
+        + "UPDATE $uid SET role = $role; COMMIT TRANSACTION;",
+        {"uid": ensure_record_id(user_id), "role": new_role},
+    )
+    # A statement failing inside the block cancels the whole transaction, and
+    # that is not guaranteed to surface as an exception. Confirm the outcome
+    # instead of assuming it, so the caller never continues on a silent no-op.
+    rows = await repo_query(
+        "SELECT VALUE role FROM $uid", {"uid": ensure_record_id(user_id)}
+    )
+    if not rows or rows[0] != new_role:
+        raise DatabaseOperationError(
+            "Changing the approver's role did not complete; no change was applied"
+        )
+    invalidate_scope_cache()
+
+
+async def delete_approver(user_id: str) -> None:
+    """Atomically delete an approver account and release their scope."""
+    await repo_query(
+        "BEGIN TRANSACTION; "
+        + _RELEASE_APPROVER_STATEMENTS
+        + "DELETE $uid; COMMIT TRANSACTION;",
+        {"uid": ensure_record_id(user_id)},
+    )
+    # See demote_approver: confirm the account is really gone.
+    rows = await repo_query(
+        "SELECT VALUE id FROM $uid", {"uid": ensure_record_id(user_id)}
+    )
+    if rows:
+        raise DatabaseOperationError(
+            "Deleting the approver did not complete; no change was applied"
+        )
+    invalidate_scope_cache()
+
+
+async def assert_can_review_source(user: TokenUser, source: Source) -> None:
+    """Raise AuthorizationError unless the caller may review this source."""
+    if user.is_admin:
+        return
+    if not user.is_approver:
+        raise AuthorizationError("Approver privileges required")
+    # The approver a contributor routed this submission to may always act on
+    # it, even when it sits in no notebook they manage (e.g. submitted without
+    # a notebook). The assignment is validated when the source is created.
+    # Only while it is pending: the assignment stays on the record afterwards
+    # and must not grant anything on an approved document.
+    if (
+        source.is_pending
+        and source.assigned_approver
+        and str(source.assigned_approver) == user.id
+    ):
+        return
+    scope = await Notebook.managed_scope_ids(user.id)
+    if not scope:
+        raise AuthorizationError("This source is outside your managed categories")
+    referenced = set(await source.referenced_notebook_ids())
+    if referenced.isdisjoint(set(scope)):
+        raise AuthorizationError("This source is outside your managed categories")
+
+
+async def assert_can_view_source(user: TokenUser, source: Source) -> None:
+    """Hide a source that is still awaiting approval from callers who may not
+    see it.
+
+    Approved sources are visible to everyone. A pending source is visible only
+    to an admin, its submitter, the approver it was routed to, and approvers
+    managing one of its notebooks. Everyone else gets NotFoundError (404) so the
+    endpoint does not reveal that the document exists.
+    """
+    if (source.approval_status or "approved") == "approved":
+        return
+    if auth_disabled() or user.is_admin:
+        return
+    if source.submitted_by and str(source.submitted_by) == user.id:
+        return
+    if user.is_approver:
+        if source.assigned_approver and str(source.assigned_approver) == user.id:
+            return
+        scope = await _managed_scope_cached(user.id)
+        if scope and not set(await source.referenced_notebook_ids()).isdisjoint(
+            scope
+        ):
+            return
+    raise NotFoundError("Source not found")
+
+
+async def assert_can_manage_notebook(user: TokenUser, notebook_id: str) -> None:
+    """Raise AuthorizationError unless the caller manages this notebook.
+
+    Used to gate approver actions scoped to a category/sub-notebook (creating a
+    sub-notebook under it, linking an existing source into it without review).
+    Admins always pass.
+    """
+    if user.is_admin:
+        return
+    if not user.is_approver:
+        raise AuthorizationError("Approver privileges required")
+    scope = await Notebook.managed_scope_ids(user.id)
+    if str(notebook_id) not in set(scope):
+        raise AuthorizationError(
+            "This notebook is outside your managed categories"
+        )

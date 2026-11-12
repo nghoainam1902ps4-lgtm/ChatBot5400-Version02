@@ -85,6 +85,15 @@ def _expire_minutes() -> int:
     return DEFAULT_EXPIRE_MINUTES
 
 
+# Roles permitted to submit sources/van ban into the system (see
+# open_notebook/domain/user.py). Kept here too so the auth dependencies don't
+# need a domain import. Approvers are checkers (maker-checker separation): they
+# review and manage, but do NOT create new sources.
+SUBMITTER_ROLES = ("admin", "contributor")
+# Roles permitted to review pending sources and manage assigned categories.
+APPROVER_ROLES = ("admin", "approver")
+
+
 @dataclass
 class TokenUser:
     """Caller identity decoded from a JWT."""
@@ -96,6 +105,30 @@ class TokenUser:
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
+
+    @property
+    def is_approver(self) -> bool:
+        return self.role == "approver"
+
+    @property
+    def is_contributor(self) -> bool:
+        return self.role == "contributor"
+
+    @property
+    def can_submit_sources(self) -> bool:
+        return self.role in SUBMITTER_ROLES
+
+    @property
+    def can_review(self) -> bool:
+        return self.role in APPROVER_ROLES
+
+    @property
+    def requires_approval(self) -> bool:
+        """Whether sources this caller submits must be approved before use.
+
+        Only a plain contributor's submissions are held for review.
+        """
+        return self.role == "contributor"
 
 
 def create_access_token(user_id: str, username: str, role: str) -> str:
@@ -216,4 +249,25 @@ def require_admin(request: Request) -> TokenUser:
     user = get_current_user(request)
     if not user.is_admin:
         raise AuthorizationError("Administrator privileges required")
+    return user
+
+
+def require_approver(request: Request) -> TokenUser:
+    """Dependency: require the caller to be an approver or admin.
+
+    Approvers ("nguoi duyet") review pending sources, manage the categories an
+    admin assigned to them, create sub-notebooks and link existing sources.
+    """
+    user = get_current_user(request)
+    if not user.can_review:
+        raise AuthorizationError("Approver privileges required")
+    return user
+
+
+def require_submitter(request: Request) -> TokenUser:
+    """Dependency: require a role allowed to submit sources (admin, approver or
+    contributor). Plain users are read/chat-only."""
+    user = get_current_user(request)
+    if not user.can_submit_sources:
+        raise AuthorizationError("You do not have permission to add sources")
     return user

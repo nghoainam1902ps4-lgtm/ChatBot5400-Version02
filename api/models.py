@@ -7,6 +7,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class NotebookCreate(BaseModel):
     name: str = Field(..., description="Name of the notebook")
     description: str = Field(default="", description="Description of the notebook")
+    parent: Optional[str] = Field(
+        None,
+        description="Parent notebook (category) id; set to create a sub-notebook",
+    )
+    managers: Optional[List[str]] = Field(
+        None,
+        max_length=50,
+        description="Approver user ids assigned to manage this category (admin only)",
+    )
 
 
 class NotebookUpdate(BaseModel):
@@ -14,6 +23,11 @@ class NotebookUpdate(BaseModel):
     description: Optional[str] = Field(None, description="Description of the notebook")
     archived: Optional[bool] = Field(
         None, description="Whether the notebook is archived"
+    )
+    managers: Optional[List[str]] = Field(
+        None,
+        max_length=50,
+        description="Approver user ids assigned to manage this category (admin only)",
     )
 
 
@@ -26,6 +40,9 @@ class NotebookResponse(BaseModel):
     updated: str
     source_count: int
     note_count: int
+    parent: Optional[str] = None
+    managers: List[str] = Field(default_factory=list)
+    is_category: bool = True
 
 
 class RecentlyViewedResponse(BaseModel):
@@ -353,6 +370,10 @@ class SourceCreate(BaseModel):
         description="Transformation IDs to apply (max 50)",
     )
     embed: bool = Field(False, description="Whether to embed content for vector search")
+    reviewer_id: Optional[str] = Field(
+        None,
+        description="Approver (Kiểm soát) to route this submission to for approval",
+    )
     delete_source: bool = Field(
         False, description="Whether to delete uploaded file after processing"
     )
@@ -403,6 +424,10 @@ class SourceResponse(BaseModel):
     processing_info: Optional[Dict] = None
     # Notebook associations
     notebooks: Optional[List[str]] = None
+    # Approval workflow (separate from the async processing `status` above)
+    approval_status: str = "approved"
+    submitted_by: Optional[str] = None
+    review_note: Optional[str] = None
 
 
 class SourceListResponse(BaseModel):
@@ -420,6 +445,8 @@ class SourceListResponse(BaseModel):
     command_id: Optional[str] = None
     status: Optional[str] = None
     processing_info: Optional[Dict[str, Any]] = None
+    # Approval workflow
+    approval_status: str = "approved"
 
 
 # Insights API models
@@ -824,3 +851,49 @@ class NotebookDeleteResponse(BaseModel):
     deleted_chat_sessions: int = Field(
         ..., description="Number of chat sessions deleted"
     )
+
+
+# --- Approval workflow (ChatBot5400) -------------------------------------
+class ApprovalNotebookRef(BaseModel):
+    """A notebook a pending source is referenced in, within the approver scope."""
+
+    id: str
+    name: str
+
+
+class ApprovalItemResponse(BaseModel):
+    """One pending source awaiting review in the caller's scope."""
+
+    id: str = Field(..., description="Source id")
+    title: Optional[str] = None
+    type: Optional[str] = None
+    approval_status: str = "pending"
+    submitted_by_id: Optional[str] = None
+    submitted_by_name: Optional[str] = None
+    submitted_at: Optional[str] = None
+    notebooks: List[ApprovalNotebookRef] = Field(default_factory=list)
+
+
+class RejectSourceRequest(BaseModel):
+    reason: Optional[str] = Field(
+        None, max_length=2000, description="Optional reason shown to the submitter"
+    )
+
+
+class PendingApprovalCountResponse(BaseModel):
+    count: int = Field(..., description="Pending sources awaiting the caller's review")
+
+
+class ReviewerResponse(BaseModel):
+    """An approver a contributor can route a submission to."""
+
+    id: str
+    username: str
+    name: Optional[str] = None
+
+
+class ReviewActionResponse(BaseModel):
+    success: bool = True
+    source_id: str
+    approval_status: str
+    message: str

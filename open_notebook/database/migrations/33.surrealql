@@ -1,0 +1,9 @@
+-- Migration 33: one-time embedding claim for sources approved through review
+-- (ChatBot5400).
+--
+-- A contributor's submission is processed with embedding off and must be
+-- embedded exactly once when it is both approved and has extracted text. The
+-- approval and the processing job race, so each side claims the embedding with
+-- a single conditional UPDATE that flips this flag (see
+-- Source.claim_review_embed). Optional: existing rows stay valid.
+DEFINE FIELD IF NOT EXISTS approval_embed_queued ON TABLE source TYPE option<bool>;

@@ -23,6 +23,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from api.auth import JWTAuthMiddleware
 from api.middleware import MaxBodySizeMiddleware, get_max_upload_size_bytes
 from api.routers import (
+    approvals,
     auth,
     capabilities,
     chat,
@@ -215,6 +216,17 @@ async def lifespan(app: FastAPI):
     from open_notebook.domain.user import seed_default_admin
 
     await seed_default_admin()
+
+    # One-time data repair (see remove_duplicate_notebook_links). Never blocks
+    # startup: a failure only means the duplicates stay until the next start.
+    try:
+        from open_notebook.domain.notebook import remove_duplicate_notebook_links
+
+        removed = await remove_duplicate_notebook_links()
+        if removed:
+            logger.info(f"Removed {removed} duplicate source-notebook link(s)")
+    except Exception as e:
+        logger.warning(f"Skipped duplicate source-notebook link cleanup: {e}")
 
     from api.auth import auth_disabled
 
@@ -411,6 +423,7 @@ async def open_notebook_error_handler(request: Request, exc: OpenNotebookError):
 # Include routers
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(users.router, prefix="/api", tags=["users"])
+app.include_router(approvals.router, prefix="/api", tags=["approvals"])
 app.include_router(config.router, prefix="/api", tags=["config"])
 app.include_router(notebooks.router, prefix="/api", tags=["notebooks"])
 app.include_router(search.router, prefix="/api", tags=["search"])

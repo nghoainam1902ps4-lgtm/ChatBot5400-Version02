@@ -17,10 +17,16 @@ RUN npm config set registry ${NPM_REGISTRY} \
  && npm config set fetch-retry-maxtimeout 120000
 # Retry npm ci to survive transient registry ECONNRESETs, which are common on
 # the QEMU-emulated arm64 leg of the multi-arch build.
-RUN i=0; until npm ci; do \
+# npm silently skips an optional dependency it fails to download, so a network
+# hiccup can leave out Next.js' native compiler (@next/swc-<platform>) while
+# `npm ci` still succeeds; `npm run build` then fails with "Turbopack is not
+# supported on this platform". Treat a missing native binary as a failed attempt
+# so the layer is retried instead of being cached broken.
+RUN i=0; until npm ci && ls -d node_modules/@next/swc-* >/dev/null 2>&1; do \
       i=$((i+1)); \
       if [ "$i" -ge 5 ]; then echo "npm ci failed after $i attempts"; exit 1; fi; \
-      echo "npm ci failed (attempt $i); retrying in 15s"; sleep 15; \
+      echo "npm ci failed or @next/swc native binary missing (attempt $i); retrying in 15s"; \
+      rm -rf node_modules; sleep 15; \
     done
 
 # Copy the rest of the frontend source and build

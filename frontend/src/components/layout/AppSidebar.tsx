@@ -45,16 +45,20 @@ import {
   Users,
   KeyRound,
   MessageSquareWarning,
+  ClipboardCheck,
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ChangePasswordDialog } from '@/components/auth/ChangePasswordDialog'
+import { useApprovalCount } from '@/lib/hooks/use-approvals'
 
 type NavItem = {
   name: string
   href: string
   icon: LucideIcon
   iconClass?: string
+  /** Optional badge count (e.g. pending approvals). Rendered when > 0. */
+  badge?: number
 }
 type NavSection = { title: string; items: NavItem[] }
 
@@ -119,8 +123,10 @@ interface AppSidebarProps {
 export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps = {}) {
   const { t } = useTranslation()
   const pathname = usePathname()
-  const { logout, user, isAdmin } = useAuth()
+  const { logout, user, isAdmin, canReview, canSubmit } = useAuth()
   const podcastEnabled = usePodcastEnabled()
+  // Pending-approval badge: only reviewers (approver/admin) poll the count.
+  const { data: pendingApprovals = 0 } = useApprovalCount(canReview)
   const { isCollapsed: railCollapsed, toggleCollapse } = useSidebarStore()
   const isDrawer = variant === 'drawer'
   const isCollapsed = isDrawer ? false : railCollapsed
@@ -168,6 +174,24 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
       },
     ]
   })
+
+  // Reviewers (approver/admin) get a "Duyệt văn bản" entry with a live badge of
+  // how many sources await their review. Inserted right after the first section
+  // so it stays prominent for approvers (who don't see the admin "Manage" group).
+  if (canReview) {
+    navigation.splice(1, 0, {
+      title: t('navigation.review'),
+      items: [
+        {
+          name: t('approvals.title'),
+          href: '/approvals',
+          icon: ClipboardCheck,
+          iconClass: 'text-amber-500',
+          badge: pendingApprovals,
+        },
+      ],
+    })
+  }
 
   // The active item is the longest href that prefixes the current path.
   // Longest-wins keeps `/settings` from also highlighting on `/settings/models`
@@ -293,6 +317,7 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
             isCollapsed ? 'px-2' : 'px-3'
           )}
         >
+          {(canSubmit || canReview || podcastEnabled) && (
           <div
             className={cn(
               'mb-4',
@@ -336,7 +361,7 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
                 side={isCollapsed ? 'right' : 'bottom'}
                 className="w-48"
               >
-                {isAdmin && (
+                {canSubmit && (
                   <DropdownMenuItem
                     onSelect={(event) => {
                       event.preventDefault()
@@ -348,7 +373,7 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
                     {t('common.source')}
                   </DropdownMenuItem>
                 )}
-                {isAdmin && (
+                {canReview && (
                   <DropdownMenuItem
                     onSelect={(event) => {
                       event.preventDefault()
@@ -375,6 +400,7 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          )}
 
           {navigation.map((section, index) => (
             <div key={section.title}>
@@ -403,6 +429,18 @@ export function AppSidebar({ variant = 'rail', onRequestClose }: AppSidebarProps
                     >
                       <item.icon className={cn('h-4 w-4 opacity-85', item.iconClass)} />
                       {!isCollapsed && <span>{item.name}</span>}
+                      {item.badge && item.badge > 0 ? (
+                        isCollapsed ? (
+                          <span
+                            aria-hidden
+                            className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-sidebar"
+                          />
+                        ) : (
+                          <span className="ml-auto inline-flex min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold leading-5 text-white">
+                            {item.badge > 99 ? '99+' : item.badge}
+                          </span>
+                        )
+                      ) : null}
                     </Button>
                   )
 

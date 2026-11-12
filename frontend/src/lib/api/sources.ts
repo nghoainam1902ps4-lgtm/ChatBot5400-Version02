@@ -56,6 +56,10 @@ export const sourcesApi = {
     if (data.transformations !== undefined) {
       formData.append('transformations', JSON.stringify(data.transformations))
     }
+    // Approver a contributor routed the submission to (directed approval).
+    if (data.reviewer_id) {
+      formData.append('reviewer_id', data.reviewer_id)
+    }
     
     const dataWithFile = data as CreateSourceRequest & { file?: File }
     if (dataWithFile.file instanceof File) {
