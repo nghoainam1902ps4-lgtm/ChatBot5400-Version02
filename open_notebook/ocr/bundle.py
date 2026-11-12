@@ -91,8 +91,12 @@ def easyocr_missing_requirements() -> list[str]:
     if not uv:
         raise RuntimeError("uv is required to compute the wheel set")
     spec = f"{catalog.EASYOCR_PACKAGE}=={catalog.EASYOCR_VERSION}"
+    from open_notebook.ocr import runtime
+
+    constraints = runtime.runtime_constraints()
+    extra = ["-c", str(constraints)] if constraints else []
     proc = subprocess.run(
-        [uv, "pip", "install", "--python", sys.executable, "--dry-run", spec],
+        [uv, "pip", "install", "--python", sys.executable, "--dry-run", *extra, spec],
         capture_output=True,
         text=True,
         check=False,

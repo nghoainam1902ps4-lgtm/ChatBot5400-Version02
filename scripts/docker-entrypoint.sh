@@ -53,6 +53,11 @@ mkdir -p "${UV_CACHE_DIR:-/app/data/.cache/uv}" \
 
 CCORE_VERSION="$(ccore_version)"
 
+# Constraints exported from uv.lock at image build (see Dockerfile). Applied to
+# the Docling install so a fresh container gets the verified Docling/torch/
+# RapidOCR versions, not whatever is newest on PyPI (docs/ocr DECISIONS D-14).
+CONSTRAINTS="${OPEN_NOTEBOOK_RUNTIME_CONSTRAINTS:-/app/runtime-constraints.txt}"
+
 # ---------------------------------------------------------------------------
 # Docling
 # ---------------------------------------------------------------------------
@@ -63,7 +68,20 @@ if is_true "$OPEN_NOTEBOOK_ENABLE_DOCLING"; then
         log "WARNING: could not determine content-core version; skipping Docling install."
     else
         log "Installing Docling (first start; this pulls a large ML stack — several hundred MB to a few GB — and can take several minutes)..."
-        if uv pip install --python "$VENV_PY" "content-core[docling]==${CCORE_VERSION}"; then
+        # Air-gapped: reinstall only from the persistent uv cache (no index access).
+        UV_NET=""
+        if is_true "$OCR_OFFLINE"; then
+            UV_NET="--offline"
+            log "OCR_OFFLINE=true: installing Docling from the local uv cache only."
+        fi
+        if [ -f "$CONSTRAINTS" ]; then
+            log "Using locked runtime constraints: $CONSTRAINTS"
+            install_docling() { uv pip install $UV_NET --python "$VENV_PY" -c "$CONSTRAINTS" "content-core[docling]==${CCORE_VERSION}"; }
+        else
+            log "WARNING: $CONSTRAINTS not found; Docling versions are NOT pinned to uv.lock."
+            install_docling() { uv pip install $UV_NET --python "$VENV_PY" "content-core[docling]==${CCORE_VERSION}"; }
+        fi
+        if install_docling; then
             log "Docling installed. The Docling engine, OCR and image sources are now available."
         else
             log "WARNING: Docling install FAILED. Booting without it — the Docling engine, OCR and image sources will be unavailable. Fix connectivity and restart to retry."

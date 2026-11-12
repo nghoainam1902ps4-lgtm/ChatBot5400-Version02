@@ -60,6 +60,14 @@ COPY open_notebook/__init__.py ./open_notebook/__init__.py
 # Install dependencies (this layer is cached unless dependencies change)
 RUN uv sync --frozen --no-dev
 
+# Versions for the on-demand runtimes (Docling, EasyOCR), exported from uv.lock:
+# the entrypoint / OCR admin CLI install them with `-c` so a fresh container
+# gets exactly the verified versions instead of whatever is newest on PyPI.
+# See docs/ocr/DECISIONS.md D-14.
+RUN uv export --frozen --no-dev --extra docling --extra ocr-easyocr \
+      --no-hashes --no-emit-project --no-header --no-annotate \
+      -o /app/runtime-constraints.txt
+
 # Pre-download tiktoken encoding so the app works offline (issue #264).
 # /app/tiktoken-cache is intentionally outside /app/data/ so that volume mounts
 # of /app/data (for user data persistence) do not hide the pre-baked encoding.
@@ -97,6 +105,10 @@ COPY . /app
 
 # Copy pre-downloaded tiktoken encoding from builder (outside /data/ — volume-mount safe)
 COPY --from=backend-builder /app/tiktoken-cache /app/tiktoken-cache
+
+# Lock-derived constraints for runtime installs (Docling, EasyOCR)
+COPY --from=backend-builder /app/runtime-constraints.txt /app/runtime-constraints.txt
+ENV OPEN_NOTEBOOK_RUNTIME_CONSTRAINTS=/app/runtime-constraints.txt
 
 # Copy built frontend from standalone output
 COPY --from=frontend-builder /app/frontend/.next/standalone /app/frontend/

@@ -18,7 +18,7 @@ from api.models import (
 )
 from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.exceptions import InvalidInputError, NotFoundError
-from open_notebook.ocr import catalog, installer, paths, runtime, store
+from open_notebook.ocr import catalog, compat, installer, paths, runtime, store
 from open_notebook.ocr.status import engine_status
 
 _OCR_COMMANDS = ("ocr_install_model", "ocr_test_engine")
@@ -83,7 +83,10 @@ async def _reconcile_job(engine_id: str) -> None:
 async def _status(engine_id: str, active: str) -> OcrEngineStatus:
     await _reconcile_job(engine_id)
     # Filesystem hashing + subprocess probes: off the event loop.
-    data = await asyncio.to_thread(engine_status, engine_id, active)
+    info = await asyncio.to_thread(runtime.docling_info)
+    data = await asyncio.to_thread(
+        engine_status, engine_id, active, info.get("fingerprint_problems") or []
+    )
     return OcrEngineStatus(**data)
 
 
@@ -100,6 +103,11 @@ async def list_engines() -> OcrEnginesResponse:
         table_model=info.get("table_model"),
         models_dir=str(paths.models_dir()),
         offline_mode=paths.offline_mode(),
+        dependency_problems=await asyncio.to_thread(
+            lambda: compat.problems(None, include_docling_sources=False)
+            + list(info.get("fingerprint_problems") or [])
+        ),
+        dependency_override=compat.override_enabled(),
     )
     engines = [await _status(e, config.docling_ocr_engine) for e in catalog.ENGINE_IDS]
     return OcrEnginesResponse(general=general, config=config, engines=engines)
@@ -210,6 +218,22 @@ async def delete_model(engine_id: str) -> list[str]:
         raise InvalidInputError("The built-in RapidOCR model cannot be removed.")
     async with _lock:
         await _reconcile_job(engine_id)
+        if store.read_state(engine_id).get("test_nonce"):
+            raise InvalidInputError(
+                "A test of this engine is queued or running; try again when it finishes."
+            )
+        running = await _running_source_jobs()
+        if running is None:
+            raise InvalidInputError(
+                "Could not verify that no document is being processed; model not removed."
+            )
+        if running:
+            # A job that started before an engine switch may still read these
+            # files (Tesseract loads traineddata for every page).
+            raise InvalidInputError(
+                f"{running} document(s) are being processed right now; remove the model "
+                "when processing has finished."
+            )
         settings = await _settings()
         active = _config(settings).docling_ocr_engine
         try:
@@ -218,6 +242,30 @@ async def delete_model(engine_id: str) -> list[str]:
             raise InvalidInputError(str(e)) from e
         except store.LockBusy as e:
             raise InvalidInputError(str(e)) from e
+
+
+async def _running_source_jobs() -> int | None:
+    """Number of source-processing jobs currently RUNNING (None if unknown).
+
+    Queued ("new") jobs are safe: they read the OCR settings when they start,
+    so they use whichever engine is active then.
+    """
+    from open_notebook.database.repository import repo_query
+
+    try:
+        rows = await repo_query(
+            "SELECT count() AS n FROM command WHERE name = 'process_source' "
+            "AND status = 'running' GROUP ALL"
+        )
+    except Exception as e:
+        logger.warning(f"Could not count running source jobs: {e}")
+        return None
+    if not rows:
+        return 0
+    try:
+        return int(rows[0].get("n", 0))
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 async def update_config(update: OcrConfigUpdate) -> OcrConfig:

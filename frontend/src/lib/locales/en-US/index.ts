@@ -927,6 +927,7 @@ export const enUS = {
     readOnlyInfo: "Layout and table models are shown for information only and cannot be changed here.",
     doclingUnavailable: "Docling is not installed in this container, so OCR is unavailable. Set OPEN_NOTEBOOK_ENABLE_DOCLING=true and restart.",
     doclingIncompatible: "The installed Docling version lacks OCR options this feature needs:",
+    dependencyProblems: "Content Core / Docling differ from the versions verified for OCR engine selection. Engines other than RapidOCR are disabled until re-verified:",
     engines: "OCR engines",
     enginesDesc: "Install an engine (downloads only its own model, with checksum verification), test it, then use it. Changes apply to the next processed document.",
     languages: "Languages",

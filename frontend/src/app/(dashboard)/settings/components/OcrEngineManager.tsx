@@ -435,6 +435,13 @@ export function OcrEngineManager() {
           {!general.docling_available && (
             <Alert><AlertDescription>{t('ocr.doclingUnavailable')}</AlertDescription></Alert>
           )}
+          {(general.dependency_problems?.length ?? 0) > 0 && (
+            <Alert variant={general.dependency_override ? 'default' : 'destructive'}>
+              <AlertDescription className="break-words">
+                {t('ocr.dependencyProblems')} {general.dependency_problems?.join('; ')}
+              </AlertDescription>
+            </Alert>
+          )}
           {general.docling_available && general.docling_api_compatible === false && (
             <Alert variant="destructive">
               <AlertDescription>

@@ -171,16 +171,34 @@ def test_runtime_ensure_noop_without_flags(env, monkeypatch):
     ).read_text() == "tessedit_create_tsv 1\n"
 
 
-def test_runtime_ensure_offline_without_packages_degrades(env, monkeypatch):
+def test_runtime_ensure_offline_uses_uv_cache_only_and_degrades(
+    env, monkeypatch, tmp_path
+):
+    """No staged bundle offline: try the local uv cache (--offline), never the network;
+    a cache miss is logged and boot continues."""
+    import subprocess as sp
+
     monkeypatch.setenv("OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR", "true")
     monkeypatch.setattr("open_notebook.ocr.runtime.docling_available", lambda: True)
     monkeypatch.setattr("open_notebook.ocr.runtime.module_available", lambda n: False)
+    constraints = tmp_path / "c.txt"
+    constraints.write_text("easyocr==1.7.2\n")
     monkeypatch.setattr(
-        cli.subprocess,
-        "run",
-        lambda *a, **k: pytest.fail("must not run pip offline without wheels"),
+        "open_notebook.ocr.runtime.runtime_constraints", lambda: constraints
     )
+    calls = []
+
+    def fake_run(cmd, **k):
+        calls.append(cmd)
+        return sp.CompletedProcess(cmd, 1)  # cache miss
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
     assert cli.runtime_ensure(offline=True) == 0  # never fails boot
+    assert len(calls) == 1
+    cmd = calls[0]
+    assert "--offline" in cmd and "--find-links" not in cmd
+    assert cmd[cmd.index("-c") + 1] == str(constraints)
+    assert cmd[-1] == "easyocr==1.7.2"
 
 
 def test_cli_remove_refuses_when_db_unknown(env, monkeypatch, capsys):

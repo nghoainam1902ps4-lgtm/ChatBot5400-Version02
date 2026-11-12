@@ -305,6 +305,56 @@ def auto_resolves_to_rapidocr() -> bool:
     return not module_available("easyocr")
 
 
+# --- Lock-derived constraints for runtime installs (DECISIONS D-14) ---------------
+
+
+def runtime_constraints() -> Path | None:
+    """Constraints file pinning runtime installs to the versions in uv.lock.
+
+    Docker: exported at image build (OPEN_NOTEBOOK_RUNTIME_CONSTRAINTS).
+    Dev checkout: exported on demand from the repository's uv.lock.
+    None when neither is available (callers must not install unpinned).
+    """
+    env = os.environ.get("OPEN_NOTEBOOK_RUNTIME_CONSTRAINTS", "").strip()
+    if env and Path(env).is_file():
+        return Path(env)
+    lock = Path(_PROJECT_ROOT) / "uv.lock"
+    uv = shutil.which("uv")
+    if not lock.is_file() or not uv:
+        return None
+    out = paths.downloads_dir() / "runtime-constraints.txt"
+    try:
+        if out.is_file() and out.stat().st_mtime >= lock.stat().st_mtime:
+            return out
+        out.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [
+                uv,
+                "export",
+                "--frozen",
+                "--no-dev",
+                "--extra",
+                "docling",
+                "--extra",
+                "ocr-easyocr",
+                "--no-hashes",
+                "--no-emit-project",
+                "--no-header",
+                "--no-annotate",
+                "-o",
+                str(out),
+            ],
+            cwd=_PROJECT_ROOT,
+            capture_output=True,
+            timeout=120,
+            check=False,
+            shell=False,
+        )
+        return out if proc.returncode == 0 and out.is_file() else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 # --- Docling details (subprocess, cached) ---------------------------------------
 
 _DOCLING_PROBE = r"""
@@ -345,9 +395,28 @@ try:
     out["table_model"] = f"{getattr(to, 'kind', type(to).__name__)}" + (f" ({getattr(mode, 'value', mode)})" if mode is not None else "")
 except Exception:
     out["table_model"] = None
+# Docling internals the OCR layer relies on (open_notebook/ocr/compat.py).
+try:
+    sys.path.insert(0, sys.argv[1])
+    from open_notebook.ocr import compat
+    out["fingerprint_problems"] = compat.check_fingerprints(compat.DOCLING_FINGERPRINTS)
+except Exception as e:
+    out["fingerprint_problems"] = ["fingerprint probe failed: " + repr(e)]
 out["ok"] = not out["missing"]
 print(json.dumps(out))
 """
+
+_PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
+
+
+def _compat_key() -> str:
+    """Invalidate the cached probe when the verified fingerprints change."""
+    import hashlib
+
+    from open_notebook.ocr import compat
+
+    blob = json.dumps(compat.DOCLING_FINGERPRINTS, sort_keys=True).encode()
+    return hashlib.sha256(blob).hexdigest()[:16]
 
 
 def docling_info(force: bool = False) -> dict[str, Any]:
@@ -360,6 +429,7 @@ def docling_info(force: bool = False) -> dict[str, Any]:
         "missing": [],
         "layout_model": None,
         "table_model": None,
+        "fingerprint_problems": [],
     }
     if not info["available"] or not version:
         return info
@@ -367,13 +437,16 @@ def docling_info(force: bool = False) -> dict[str, Any]:
     if not force:
         try:
             cached = json.loads(cache.read_text(encoding="utf-8"))
-            if cached.get("version") == version:
+            if (
+                cached.get("version") == version
+                and cached.get("compat_key") == _compat_key()
+            ):
                 return cached
         except (OSError, ValueError):
             pass
     try:
         proc = subprocess.run(
-            [sys.executable, "-c", _DOCLING_PROBE],
+            [sys.executable, "-c", _DOCLING_PROBE, _PROJECT_ROOT],
             capture_output=True,
             timeout=180,
             check=False,
@@ -388,6 +461,8 @@ def docling_info(force: bool = False) -> dict[str, Any]:
     info["missing"] = data.get("missing", [])
     info["layout_model"] = data.get("layout_model")
     info["table_model"] = data.get("table_model")
+    info["fingerprint_problems"] = data.get("fingerprint_problems", [])
+    info["compat_key"] = _compat_key()
     try:
         paths.ensure_dirs()
         tmp = cache.with_suffix(".tmp")

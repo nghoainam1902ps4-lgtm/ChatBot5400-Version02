@@ -711,6 +711,7 @@ class OcrEngineStatus(BaseModel):
     smoke: Optional[Dict[str, Any]] = None
     last_test: Optional[Dict[str, Any]] = None
     options: Dict[str, Any] = Field(default_factory=dict)
+    dependency_problems: List[str] = Field(default_factory=list)
 
 
 class OcrConfig(BaseModel):
@@ -739,6 +740,9 @@ class OcrGeneralInfo(BaseModel):
     ocr_device: str = "cpu"
     models_dir: str
     offline_mode: bool
+    # content-core/Docling differ from the verified set (docs/ocr D-14)
+    dependency_problems: List[str] = Field(default_factory=list)
+    dependency_override: bool = False
 
 
 class OcrEnginesResponse(BaseModel):

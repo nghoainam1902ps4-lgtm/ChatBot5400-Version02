@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from open_notebook.ocr import catalog, installer, paths, runtime, store
+from open_notebook.ocr import catalog, compat, installer, paths, runtime, store
 
 
 def _log(msg: str) -> None:
@@ -140,8 +140,23 @@ def install_easyocr_runtime(offline: bool) -> bool:
             ["--offline"] if uv else []
         )
     elif offline:
+        if not uv:
+            _log(
+                f"OFFLINE, no staged wheels in {wheels} and no uv cache: cannot install EasyOCR ({spec})."
+            )
+            return False
+        # No staged bundle: try the persistent uv cache only (wheels downloaded
+        # on an earlier online boot). Fails cleanly if they are not cached.
+        cmd += ["--offline"]
+        _log("OFFLINE: installing EasyOCR from the local uv cache only.")
+    constraints = runtime.runtime_constraints()
+    if constraints is not None:
+        cmd += ["-c", str(constraints)]
+    elif not compat.override_enabled():
         _log(
-            f"OFFLINE and no staged wheels in {wheels}: cannot install EasyOCR (missing: {spec})."
+            "No lock-derived constraints found (OPEN_NOTEBOOK_RUNTIME_CONSTRAINTS / uv.lock): "
+            "refusing to install EasyOCR with unverified dependency versions. "
+            f"Set {compat.OVERRIDE_ENV}=true to override."
         )
         return False
     cmd.append(spec)

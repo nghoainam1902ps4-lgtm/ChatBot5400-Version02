@@ -405,6 +405,7 @@ export interface OcrEngineStatus {
   smoke?: { ok: boolean | null; detail: string } | null
   last_test?: OcrTestResult | null
   options: Record<string, unknown>
+  dependency_problems?: string[]
 }
 
 export interface OcrConfig {
@@ -426,6 +427,8 @@ export interface OcrGeneralInfo {
   ocr_device: string
   models_dir: string
   offline_mode: boolean
+  dependency_problems?: string[]
+  dependency_override?: boolean
 }
 
 export interface OcrEnginesResponse {

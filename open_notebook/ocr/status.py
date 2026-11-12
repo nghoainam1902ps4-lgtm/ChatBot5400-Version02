@@ -11,12 +11,34 @@ from __future__ import annotations
 
 from typing import Any
 
-from open_notebook.ocr import catalog, runtime, store
+from open_notebook.ocr import catalog, compat, runtime, store
 
 
-def engine_status(engine_id: str, active_engine: str | None = None) -> dict[str, Any]:
+def dependency_problems(
+    engine_id: str, docling_fingerprint_problems: list[str] | None = None
+) -> list[str]:
+    """Version/fingerprint problems for the native OCR path (compat.py).
+
+    Docling source fingerprints come from the probe subprocess (the API process
+    must not import Docling's OCR modules); content-core is checked in-process.
+    """
+    found = compat.problems(engine_id, include_docling_sources=False)
+    return found + list(docling_fingerprint_problems or [])
+
+
+def engine_status(
+    engine_id: str,
+    active_engine: str | None = None,
+    docling_fingerprint_problems: list[str] | None = None,
+) -> dict[str, Any]:
     spec = catalog.get_engine(engine_id)
     rt = runtime.probe_runtime(engine_id)
+    deps = (
+        dependency_problems(engine_id, docling_fingerprint_problems)
+        if rt.status != runtime.RUNTIME_MISSING or spec.runtime == "builtin"
+        else []
+    )
+    deps_blocking = bool(deps) and not compat.override_enabled()
     ms = store.model_status(engine_id)
     st = store.read_state(engine_id)
 
@@ -24,6 +46,9 @@ def engine_status(engine_id: str, active_engine: str | None = None) -> dict[str,
     if job_active:
         lifecycle = st["state"]
     elif rt.status == runtime.RUNTIME_INCOMPATIBLE:
+        lifecycle = store.INCOMPATIBLE
+    elif deps_blocking and spec.runtime != "builtin":
+        # Unverified content-core/Docling/engine versions: never "ready".
         lifecycle = store.INCOMPATIBLE
     elif ms.status == "corrupted":
         lifecycle = store.FAILED
@@ -52,6 +77,19 @@ def engine_status(engine_id: str, active_engine: str | None = None) -> dict[str,
             "The previous installation stopped unexpectedly. Retry the installation."
         )
 
+    if deps_blocking and spec.runtime != "builtin" and not job_active:
+        error = (
+            "Dependencies differ from the verified set: "
+            + "; ".join(deps)
+            + f". Re-verify, then set {compat.OVERRIDE_ENV}=true."
+        )
+    elif deps and spec.runtime == "builtin":
+        error = (
+            "Dependencies differ from the verified set ("
+            + "; ".join(deps)
+            + "): the default path still uses content-core unchanged, but RapidOCR "
+            "can no longer be pinned against Docling Auto."
+        )
     return {
         "id": spec.id,
         "display_name": spec.display_name,
@@ -82,6 +120,7 @@ def engine_status(engine_id: str, active_engine: str | None = None) -> dict[str,
         "smoke": st.get("smoke"),
         "last_test": st.get("last_test"),
         "options": _safe_describe(engine_id),
+        "dependency_problems": deps,
     }
 
 
@@ -97,6 +136,7 @@ def _safe_describe(engine_id: str) -> dict[str, Any]:
 def assert_engine_ready(engine_id: str) -> None:
     """Raise ValueError (permanent, user-readable) unless the engine can run now."""
     spec = catalog.get_engine(engine_id)
+    compat.ensure_compatible(engine_id)  # worker: includes Docling fingerprints
     rt = runtime.probe_runtime(engine_id)
     if not rt.ready:
         raise ValueError(

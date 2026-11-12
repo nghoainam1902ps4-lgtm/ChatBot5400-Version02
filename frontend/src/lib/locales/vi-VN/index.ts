@@ -930,6 +930,7 @@ export const viVN = {
     readOnlyInfo: "Model Layout và Table chỉ hiển thị để tham khảo, không thay đổi tại đây.",
     doclingUnavailable: "Container này chưa cài Docling nên OCR không khả dụng. Đặt OPEN_NOTEBOOK_ENABLE_DOCLING=true rồi khởi động lại.",
     doclingIncompatible: "Phiên bản Docling đang cài thiếu các tùy chọn OCR mà tính năng này cần:",
+    dependencyProblems: "Content Core / Docling khác phiên bản đã kiểm chứng cho việc chọn OCR engine. Các engine ngoài RapidOCR bị vô hiệu hoá cho tới khi kiểm chứng lại:",
     engines: "Danh sách OCR engine",
     enginesDesc: "Cài đặt engine (chỉ tải model của engine đó, có kiểm tra checksum), kiểm tra, rồi chọn Sử dụng. Thay đổi áp dụng cho tài liệu xử lý tiếp theo.",
     languages: "Ngôn ngữ",
