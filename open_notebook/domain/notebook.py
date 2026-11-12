@@ -520,6 +520,18 @@ class SourceInsight(ObjectModel):
         return note
 
 
+# Fields owned by the approval workflow; see Source._prepare_save_data.
+_APPROVAL_FIELDS = (
+    "approval_status",
+    "submitted_by",
+    "reviewed_by",
+    "review_note",
+    "submitted_at",
+    "reviewed_at",
+    "assigned_approver",
+)
+
+
 class Source(ObjectModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -784,6 +796,16 @@ class Source(ObjectModel):
         if data.get("command") is not None:
             data["command"] = ensure_record_id(data["command"])
 
+        # Approval state is written once at creation and afterwards ONLY through
+        # approve() (a targeted UPDATE). A generic save() is a full MERGE of
+        # this in-memory copy, so writing these fields on update would let a
+        # stale copy (e.g. the background processing job, which loads the
+        # source before a long extraction) revert an approval to 'pending'.
+        if self.id is not None:
+            for field in _APPROVAL_FIELDS:
+                data.pop(field, None)
+            return data
+
         # Reviewer/submitter links are typed record<user> columns.
         for link_field in ("submitted_by", "reviewed_by", "assigned_approver"):
             if data.get(link_field) is not None:
@@ -799,19 +821,50 @@ class Source(ObjectModel):
     def is_pending(self) -> bool:
         return self.approval_status == "pending"
 
+    async def was_approved_by_review(self) -> bool:
+        """Whether this source is approved *through review*, read fresh from DB.
+
+        Distinguishes a contributor submission approved by a reviewer (which was
+        processed with embedding disabled) from content an admin added directly
+        (approved from the start, reviewed_at unset, embed per its own option).
+        """
+        rows = await repo_query(
+            "SELECT approval_status, reviewed_at FROM $id",
+            {"id": ensure_record_id(self.id)},
+        )
+        row = rows[0] if rows else {}
+        return (row.get("approval_status") or "approved") == "approved" and bool(
+            row.get("reviewed_at")
+        )
+
     async def approve(self, reviewer_id: str) -> str:
         """Approve a pending source and queue it for embedding so it becomes
-        searchable. Returns the vectorize command id (or "" when there is no
-        text to embed)."""
+        searchable. Returns the vectorize command id, or "" when there is no
+        text yet (the processing job embeds it once extraction finishes, see
+        graphs/source.py save_source)."""
+        # Targeted write: never a full MERGE of this (possibly stale) copy.
+        await repo_query(
+            "UPDATE $id SET approval_status = 'approved', reviewed_by = $reviewer, "
+            "reviewed_at = time::now(), review_note = NONE",
+            {
+                "id": ensure_record_id(self.id),
+                "reviewer": ensure_record_id(reviewer_id),
+            },
+        )
         self.approval_status = "approved"
         self.reviewed_by = reviewer_id
         self.reviewed_at = datetime.now()
         self.review_note = None
-        await self.save()
         # Pending submissions are intentionally not embedded while under review,
-        # so embed on approval to make the content searchable.
+        # so embed on approval to make the content searchable. Re-read the text:
+        # the processing job may have extracted it after this copy was loaded.
         try:
-            if self.full_text and self.full_text.strip():
+            rows = await repo_query(
+                "SELECT VALUE full_text FROM $id", {"id": ensure_record_id(self.id)}
+            )
+            full_text = rows[0] if rows else None
+            if isinstance(full_text, str) and full_text.strip():
+                self.full_text = full_text
                 return await self.vectorize()
         except Exception as e:  # best-effort: approval itself already persisted
             logger.warning(f"Failed to embed source {self.id} on approval: {e}")
@@ -1110,6 +1163,62 @@ async def resolve_notebook_scope(notebook_ids: List[str]) -> List[str]:
     return notebook_ids
 
 
+async def _drop_unapproved_results(
+    results: List[Dict[str, Any]], limit: int
+) -> List[Dict[str, Any]]:
+    """Remove search hits that belong to a source still awaiting approval.
+
+    fn::text_search / fn::vector_search know nothing about the approval
+    workflow, so a pending submission's title, full text and insights (which
+    transformations create while it is under review) would otherwise surface in
+    search and RAG. Hits are ``source:*``, ``source_insight:*`` or ``note:*``;
+    insights are mapped back to their source. Notes are always kept. The result
+    is truncated to ``limit`` (callers over-fetch to compensate for removals).
+    """
+    if not results:
+        return results
+    source_ids: set[str] = set()
+    insight_ids: set[str] = set()
+    for row in results:
+        rid = str(row.get("id") or "")
+        if rid.startswith("source:"):
+            source_ids.add(rid)
+        elif rid.startswith("source_insight:"):
+            insight_ids.add(rid)
+
+    insight_owner: Dict[str, str] = {}
+    if insight_ids:
+        rows = await repo_query(
+            "SELECT id, source FROM source_insight WHERE id IN $ids",
+            {"ids": [ensure_record_id(i) for i in insight_ids]},
+        )
+        for row in rows or []:
+            if row.get("source"):
+                insight_owner[str(row["id"])] = str(row["source"])
+        source_ids.update(insight_owner.values())
+
+    blocked: set[str] = set()
+    if source_ids:
+        rows = await repo_query(
+            "SELECT VALUE id FROM source WHERE id IN $ids "
+            "AND (approval_status OR 'approved') != 'approved'",
+            {"ids": [ensure_record_id(s) for s in source_ids]},
+        )
+        blocked = {str(r) for r in rows or []}
+
+    def owner(row: Dict[str, Any]) -> Optional[str]:
+        rid = str(row.get("id") or "")
+        return rid if rid.startswith("source:") else insight_owner.get(rid)
+
+    kept = [row for row in results if owner(row) not in blocked] if blocked else results
+    return kept[:limit]
+
+
+def _search_fetch_count(results: int) -> int:
+    """How many hits to request so filtering pending sources still fills `results`."""
+    return results * 2
+
+
 def _scope_record_ids(notebook_ids: Optional[List[str]]) -> Optional[List[RecordID]]:
     """Normalize a notebook scope for fn::text_search / fn::vector_search.
 
@@ -1138,13 +1247,13 @@ async def text_search(
             """,
             {
                 "keyword": keyword,
-                "results": results,
+                "results": _search_fetch_count(results),
                 "source": source,
                 "note": note,
                 "notebook_ids": _scope_record_ids(notebook_ids),
             },
         )
-        return search_results
+        return await _drop_unapproved_results(search_results or [], results)
     except RuntimeError as e:
         # SurrealDB's search::highlight can compute a byte position that exceeds the
         # stored string length on large or multi-byte chunks, aborting the whole query
@@ -1196,7 +1305,7 @@ async def vector_search(
             """,
             {
                 "embed": embed,
-                "results": results,
+                "results": _search_fetch_count(results),
                 "source": source,
                 "note": note,
                 "minimum_score": minimum_score,
@@ -1206,13 +1315,15 @@ async def vector_search(
         # SurrealDB fn::vector_search declares ORDER BY similarity DESC, but the
         # SELECT * FROM fn::... wrapper can still return rows out of rank order.
         # Enforce descending similarity (stable by id for ties) before returning.
-        return sorted(
+        ranked = sorted(
             search_results or [],
             key=lambda item: (
                 -float(item.get("similarity") or 0.0),
                 str(item.get("id") or ""),
             ),
         )
+        # Hide hits from sources still awaiting approval (also feeds Ask/RAG).
+        return await _drop_unapproved_results(ranked, results)
     except Exception as e:
         logger.error(f"Error performing vector search: {str(e)}")
         logger.exception(e)

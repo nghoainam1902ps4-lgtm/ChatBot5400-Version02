@@ -108,7 +108,7 @@ async def create_source_chat_session(
     """Create a new chat session for a source, owned by the current user."""
     try:
         # Verify source exists (normalizes the ID and 404s if missing)
-        full_source_id, _source = await get_source_or_404(source_id)
+        full_source_id, _source = await get_source_or_404(source_id, current)
 
         # Create new session with model_override support
         session = ChatSession(
@@ -153,7 +153,7 @@ async def get_source_chat_sessions(
     """Get the current user's chat sessions for a source."""
     try:
         # Verify source exists (normalizes the ID and 404s if missing)
-        full_source_id, _source = await get_source_or_404(source_id)
+        full_source_id, _source = await get_source_or_404(source_id, current)
 
         # Get sessions that refer to this source - first get relations, then sessions
         relations = await repo_query(
@@ -233,7 +233,7 @@ async def get_source_chat_session(
     try:
         # Verify source + session exist and are related (404s otherwise)
         _full_source_id, _source, full_session_id, session = (
-            await get_verified_source_session(source_id, session_id)
+            await get_verified_source_session(source_id, session_id, current)
         )
         _owned_session_or_404(session, current)
 
@@ -300,7 +300,7 @@ async def update_source_chat_session(
     try:
         # Verify source + session exist and are related (404s otherwise)
         _full_source_id, _source, full_session_id, session = (
-            await get_verified_source_session(source_id, session_id)
+            await get_verified_source_session(source_id, session_id, current)
         )
         _owned_session_or_404(session, current)
 
@@ -349,7 +349,7 @@ async def delete_source_chat_session(
     try:
         # Verify source + session exist and are related (404s otherwise)
         _full_source_id, _source, full_session_id, session = (
-            await get_verified_source_session(source_id, session_id)
+            await get_verified_source_session(source_id, session_id, current)
         )
         _owned_session_or_404(session, current)
 
@@ -457,7 +457,7 @@ async def send_message_to_source_chat(
     try:
         # Verify source + session exist and are related (404s otherwise)
         full_source_id, _source, full_session_id, session = (
-            await get_verified_source_session(source_id, session_id)
+            await get_verified_source_session(source_id, session_id, current)
         )
         _owned_session_or_404(session, current)
 

@@ -16,9 +16,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from api.auth import TokenUser
 from api.routers.sources import _is_source_file_available, _resolve_source_file
 from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.domain.notebook import Asset, Source
+
+ADMIN = TokenUser(id="user:admin", username="admin", role="admin")
 
 
 def make_source(file_path=None, **overrides):
@@ -114,7 +117,7 @@ class TestResolveSourceFileRejectsSiblingDirectoryBypass:
             from fastapi import HTTPException
 
             with pytest.raises(HTTPException) as exc_info:
-                await _resolve_source_file("source:test123")
+                await _resolve_source_file("source:test123", ADMIN)
             assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
@@ -132,7 +135,7 @@ class TestResolveSourceFileRejectsSiblingDirectoryBypass:
         with patch(
             "api.routers.sources.Source.get", new=AsyncMock(return_value=source)
         ):
-            resolved_path, filename = await _resolve_source_file("source:test123")
+            resolved_path, filename = await _resolve_source_file("source:test123", ADMIN)
 
         assert filename == "document.pdf"
         assert resolved_path == str(legit_file.resolve())

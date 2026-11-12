@@ -17,6 +17,8 @@ from typing import Any, Iterable, List, Optional, Tuple
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
+from api import approvals_service
+from api.auth import TokenUser
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import ChatSession, Source
 
@@ -40,12 +42,14 @@ def normalize_record_id(table: str, record_id: str) -> str:
     return record_id if record_id.startswith(prefix) else f"{prefix}{record_id}"
 
 
-async def get_source_or_404(source_id: str) -> Tuple[str, Source]:
-    """Normalize a source ID and fetch the source, 404 if missing."""
+async def get_source_or_404(source_id: str, user: TokenUser) -> Tuple[str, Source]:
+    """Normalize a source ID and fetch the source, 404 if missing or if it is a
+    pending submission the caller may not see."""
     full_source_id = normalize_record_id("source", source_id)
     source = await Source.get(full_source_id)
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
+    await approvals_service.assert_can_view_source(user, source)
     return full_source_id, source
 
 
@@ -59,11 +63,12 @@ async def get_session_or_404(session_id: str) -> Tuple[str, ChatSession]:
 
 
 async def get_verified_source_session(
-    source_id: str, session_id: str
+    source_id: str, session_id: str, user: TokenUser
 ) -> Tuple[str, Source, str, ChatSession]:
-    """Verify the source exists, the session exists, and the session refers to
-    the source. Returns the normalized IDs plus both records."""
-    full_source_id, source = await get_source_or_404(source_id)
+    """Verify the source exists (and is visible to the caller), the session
+    exists, and the session refers to the source. Returns the normalized IDs
+    plus both records."""
+    full_source_id, source = await get_source_or_404(source_id, user)
     full_session_id, session = await get_session_or_404(session_id)
 
     relation_query = await repo_query(

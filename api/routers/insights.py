@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
+from api import approvals_service
+from api.auth import TokenUser, get_current_user
 from api.models import NoteResponse, SaveAsNoteRequest, SourceInsightResponse
 from open_notebook.domain.notebook import SourceInsight
 from open_notebook.exceptions import (
@@ -13,7 +15,10 @@ router = APIRouter()
 
 
 @router.get("/insights/{insight_id}", response_model=SourceInsightResponse)
-async def get_insight(insight_id: str):
+async def get_insight(
+    insight_id: str,
+    current_user: TokenUser = Depends(get_current_user),
+):
     """Get a specific insight by ID."""
     try:
         insight = await SourceInsight.get(insight_id)
@@ -22,6 +27,8 @@ async def get_insight(insight_id: str):
 
         # Get source ID from the insight relationship
         source = await insight.get_source()
+        # Insights of a pending submission are hidden like the source itself.
+        await approvals_service.assert_can_view_source(current_user, source)
 
         return SourceInsightResponse(
             id=insight.id or "",
@@ -61,12 +68,19 @@ async def delete_insight(insight_id: str):
 
 
 @router.post("/insights/{insight_id}/save-as-note", response_model=NoteResponse)
-async def save_insight_as_note(insight_id: str, request: SaveAsNoteRequest):
+async def save_insight_as_note(
+    insight_id: str,
+    request: SaveAsNoteRequest,
+    current_user: TokenUser = Depends(get_current_user),
+):
     """Convert an insight to a note."""
     try:
         insight = await SourceInsight.get(insight_id)
         if not insight:
             raise HTTPException(status_code=404, detail="Insight not found")
+        await approvals_service.assert_can_view_source(
+            current_user, await insight.get_source()
+        )
 
         # Use the existing save_as_note method from the domain model
         note = await insight.save_as_note(request.notebook_id)

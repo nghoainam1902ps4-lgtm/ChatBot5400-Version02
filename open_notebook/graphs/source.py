@@ -223,7 +223,13 @@ async def save_source(state: SourceState) -> dict:
     # NOTE: Notebook associations are created by the API immediately for UI responsiveness
     # No need to create them here to avoid duplicate edges
 
-    if state["embed"]:
+    # A pending submission is processed with embedding off. If a reviewer
+    # approved it while it was still processing, approve() found no text to
+    # embed, so embed now that the text exists. (If approval lands after this
+    # check, approve() re-reads the saved text and embeds it itself.)
+    should_embed = state["embed"] or await source.was_approved_by_review()
+
+    if should_embed:
         if source.full_text and source.full_text.strip():
             logger.debug("Embedding content for vector search")
             await source.vectorize()

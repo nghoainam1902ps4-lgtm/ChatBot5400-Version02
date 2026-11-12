@@ -156,6 +156,10 @@ class TestRetrySourceProcessing:
         source.topics = []
         source.full_text = None
         source.asset = MagicMock(file_path=None, url="https://example.com/post")
+        # Approval-workflow fields read by _source_to_response.
+        source.approval_status = "approved"
+        source.submitted_by = None
+        source.review_note = None
         source.save = AsyncMock()
         source.get_embedded_chunks = AsyncMock(return_value=0)
         mock_get.return_value = source
@@ -279,7 +283,7 @@ class TestSourceListSearch:
         query, params = mock_query.call_args[0]
         assert "string::matches(title OR '', $q_pattern)" in query
         assert "asset.file_path" in query
-        assert query.index("WHERE string::matches") < query.index("ORDER BY") < query.index("LIMIT $limit")
+        assert query.index("WHERE (string::matches") < query.index("ORDER BY") < query.index("LIMIT $limit")
         assert params["q_pattern"].startswith("(?i)q[uù")
         assert params["limit"] == 30 and params["offset"] == 30
 

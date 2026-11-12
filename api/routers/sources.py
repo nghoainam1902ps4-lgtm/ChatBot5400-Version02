@@ -19,6 +19,7 @@ from loguru import logger
 from pydantic import ValidationError
 from surreal_commands import execute_command_sync, submit_command
 
+from api import approvals_service
 from api.auth import (
     TokenUser,
     auth_disabled,
@@ -814,10 +815,11 @@ async def create_source_json(
     return await create_source(form_data, current_user)
 
 
-async def _resolve_source_file(source_id: str) -> tuple[str, str]:
+async def _resolve_source_file(source_id: str, user: TokenUser) -> tuple[str, str]:
     source = await Source.get(source_id)
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
+    await approvals_service.assert_can_view_source(user, source)
 
     file_path = source.asset.file_path if source.asset else None
     if not file_path:
@@ -863,6 +865,8 @@ async def get_source(
         source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
+        # Pending submissions stay hidden from users who may not see them.
+        await approvals_service.assert_can_view_source(current_user, source)
 
         await stamp_view(current_user.id, source.id or source_id, "source")
 
@@ -911,10 +915,13 @@ async def get_source(
 
 
 @router.head("/sources/{source_id}/download")
-async def check_source_file(source_id: str):
+async def check_source_file(
+    source_id: str,
+    current_user: TokenUser = Depends(get_current_user),
+):
     """Check if a source has a downloadable file."""
     try:
-        await _resolve_source_file(source_id)
+        await _resolve_source_file(source_id, current_user)
         return Response(status_code=200)
     except HTTPException:
         raise
@@ -926,10 +933,13 @@ async def check_source_file(source_id: str):
 
 
 @router.get("/sources/{source_id}/download")
-async def download_source_file(source_id: str):
+async def download_source_file(
+    source_id: str,
+    current_user: TokenUser = Depends(get_current_user),
+):
     """Download the original file associated with an uploaded source."""
     try:
-        resolved_path, filename = await _resolve_source_file(source_id)
+        resolved_path, filename = await _resolve_source_file(source_id, current_user)
         return FileResponse(
             path=resolved_path,
             filename=filename,
@@ -945,13 +955,17 @@ async def download_source_file(source_id: str):
 
 
 @router.get("/sources/{source_id}/status", response_model=SourceStatusResponse)
-async def get_source_status(source_id: str):
+async def get_source_status(
+    source_id: str,
+    current_user: TokenUser = Depends(get_current_user),
+):
     """Get processing status for a source."""
     try:
         # First, verify source exists
         source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
+        await approvals_service.assert_can_view_source(current_user, source)
 
         # Check if this is a legacy source (no command)
         if not source.command:
@@ -1185,12 +1199,16 @@ async def delete_source(source_id: str):
 
 
 @router.get("/sources/{source_id}/insights", response_model=List[SourceInsightResponse])
-async def get_source_insights(source_id: str):
+async def get_source_insights(
+    source_id: str,
+    current_user: TokenUser = Depends(get_current_user),
+):
     """Get all insights for a specific source."""
     try:
         source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
+        await approvals_service.assert_can_view_source(current_user, source)
 
         insights = await source.get_insights()
         return [

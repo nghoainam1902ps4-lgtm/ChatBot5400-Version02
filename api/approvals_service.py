@@ -8,11 +8,11 @@ to the categories (and their sub-notebooks) an admin assigned to them.
 
 from typing import Any, Dict, List, Optional
 
-from api.auth import TokenUser
+from api.auth import TokenUser, auth_disabled
 from api.models import ApprovalItemResponse, ApprovalNotebookRef, ReviewerResponse
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
-from open_notebook.exceptions import AuthorizationError
+from open_notebook.exceptions import AuthorizationError, NotFoundError
 
 
 async def scope_ids_for(user: TokenUser) -> Optional[List[str]]:
@@ -162,6 +162,32 @@ async def assert_can_review_source(user: TokenUser, source: Source) -> None:
     referenced = set(await source.referenced_notebook_ids())
     if referenced.isdisjoint(set(scope)):
         raise AuthorizationError("This source is outside your managed categories")
+
+
+async def assert_can_view_source(user: TokenUser, source: Source) -> None:
+    """Hide a source that is still awaiting approval from callers who may not
+    see it.
+
+    Approved sources are visible to everyone. A pending source is visible only
+    to an admin, its submitter, the approver it was routed to, and approvers
+    managing one of its notebooks. Everyone else gets NotFoundError (404) so the
+    endpoint does not reveal that the document exists.
+    """
+    if (source.approval_status or "approved") == "approved":
+        return
+    if auth_disabled() or user.is_admin:
+        return
+    if source.submitted_by and str(source.submitted_by) == user.id:
+        return
+    if user.is_approver:
+        if source.assigned_approver and str(source.assigned_approver) == user.id:
+            return
+        try:
+            await assert_can_review_source(user, source)
+            return
+        except AuthorizationError:
+            pass
+    raise NotFoundError("Source not found")
 
 
 async def assert_can_manage_notebook(user: TokenUser, notebook_id: str) -> None:

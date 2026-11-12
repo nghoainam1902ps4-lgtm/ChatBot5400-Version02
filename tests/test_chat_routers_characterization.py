@@ -48,7 +48,7 @@ def _session(**overrides):
 
 
 def _source(**overrides):
-    defaults = dict(id="source:xyz", title="My Source")
+    defaults = dict(id="source:xyz", title="My Source", approval_status="approved")
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
