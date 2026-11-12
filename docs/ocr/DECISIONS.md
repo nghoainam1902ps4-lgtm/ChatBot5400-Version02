@@ -93,6 +93,23 @@ Mỗi quyết định: bối cảnh → quyết định → phương án bị lo
   CPU trên máy không GPU như VPS hiện tại). Không đặt `accelerator_options.device` (tránh ép
   Layout/TableFormer); `num_threads` chỉ đặt khi admin chọn giá trị (mặc định giữ của Docling).
 
+## D-11. Nguồn URL là PDF/ảnh cũng theo engine đã chọn
+
+- Content Core tải file từ URL (PDF/ảnh) rồi chạy Docling Auto. Khi cấu hình OCR khác mặc định,
+  ChatBot5400 HEAD-check bằng `detect_remote_mime` của Content Core và tải bằng chính
+  `_download_remote_file` của Content Core, rồi dùng lớp D-02. Trang web/YouTube không đổi. Test
+  `test_content_core_url_helpers_still_exist` canh chừng khi nâng cấp.
+
+## D-12. Ảnh giữ nguyên mặc định Docling
+
+- Content Core không đặt format option cho ảnh ⇒ ảnh dùng mặc định Docling (OCR bật, enrichment
+  tắt). Lớp D-02 cho ảnh chỉ thêm `ocr_options` (`test_images_keep_docling_defaults_except_ocr`).
+
+## D-13. Gói runtime staged cần digest ghim ngoài volume
+
+- `OCR_TRUSTED_WHEELS_SHA256` / `OCR_TRUSTED_DEBS_SHA256` (in ra bởi `bundle install`) là mỏ neo
+  tin cậy; không khớp ⇒ không cài, engine báo runtime thiếu.
+
 ## D-10. Kiểm thử trong Cloud ở mức OCR stage
 
 - Hugging Face & modelscope bị chặn ⇒ không chạy được full pipeline. Integration test chạy OCR

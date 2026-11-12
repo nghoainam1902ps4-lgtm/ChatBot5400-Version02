@@ -21,10 +21,10 @@ Trạng thái: **PASS** (có bằng chứng thực tế) · **FAIL** · **NOT VE
 | Chuyển engine an toàn | PASS | Settings đọc lại mỗi job (`test_settings_reloaded_for_every_job`); activate từ chối engine chưa ready (`test_activate_refuses_not_ready_engine_and_keeps_current`); chạy Fast+Best đồng thời |
 | Gỡ model đang dùng bị chặn | PASS | `test_active_engine_cannot_be_removed`, `test_delete_active_model_refused`, UI ẩn nút |
 | Regression: không lỗi mới | PASS (trong phạm vi chạy được) | So sánh với commit gốc: 0 lỗi mới sau sửa; 4 file cần tiktoken NOT VERIFIED (mạng) |
-| Backend test | PASS | 114 test OCR + `test_graphs.py` 22/22 + suite chung (Test Report §3) |
+| Backend test | PASS | 128 test OCR (+4 skip full pipeline) + `test_graphs.py` 22/22 + suite chung (Test Report §3, §6) |
 | Frontend build | PASS | `npm run build` |
 | Docker test | NOT VERIFIED | Mạng Cloud chặn ghcr blob / Debian apt; Docker Hub 429. Script `scripts/ocr/docker-acceptance.sh` |
-| Security review | PASS | `OCR_SECURITY_REVIEW.md` + review độc lập (§ CHECKPOINT) |
+| Security review | PASS | `OCR_SECURITY_REVIEW.md` + review độc lập, 10/11 phát hiện đã sửa (Test Report §6) |
 | Rollback có tài liệu | PASS | `OCR_ROLLBACK.md` |
 | Dữ liệu người dùng không bị xoá | PASS | Không migration; không lệnh xoá volume; script Docker dùng thư mục tạm riêng |
 | Không triển khai production | PASS | Chỉ push branch `claude/friendly-mendel-a2b6m5` |

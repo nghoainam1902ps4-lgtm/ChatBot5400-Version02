@@ -16,8 +16,10 @@ from open_notebook.domain.notebook import Asset, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.graphs.transformation import graph as transform_graph
 from open_notebook.ocr.docling_extract import (
+    extract_url_with_selected_ocr,
     extract_with_selected_ocr,
     should_use_native_ocr,
+    should_use_native_ocr_for_url,
 )
 from open_notebook.ocr.options import OcrSettings
 from open_notebook.utils.runtime_capabilities import engine_runtime_missing
@@ -175,6 +177,21 @@ async def content_process(state: SourceState) -> dict:
         # takes this branch.
         processed = await extract_with_selected_ocr(
             content_state["file_path"],
+            config or ContentCoreConfig(),
+            ocr_settings,
+        )
+    elif (
+        content_state.get("url")
+        and not content_state.get("content")
+        and await should_use_native_ocr_for_url(
+            content_state["url"],
+            config_kwargs.get("document_engine", "auto"),
+            ocr_settings,
+        )
+    ):
+        # A remote PDF/scan content-core would download and OCR via Docling.
+        processed = await extract_url_with_selected_ocr(
+            content_state["url"],
             config or ContentCoreConfig(),
             ocr_settings,
         )

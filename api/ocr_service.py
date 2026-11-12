@@ -51,7 +51,37 @@ def _config(settings: ContentSettings) -> OcrConfig:
     )
 
 
+_FINISHED_JOB_STATES = {"completed", "failed", "canceled", "cancelled"}
+
+
+async def _reconcile_job(engine_id: str) -> None:
+    """Fail an install whose background job ended (or vanished) without finishing.
+
+    The worker normally records the outcome itself; this covers a worker crash,
+    a job lost from the queue or a cancelled job, so the UI never stays stuck in
+    pending/downloading and Retry becomes available immediately.
+    """
+    st = store.read_state(engine_id)
+    if st.get("state") not in store.ACTIVE_JOB_STATES or not st.get("job_id"):
+        return
+    try:
+        data = await CommandService.get_command_status(st["job_id"])
+        job_state = str(data.get("status") or "unknown").lower()
+    except Exception:
+        return  # cannot tell; the stale timeout in store.job_is_active applies
+    if job_state in _FINISHED_JOB_STATES:
+        latest = store.read_state(engine_id)
+        if latest.get("state") in store.ACTIVE_JOB_STATES:
+            store.update_state(
+                engine_id,
+                state=store.FAILED,
+                error=f"The installation job ended ({job_state}) before completing. Retry.",
+                nonce=None,
+            )
+
+
 async def _status(engine_id: str, active: str) -> OcrEngineStatus:
+    await _reconcile_job(engine_id)
     # Filesystem hashing + subprocess probes: off the event loop.
     data = await asyncio.to_thread(engine_status, engine_id, active)
     return OcrEngineStatus(**data)
@@ -99,6 +129,7 @@ async def install(engine_id: str) -> dict[str, Any]:
             f"{spec.display_name} uses the project's built-in model; nothing to install."
         )
     async with _lock:
+        await _reconcile_job(engine_id)
         state = store.read_state(engine_id)
         if store.job_is_active(state):
             raise InvalidInputError(
@@ -178,6 +209,7 @@ async def delete_model(engine_id: str) -> list[str]:
     if spec.runtime == "builtin":
         raise InvalidInputError("The built-in RapidOCR model cannot be removed.")
     async with _lock:
+        await _reconcile_job(engine_id)
         settings = await _settings()
         active = _config(settings).docling_ocr_engine
         try:

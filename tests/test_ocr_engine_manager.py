@@ -838,3 +838,170 @@ def test_docling_probe_script_is_static():
     """The subprocess probe runs a fixed script with no user input."""
     assert "{" not in runtime._DOCLING_PROBE.split("import json")[0]
     assert Path(runtime.__file__).read_text(encoding="utf-8").count("shell=True") == 0
+
+
+# --- Regression tests for the independent review findings -------------------------
+
+
+class TestReviewFixes:
+    def _rt_ready(self, monkeypatch):
+        monkeypatch.setattr(
+            runtime,
+            "probe_runtime",
+            lambda e: runtime.RuntimeStatus(kind="tesseract", status="ready"),
+        )
+
+    def test_failed_smoke_with_verified_files_is_not_ready(self, ocr_dir, monkeypatch):
+        from open_notebook.ocr import status as status_mod
+
+        self._rt_ready(monkeypatch)
+        monkeypatch.setattr(
+            store, "model_status", lambda e: store.ModelStatus("installed", [])
+        )
+        store.write_state(
+            "tesseract_best", {"state": store.FAILED, "error": "Smoke check failed"}
+        )
+        s = status_mod.engine_status("tesseract_best", "rapidocr")
+        assert s["state"] == "failed" and s["ready"] is False
+
+    def test_stale_job_with_files_from_other_engine_is_not_ready(
+        self, ocr_dir, monkeypatch
+    ):
+        from open_notebook.ocr import status as status_mod
+
+        self._rt_ready(monkeypatch)
+        monkeypatch.setattr(
+            store, "model_status", lambda e: store.ModelStatus("installed", [])
+        )
+        store.write_state("tesseract_best", {"state": store.DOWNLOADING})
+        p = paths.manifests_dir() / "tesseract_best.json"
+        data = json.loads(p.read_text())
+        data["updated_at"] = 0
+        p.write_text(json.dumps(data))
+        assert (
+            status_mod.engine_status("tesseract_best", "rapidocr")["state"] == "failed"
+        )
+
+    @pytest.mark.asyncio
+    async def test_lock_busy_job_records_retryable_failure(self, ocr_dir, monkeypatch):
+        from commands import ocr_commands
+
+        def busy(engine_id):
+            raise store.LockBusy("busy")
+
+        monkeypatch.setattr(installer, "install_models", busy)
+        store.write_state("tesseract_fast", {"state": "pending", "nonce": "n"})
+        out = await ocr_commands.ocr_install_model_command(
+            ocr_commands.OcrJobInput(engine_id="tesseract_fast", nonce="n")
+        )
+        st = store.read_state("tesseract_fast")
+        assert out.success is False and st["state"] == "failed" and st["nonce"] is None
+
+    def test_shared_lock_waits_instead_of_failing(self, ocr_dir):
+        import threading
+        import time
+
+        acquired = []
+
+        def holder():
+            with store.file_lock("shared-x"):
+                time.sleep(1.0)
+
+        t = threading.Thread(target=holder)
+        t.start()
+        time.sleep(0.2)
+        with store.file_lock("shared-x", timeout=10):
+            acquired.append(True)
+        t.join()
+        assert acquired == [True]
+        with store.file_lock("solo"):
+            with pytest.raises(store.LockBusy):
+                with store.file_lock("solo", timeout=0.6):
+                    pass
+
+    @pytest.mark.parametrize("other_status", ["corrupted", "partial", "installed"])
+    def test_osd_kept_while_other_variant_has_any_files(
+        self, ocr_dir, monkeypatch, other_status
+    ):
+        real = store.model_status
+        monkeypatch.setattr(
+            store,
+            "model_status",
+            lambda e: store.ModelStatus(other_status, [])
+            if e == "tesseract_best"
+            else real(e),
+        )
+        for f in catalog.ENGINES["tesseract_fast"].files:
+            p = paths.safe_child(paths.models_dir(), f.rel_path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"x")
+        removed = installer.delete_models("tesseract_fast", active_engine="rapidocr")
+        assert "tesseract/osd.traineddata" not in removed
+
+    def test_osd_kept_while_other_variant_installing(self, ocr_dir):
+        for f in catalog.ENGINES["tesseract_fast"].files:
+            p = paths.safe_child(paths.models_dir(), f.rel_path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"x")
+        store.write_state("tesseract_best", {"state": store.DOWNLOADING})
+        removed = installer.delete_models("tesseract_fast", active_engine="rapidocr")
+        assert "tesseract/osd.traineddata" not in removed
+
+    @pytest.mark.asyncio
+    async def test_url_scans_follow_selected_engine(self, monkeypatch):
+        from open_notebook.ocr import docling_extract
+
+        async def mime(url):
+            return {"https://x/a.pdf": "application/pdf", "https://x/page": "article"}[
+                url
+            ]
+
+        monkeypatch.setattr("content_core.processors.url.detect_remote_mime", mime)
+        monkeypatch.setattr(docling_extract, "_docling_routes", lambda m, e: True)
+        ocr = OcrSettings(engine="tesseract_best")
+        assert await docling_extract.should_use_native_ocr_for_url(
+            "https://x/a.pdf", "auto", ocr
+        )
+        assert not await docling_extract.should_use_native_ocr_for_url(
+            "https://x/page", "auto", ocr
+        )
+        monkeypatch.setattr(runtime, "auto_resolves_to_rapidocr", lambda: True)
+        # Default configuration: no HEAD request, content-core handles the URL.
+        monkeypatch.setattr(
+            "content_core.processors.url.detect_remote_mime",
+            lambda u: pytest.fail("HEAD"),
+        )
+        assert not await docling_extract.should_use_native_ocr_for_url(
+            "https://x/a.pdf", "auto", OcrSettings()
+        )
+
+    @pytest.mark.asyncio
+    async def test_lost_job_is_reconciled_to_failed(self, ocr_dir, monkeypatch):
+        from api import ocr_service
+
+        store.write_state(
+            "easyocr", {"state": store.PENDING, "job_id": "command:1", "nonce": "n"}
+        )
+
+        async def status(job_id):
+            return {"status": "failed"}
+
+        monkeypatch.setattr(ocr_service.CommandService, "get_command_status", status)
+        await ocr_service._reconcile_job("easyocr")
+        st = store.read_state("easyocr")
+        assert st["state"] == "failed" and st["nonce"] is None
+
+    @pytest.mark.asyncio
+    async def test_running_job_not_reconciled(self, ocr_dir, monkeypatch):
+        from api import ocr_service
+
+        store.write_state(
+            "easyocr", {"state": store.DOWNLOADING, "job_id": "command:1"}
+        )
+
+        async def status(job_id):
+            return {"status": "running"}
+
+        monkeypatch.setattr(ocr_service.CommandService, "get_command_status", status)
+        await ocr_service._reconcile_job("easyocr")
+        assert store.read_state("easyocr")["state"] == store.DOWNLOADING

@@ -67,11 +67,36 @@ def _debs_dir() -> Path:
     return paths.packages_dir() / "debs"
 
 
+TRUSTED_DIGEST_ENV = {
+    "wheels": "OCR_TRUSTED_WHEELS_SHA256",
+    "debs": "OCR_TRUSTED_DEBS_SHA256",
+}
+
+
+def staged_digest(directory: Path) -> str:
+    return store.sha256_file(directory / "checksums.sha256")
+
+
 def _verify_staged(directory: Path) -> list[Path]:
-    """Files staged by ``bundle install`` with their recorded checksums."""
+    """Files staged by ``bundle install``, verified before anything is installed.
+
+    The checksum list lives on the data volume, so on its own it only proves
+    the files were not corrupted. The trust anchor is the digest of that list,
+    which the operator pins in the service environment (compose file, outside
+    the volume) — printed by ``bundle install``. Without a matching pin nothing
+    staged is installed (a writable volume must not lead to root package installs).
+    """
     sums = directory / "checksums.sha256"
     if not sums.is_file():
         raise RuntimeError(f"{sums} missing; stage packages with 'bundle install'")
+    env_name = TRUSTED_DIGEST_ENV.get(directory.name)
+    pinned = os.environ.get(env_name or "", "").strip().lower()
+    actual = staged_digest(directory)
+    if not env_name or pinned != actual:
+        raise RuntimeError(
+            f"Staged packages in {directory} are not trusted: set {env_name}={actual} "
+            "in the service environment (value printed by 'bundle install')."
+        )
     files: list[Path] = []
     for line in sums.read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -105,8 +130,12 @@ def install_easyocr_runtime(offline: bool) -> bool:
     else:
         cmd = [sys.executable, "-m", "pip", "install"]
     if local:
-        staged = _verify_staged(wheels)
-        _check_pinned_easyocr_wheel(staged)
+        try:
+            staged = _verify_staged(wheels)
+            _check_pinned_easyocr_wheel(staged)
+        except RuntimeError as e:
+            _log(f"EasyOCR runtime NOT installed: {e}")
+            return False
         cmd += ["--no-index", "--find-links", str(wheels)] + (
             ["--offline"] if uv else []
         )
@@ -136,7 +165,11 @@ def install_tesseract_runtime(offline: bool) -> bool:
         return False
     debs_dir = _debs_dir()
     if debs_dir.is_dir() and any(debs_dir.glob("*.deb")):
-        debs = [p for p in _verify_staged(debs_dir) if p.suffix == ".deb"]
+        try:
+            debs = [p for p in _verify_staged(debs_dir) if p.suffix == ".deb"]
+        except RuntimeError as e:
+            _log(f"Tesseract runtime NOT installed: {e}")
+            return False
         cmd = ["dpkg", "-i", *map(str, debs)]
     elif offline:
         _log(
@@ -289,6 +322,10 @@ def cmd_bundle(args: argparse.Namespace) -> int:
         return 0 if r["ok"] else 1
     r = bundle.install(Path(args.dir))
     _log(f"installed: {r['models']} staged: {r['staged']} digest: {r['digest']}")
+    for kind, env_name in TRUSTED_DIGEST_ENV.items():
+        d = paths.packages_dir() / kind
+        if (d / "checksums.sha256").is_file():
+            _log(f"Pin in the service environment: {env_name}={staged_digest(d)}")
     _log(
         "Next: 'runtime ensure --offline' (or restart the container with the OPEN_NOTEBOOK_ENABLE_OCR_* flags)."
     )

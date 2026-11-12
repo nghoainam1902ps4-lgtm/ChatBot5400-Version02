@@ -7,15 +7,15 @@ Docling 2.129.0, content-core 2.0.7, Tesseract 5.3.4 (apt), easyocr 1.7.2. Ngày
 
 | Nhóm | Lệnh | Kết quả |
 |---|---|---|
-| Unit OCR (catalog, paths, settings, routing, store, installer, delete, lifecycle, probes, nonce, API, quyền admin) | `uv run pytest tests/test_ocr_engine_manager.py` | **PASS** 82/82 |
+| Unit OCR (catalog, paths, settings, routing, store, installer, delete, lifecycle, probes, nonce, API, quyền admin) | `uv run pytest tests/test_ocr_engine_manager.py` | **PASS** 93/93 |
 | Bundle + CLI | `uv run pytest tests/test_ocr_bundle_cli.py` | **PASS** 11/11 |
-| Parity với Content Core (`extract_docling`) | `uv run pytest tests/test_ocr_docling_parity.py` | **PASS** 9/9 |
-| Routing source graph | `uv run pytest tests/test_ocr_source_graph.py` | **PASS** 4/4 |
+| Parity với Content Core (`extract_docling`) | `uv run pytest tests/test_ocr_docling_parity.py` | **PASS** 11/11 |
+| Routing source graph | `uv run pytest tests/test_ocr_source_graph.py` | **PASS** 5/5 |
 | Tích hợp engine thật (OCR stage, Docling OCR class thật) | `OCR_TEST_DATA_DIR=<data> uv run pytest tests/test_ocr_integration.py` | **PASS** 8/8; **SKIP** 4 (full pipeline cần model HF) |
 | Regression backend (toàn bộ `tests/`, trừ 4 file cần tải tiktoken) | xem §3 | **Không lỗi mới**: 897 passed / 12 failed trên branch; commit gốc 793 passed / 10 failed; 10 lỗi chung có sẵn ở commit gốc; 2 lỗi mới đã sửa (§3) |
 | Frontend lint | `npm run lint` | **PASS** 0 error (7 warning có sẵn, không ở file mới) |
 | Frontend typecheck | `npx tsc --noEmit` | **PASS** |
-| Frontend test | `npx vitest run` | **PASS** 62 files / 399 tests (gồm 9 test `OcrEngineManager`, test parity/unused-key locale) |
+| Frontend test | `npx vitest run` | **PASS** 62 files / 401 tests (gồm 11 test `OcrEngineManager`, test parity/unused-key locale) |
 | Frontend build | `npm run build` | **PASS** |
 | Ruff / mypy (mã mới) | `ruff check`, `mypy open_notebook/ocr api/ocr_service.py …` | **PASS** |
 | Cài model thật từ nguồn chính thức | `installer.install_models` ×3 | **PASS** (§2.1) |
@@ -94,3 +94,25 @@ chạy trên máy triển khai. Cú pháp entrypoint đã kiểm tra (`sh -n`).
 frontend, dữ liệu `/api/ocr/engines` là JSON **thật** do mã backend tính từ data dir Cloud (4
 engine `ready`, Docling 2.129.0, `layout_heron`, `docling_tableformer (accurate)`); các API khác
 (đăng nhập, settings) được Playwright trả lời giả lập vì Cloud không có SurrealDB.
+
+## 6. Review độc lập (Phase 8) và sửa lỗi
+
+Một agent review độc lập toàn bộ diff (không sửa file) báo 11 phát hiện; đã xử lý:
+
+| # | Phát hiện | Xử lý | Test |
+|---|---|---|---|
+| 1 | Smoke check thất bại nhưng tệp hợp lệ vẫn hiện `ready` và kích hoạt được | Manifest `failed`/job chết ⇒ luôn `failed`; UI cho Thử lại | `test_failed_smoke_with_verified_files_is_not_ready`, UI test |
+| 2 | Cài Fast+Best đồng thời: lock osd không chờ ⇒ kẹt "downloading" | Lock dùng chung có chờ (timeout); `LockBusy` ghi `failed` | `test_shared_lock_waits_instead_of_failing`, `test_lock_busy_job_records_retryable_failure` |
+| 3 | PDF/ảnh lấy từ URL đi Auto của Content Core (có thể đổi sang EasyOCR và tải model) | D-11 | `test_url_scans_follow_selected_engine`, `test_url_scan_uses_selected_engine` |
+| 4 | Ảnh nhận cờ formulas/vision (Content Core không áp dụng cho ảnh) | D-12 | `test_images_keep_docling_defaults_except_ocr` |
+| 5 | Hai nơi sửa `docling_ocr`, form Settings có thể ghi đè | SettingsForm đồng bộ lại khi không có thay đổi chưa lưu | frontend suite |
+| 6 | Polling 2 s ghi đè ô cấu hình đang nhập | Chỉ đồng bộ khi cấu hình server đổi | frontend suite |
+| 7 | Nút Cài đặt hiện khi runtime không tương thích | Ẩn | `no install button when the runtime is incompatible` |
+| 8 | Job bị mất ⇒ "pending" 6 giờ | API đối chiếu trạng thái job surreal-commands, job đã kết thúc ⇒ `failed` | `test_lost_job_is_reconciled_to_failed`, `test_running_job_not_reconciled` |
+| 9 | osd có thể bị xoá khi engine kia `corrupted`/đang cài | Giữ osd khi engine kia có bất kỳ tệp nào hoặc đang cài; xoá dưới lock dùng chung | `test_osd_kept_while_other_variant_*` |
+| 10 | Gói staged tin theo checksum nằm trên volume ⇒ ghi volume = cài gói root | D-13 (digest ghim ngoài volume); kiểm chứng thật offline | `test_staged_package_verification` |
+| 11 | `TESSDATA_PREFIX` khác bị coi là không tương thích | **Giữ nguyên có chủ đích**: Docling chạy `--list-langs`/OSD không kèm `--tessdata-dir`, nên prefix khác thật sự làm hỏng; trạng thái báo rõ cách sửa | – |
+
+Sau sửa: OCR backend 93+11+11+5+8 PASS (4 skip full pipeline), `test_graphs.py` 22/22, frontend
+401/401, tsc/lint/build PASS; integration engine thật PASS; khôi phục runtime offline có/không
+digest ghim đã kiểm chứng thật.

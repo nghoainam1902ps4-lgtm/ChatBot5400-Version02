@@ -26,6 +26,7 @@ cũ. Không ghi gì vào DB cho tới khi admin lưu.
 | `OCR_TESSERACT_CMD` | `tesseract` | Tên/đường dẫn executable |
 | `OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT` | – | Entrypoint khôi phục `tesseract-ocr` |
 | `OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR` | – | Entrypoint khôi phục `easyocr==1.7.2` |
+| `OCR_TRUSTED_WHEELS_SHA256` / `OCR_TRUSTED_DEBS_SHA256` | – | Digest ghim (in ra bởi `bundle install`) để cho phép cài gói đã stage offline |
 | Build arg `OCR_INSTALL_TESSERACT` | `false` | Nướng Tesseract vào image |
 
 ## 3. Ánh xạ engine → Docling (đã xác minh trên Docling 2.129.0)

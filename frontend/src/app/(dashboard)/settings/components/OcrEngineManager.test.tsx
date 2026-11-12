@@ -188,6 +188,20 @@ describe('OcrEngineManager', () => {
     expect(r.getByText('OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true')).toBeInTheDocument()
   })
 
+  it('no install button when the runtime is incompatible (API would refuse)', () => {
+    mockEngines([rapid, engine({ state: 'incompatible', runtime: { kind: 'tesseract', status: 'incompatible', detail: 'too old' } })])
+    render(<OcrEngineManager />)
+    expect(within(row('tesseract_fast')).queryByRole('button', { name: /ocr.install|ocr.retry/ })).toBeNull()
+  })
+
+  it('failed install with verified files still offers retry and is not usable', () => {
+    mockEngines([rapid, engine({ state: 'failed', error: 'Smoke check failed', model: { status: 'installed', installed_bytes: 1, files: [] } })])
+    render(<OcrEngineManager />)
+    const r = within(row('tesseract_fast'))
+    expect(r.getByRole('button', { name: /ocr.retry/ })).toBeInTheDocument()
+    expect(r.queryByRole('button', { name: /ocr.use/ })).toBeNull()
+  })
+
   it('saves OCR config with validated thread count', () => {
     mockEngines([rapid])
     render(<OcrEngineManager />)

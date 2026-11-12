@@ -77,21 +77,66 @@ async def should_use_native_ocr(
     return mime in OCR_MIME_TYPES and _docling_routes(mime, document_engine)
 
 
+async def should_use_native_ocr_for_url(
+    url: str, document_engine: str, ocr: OcrSettings
+) -> bool:
+    """Same decision for URL sources that content-core would download as files.
+
+    content-core's ``_extract_url`` HEAD-checks the URL and, for PDFs/images,
+    downloads them and runs Docling with Auto OCR. Without this, a URL-sourced
+    scan would bypass the selected engine (and, once EasyOCR is installed,
+    silently switch to it). Web pages / YouTube are unaffected (not OCR MIME).
+    """
+    if not url or not native_path_required(ocr):
+        return False
+    from content_core.processors.url import detect_remote_mime
+
+    mime = await detect_remote_mime(url)
+    return mime in OCR_MIME_TYPES and _docling_routes(mime, document_engine)
+
+
+async def extract_url_with_selected_ocr(
+    url: str, cc_config: Any, ocr: OcrSettings
+) -> Any:
+    """Download exactly like content-core does, then extract with the selected OCR."""
+    # Same downloader content-core's _extract_url uses (aiohttp, trust_env,
+    # retry policy); guarded by tests/test_ocr_docling_parity.py on upgrades.
+    from content_core.extraction import _download_remote_file
+
+    tmp = await _download_remote_file(url)
+    try:
+        result = await extract_with_selected_ocr(tmp, cc_config, ocr)
+        result.source_type = "url"
+        return result
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            logger.warning(f"Failed to delete temp file: {tmp}")
+
+
 def build_pipeline_options(
     cc_config: Any, ocr: OcrSettings, for_image: bool = False
 ) -> Any:
-    """content-core's PdfPipelineOptions + the selected ocr_options."""
+    """content-core's pipeline options + the selected ocr_options.
+
+    PDFs: exactly the options content-core's ``extract_docling`` sets.
+    Images: content-core sets NO format option for images, so Docling's
+    defaults apply (OCR on, enrichments off) — keep those defaults and only add
+    ``ocr_options`` (the enrichment toggles must not start applying to images).
+    """
     from docling.datamodel.pipeline_options import PdfPipelineOptions
 
-    kwargs: dict[str, Any] = dict(
-        # Images always OCR (Docling's default, what content-core gets today);
-        # PDFs honour the docling_ocr toggle exactly like content-core.
-        do_ocr=True if for_image else bool(cc_config.docling_ocr),
-        do_formula_enrichment=cc_config.docling_formulas,
-        do_picture_description=cc_config.docling_vision,
-        do_chart_extraction=cc_config.docling_vision,
-        ocr_options=build_ocr_options(ocr.engine, ocr.force_full_page),
-    )
+    kwargs: dict[str, Any] = {
+        "ocr_options": build_ocr_options(ocr.engine, ocr.force_full_page)
+    }
+    if not for_image:
+        kwargs.update(
+            do_ocr=bool(cc_config.docling_ocr),
+            do_formula_enrichment=cc_config.docling_formulas,
+            do_picture_description=cc_config.docling_vision,
+            do_chart_extraction=cc_config.docling_vision,
+        )
     accel = build_accelerator_options(ocr.num_threads)
     if accel is not None:
         kwargs["accelerator_options"] = accel

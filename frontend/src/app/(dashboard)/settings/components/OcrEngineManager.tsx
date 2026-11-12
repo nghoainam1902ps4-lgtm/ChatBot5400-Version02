@@ -220,7 +220,13 @@ function EngineRow({
   const progress = engine.job?.progress
   const pct =
     progress?.bytes_total ? Math.min(100, Math.round(((progress.bytes_done ?? 0) / progress.bytes_total) * 100)) : 0
-  const canInstall = !engine.builtin && !busy && engine.model.status !== 'installed'
+  // Retry is also offered when files verify but the install failed (e.g. smoke
+  // check); never when the runtime is incompatible (the API would refuse).
+  const canInstall =
+    !engine.builtin &&
+    !busy &&
+    engine.runtime.status !== 'incompatible' &&
+    (engine.model.status !== 'installed' || engine.state === 'failed')
   const canTest = engine.runtime.status === 'ready' && (engine.builtin || engine.ready)
   const canUse = !engine.active && (engine.builtin ? engine.runtime.status === 'ready' : engine.ready)
   const canRemove = !engine.builtin && !engine.active && !busy && engine.model.status !== 'not_installed'
@@ -351,12 +357,17 @@ export function OcrEngineManager() {
   const [threads, setThreads] = useState('')
   const [fullPage, setFullPage] = useState(false)
 
+  // Sync the form from the server config only when that config changes —
+  // not on every progress poll — so in-progress edits are not overwritten.
+  const serverEnabled = data?.config.docling_ocr
+  const serverThreads = data?.config.docling_ocr_num_threads
+  const serverFullPage = data?.config.docling_ocr_force_full_page
   useEffect(() => {
-    if (!data) return
-    setEnabled(data.config.docling_ocr)
-    setThreads(data.config.docling_ocr_num_threads ? String(data.config.docling_ocr_num_threads) : '')
-    setFullPage(data.config.docling_ocr_force_full_page)
-  }, [data])
+    if (serverEnabled === undefined) return
+    setEnabled(serverEnabled)
+    setThreads(serverThreads ? String(serverThreads) : '')
+    setFullPage(!!serverFullPage)
+  }, [serverEnabled, serverThreads, serverFullPage])
 
   if (isLoading) {
     return <LoadingSkeleton variant="card" items={1} lines={4} aria-label={t('common.loading')} />

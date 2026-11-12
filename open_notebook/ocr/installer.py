@@ -327,7 +327,9 @@ def install_models(
 
             # Shared files (osd) get their own lock so fast/best never write it at once.
             if mf.shared:
-                with store.file_lock(f"shared-{mf.rel_path.replace('/', '__')}"):
+                with store.file_lock(
+                    f"shared-{mf.rel_path.replace('/', '__')}", timeout=1800
+                ):
                     sources[mf.rel_path] = _install_file(engine_id, mf, report)
             else:
                 sources[mf.rel_path] = _install_file(engine_id, mf, report)
@@ -374,11 +376,22 @@ def delete_models(engine_id: str, active_engine: str | None) -> list[str]:
                 others = [
                     e for e in catalog.engines_sharing(mf.rel_path) if e != engine_id
                 ]
+                # Kept while ANY other engine has its own files on disk (even
+                # corrupted ones) or an install in flight (e.g. osd for fast/best).
                 if any(
-                    store.model_status(o).status in ("installed", "partial")
+                    store.model_status(o).status != "not_installed"
+                    or store.job_is_active(store.read_state(o))
                     for o in others
                 ):
-                    continue  # still needed by another engine (e.g. osd for fast/best)
+                    continue
+                with store.file_lock(
+                    f"shared-{mf.rel_path.replace('/', '__')}", timeout=60
+                ):
+                    target = paths.safe_child(paths.models_dir(), mf.rel_path)
+                    if target.is_file() or target.is_symlink():
+                        target.unlink()
+                        removed.append(mf.rel_path)
+                continue
             target = paths.safe_child(paths.models_dir(), mf.rel_path)
             if target.is_file() or target.is_symlink():
                 target.unlink()

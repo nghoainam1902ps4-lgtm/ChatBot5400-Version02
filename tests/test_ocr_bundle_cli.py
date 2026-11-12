@@ -138,13 +138,17 @@ def test_pinned_easyocr_wheel_enforced(env):
         cli._check_pinned_easyocr_wheel([])
 
 
-def test_staged_package_verification(env):
+def test_staged_package_verification(env, monkeypatch):
     d = paths.packages_dir() / "wheels"
     d.mkdir(parents=True)
     (d / "easyocr-1.7.2-py3-none-any.whl").write_bytes(b"wheel")
     (d / "checksums.sha256").write_text(
         hashlib.sha256(b"wheel").hexdigest() + "  easyocr-1.7.2-py3-none-any.whl\n"
     )
+    # Not trusted until the operator pins the digest outside the volume.
+    with pytest.raises(RuntimeError, match="OCR_TRUSTED_WHEELS_SHA256"):
+        cli._verify_staged(d)
+    monkeypatch.setenv("OCR_TRUSTED_WHEELS_SHA256", cli.staged_digest(d))
     assert len(cli._verify_staged(d)) == 1
     (d / "easyocr-1.7.2-py3-none-any.whl").write_bytes(b"tampered")
     store._hash_cache.clear()

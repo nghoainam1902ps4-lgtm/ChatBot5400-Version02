@@ -79,3 +79,31 @@ def test_threads_only_add_accelerator_options(monkeypatch, tmp_path):
     assert (
         ours["accelerator_options"]["device"] == theirs["accelerator_options"]["device"]
     )
+
+
+def test_images_keep_docling_defaults_except_ocr(monkeypatch, tmp_path):
+    """content-core sets no image format option: only ocr_options may differ."""
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+
+    monkeypatch.setenv("OCR_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TESSDATA_PREFIX", str(tmp_path / "models" / "tesseract"))
+    cfg = ContentCoreConfig(
+        document_engine="docling",
+        docling_vision=True,
+        docling_formulas=True,
+        docling_ocr=False,
+    )
+    ours = build_pipeline_options(
+        cfg, OcrSettings(engine="easyocr"), for_image=True
+    ).model_dump()
+    defaults = PdfPipelineOptions().model_dump()
+    diff = {k for k in set(ours) | set(defaults) if ours.get(k) != defaults.get(k)}
+    assert diff <= {"ocr_options"}, diff
+
+
+def test_content_core_url_helpers_still_exist():
+    """extract_url_with_selected_ocr reuses content-core's own URL helpers."""
+    from content_core.extraction import _download_remote_file
+    from content_core.processors.url import detect_remote_mime
+
+    assert callable(_download_remote_file) and callable(detect_remote_mime)

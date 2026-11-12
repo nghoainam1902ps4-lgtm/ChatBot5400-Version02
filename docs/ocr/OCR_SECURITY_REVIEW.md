@@ -11,7 +11,7 @@ Phạm vi: toàn bộ diff của tính năng (`open_notebook/ocr/`, `api/routers
 | 3 | Symlink escape | Chặn | Model là symlink ⇒ `corrupted`; thư mục cha symlink thoát volume ⇒ từ chối (`test_symlinked_model_rejected`, `test_safe_child_blocks_symlink_escape`); bundle/staged package không chấp nhận symlink. |
 | 4 | SSRF | Không có | Không endpoint nào nhận URL. URL tải chỉ lấy từ `catalog.py`, chỉ `https`, host allowlist kiểm tra ở **mỗi** bước redirect (`test_host_allowlist` gồm 169.254.169.254, `file://`, `http://`). |
 | 5 | Archive traversal | Chặn | Chỉ giải nén **một** member đúng tên, không có `/`, kích thước đúng bằng giá trị ghim, giới hạn khi copy (`test_zip_extraction_only_expected_member`). |
-| 6 | Cài package tuỳ ý | Không có | Web không chạy pip/apt. CLI/entrypoint chỉ cài spec ghim; wheel staged phải khớp checksum đã ghi và wheel `easyocr` phải khớp SHA-256 ghim trong mã (`test_pinned_easyocr_wheel_enforced`); `.deb` khớp checksum bundle. Không có upload bundle qua web. |
+| 6 | Cài package tuỳ ý | Không có | Web không chạy pip/apt. CLI/entrypoint chỉ cài spec ghim; gói staged (wheel/.deb) chỉ được cài khi digest danh sách checksum khớp `OCR_TRUSTED_WHEELS_SHA256`/`OCR_TRUSTED_DEBS_SHA256` ghim ngoài volume (`test_staged_package_verification`, kiểm chứng thật: thiếu pin ⇒ từ chối); wheel `easyocr` phải khớp SHA-256 ghim trong mã (`test_pinned_easyocr_wheel_enforced`). Không có upload bundle qua web. |
 | 7 | Toàn vẹn model | Bảo đảm | SHA-256 + kích thước ghim cho mọi tệp; staging + `os.replace` nguyên tử; tệp sai không bao giờ xuất hiện trong `models/` (`test_tampered_bundle_never_becomes_visible`); bundle tráo trọng số rồi tính lại checksum vẫn bị từ chối (`test_consistent_but_unpinned_model_rejected`); trạng thái `ready` tính lại từ checksum mỗi lần. |
 | 8 | Quyền API | Admin | Router `/api/ocr` gắn `Depends(require_admin)` (cơ chế có sẵn); test 401 không token / 403 role `user` cho mọi endpoint ghi (`TestOcrApiRequiresAdmin`). `PUT /api/settings` không nhận `docling_ocr_engine`. |
 | 9 | Bỏ qua quyền qua `/api/commands/jobs` | Đã chặn cho OCR | Endpoint chung (có sẵn) cho mọi user submit mọi command. Command OCR yêu cầu nonce ngẫu nhiên 256-bit do API admin ghi vào manifest, so sánh `hmac.compare_digest`, dùng một lần (`TestCommandNonce`). **Rủi ro có sẵn ngoài phạm vi**: các command khác vẫn bị ảnh hưởng — đề xuất khắc phục riêng. |
@@ -36,7 +36,13 @@ Phạm vi: toàn bộ diff của tính năng (`open_notebook/ocr/`, `api/routers
 
 ## Rủi ro còn lại
 
-1. Wheel phụ thuộc (ngoài `easyocr`) và `.deb` được tin theo `checksums.sha256` của bundle —
-   cần đối chiếu **bundle digest** qua kênh tin cậy (in ra khi `create` và `verify`).
+1. Wheel phụ thuộc (ngoài `easyocr`) và `.deb` được tin theo bundle digest / digest ghim do
+   operator đối chiếu qua kênh tin cậy. Cài online `easyocr==1.7.2` dựa vào TLS của PyPI (không
+   ghim hash phụ thuộc).
+4. Gỡ model của engine vừa bị bỏ kích hoạt trong lúc một job xử lý nguồn còn đang chạy với engine
+   đó có thể làm job đó lỗi (job lỗi rõ ràng, có thể xử lý lại). Khuyến nghị: gỡ model khi hàng
+   đợi trống.
+5. Khi bật cờ Tesseract mà không có mạng và không có gói staged, entrypoint chờ `apt-get update`
+   hết thời gian rồi mới khởi động (không chặn boot). Dùng build arg hoặc `OCR_OFFLINE=true`.
 2. Lỗ hổng phân quyền có sẵn của `/api/commands/jobs` cho các command không phải OCR.
 3. Image chạy root (có sẵn).

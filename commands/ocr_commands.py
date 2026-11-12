@@ -54,7 +54,11 @@ async def ocr_install_model_command(input_data: OcrJobInput) -> OcrJobOutput:
         state = await asyncio.to_thread(installer.install_models, engine_id)
         return OcrJobOutput(success=True, engine_id=engine_id, state=state.get("state"))
     except store.LockBusy as e:
-        return OcrJobOutput(success=False, engine_id=engine_id, error_message=str(e))
+        # Never leave the manifest in "downloading": record a retryable failure.
+        store.update_state(engine_id, state=store.FAILED, error=str(e), nonce=None)
+        return OcrJobOutput(
+            success=False, engine_id=engine_id, state=store.FAILED, error_message=str(e)
+        )
     except Exception as e:
         message = (
             str(e)

@@ -38,9 +38,14 @@ docker compose exec open_notebook uv run --no-sync python -m open_notebook.ocr.c
 docker compose exec open_notebook uv run --no-sync python -m open_notebook.ocr.cli bundle install /app/data/ocr-bundle
 ```
 
-Thêm vào service (để khôi phục runtime mỗi lần recreate, hoàn toàn offline):
+`bundle install` in ra hai dòng `OCR_TRUSTED_WHEELS_SHA256=…` / `OCR_TRUSTED_DEBS_SHA256=…`.
+Thêm chúng và các cờ vào service (để khôi phục runtime mỗi lần recreate, hoàn toàn offline).
+Gói đã stage **chỉ được cài khi digest khớp giá trị ghim trong compose** (nằm ngoài volume dữ
+liệu) — người có quyền ghi volume không thể khiến container cài gói tuỳ ý bằng root.
 
 ```yaml
+      - OCR_TRUSTED_WHEELS_SHA256=<giá trị in ra>
+      - OCR_TRUSTED_DEBS_SHA256=<giá trị in ra>
       - OCR_OFFLINE=true
       - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true   # nếu bundle có tesseract
       - OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true     # nếu bundle có easyocr
@@ -56,8 +61,9 @@ rm -rf ./notebook_data/ocr-bundle    # tuỳ chọn: wheel/.deb đã được st
 - `bundle verify`/`install` **không** gọi mạng (không PyPI, không Hugging Face, không GitHub).
 - Model chỉ được chấp nhận nếu khớp SHA-256 **ghim trong mã nguồn** (`catalog.py`) — bundle bị
   đánh tráo trọng số rồi tính lại checksum vẫn bị từ chối.
-- Wheel/.deb được kiểm tra theo `checksums.sha256` của bundle, và được stage kèm checksum để
-  entrypoint kiểm tra lại trước mỗi lần cài.
+- Wheel/.deb được kiểm tra theo `checksums.sha256` của bundle, và được stage kèm checksum; khi
+  khôi phục runtime, digest của danh sách checksum phải khớp `OCR_TRUSTED_WHEELS_SHA256` /
+  `OCR_TRUSTED_DEBS_SHA256` do operator ghim; wheel `easyocr` còn phải khớp SHA-256 ghim trong mã.
 - Tệp thừa, symlink, đường dẫn `../` trong bundle ⇒ từ chối.
 - Thiếu thành phần ⇒ báo rõ thành phần nào; không tự tải.
 - Không có chức năng upload bundle qua giao diện web.

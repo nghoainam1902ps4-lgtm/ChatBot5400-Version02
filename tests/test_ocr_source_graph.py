@@ -96,6 +96,27 @@ async def test_selected_engine_uses_docling_ocr_layer(wired, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_url_scan_uses_selected_engine(wired, monkeypatch):
+    calls, settings = wired
+    settings.docling_ocr_engine = "tesseract_best"
+    got = {}
+
+    async def decide_url(url, engine, ocr):
+        return url.endswith(".pdf")
+
+    async def fake_url_native(url, cfg, ocr):
+        got.update(url=url, ocr=ocr)
+        return _Out()
+
+    monkeypatch.setattr(source_graph, "should_use_native_ocr_for_url", decide_url)
+    monkeypatch.setattr(source_graph, "extract_url_with_selected_ocr", fake_url_native)
+    await source_graph.content_process({"content_state": {"url": "https://x/scan.pdf"}})
+    assert got["url"] == "https://x/scan.pdf" and calls["content_core"] == 0
+    await source_graph.content_process({"content_state": {"url": "https://x/page"}})
+    assert calls["content_core"] == 1
+
+
+@pytest.mark.asyncio
 async def test_urls_and_text_never_take_ocr_path(wired, monkeypatch):
     calls, settings = wired
     settings.docling_ocr_engine = "easyocr"
@@ -103,7 +124,11 @@ async def test_urls_and_text_never_take_ocr_path(wired, monkeypatch):
     async def boom(*a):
         raise AssertionError("must not be consulted")
 
+    async def not_a_scan(*a):
+        return False
+
     monkeypatch.setattr(source_graph, "should_use_native_ocr", boom)
+    monkeypatch.setattr(source_graph, "should_use_native_ocr_for_url", not_a_scan)
     await source_graph.content_process(
         {"content_state": {"url": "https://example.com"}}
     )

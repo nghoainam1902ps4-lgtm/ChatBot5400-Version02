@@ -385,9 +385,11 @@ Compare this digest over a trusted channel before installing.
 # copy this folder into the data volume, e.g. ./notebook_data/ocr-bundle
 docker compose exec open_notebook uv run --no-sync python -m open_notebook.ocr.cli bundle verify /app/data/ocr-bundle
 docker compose exec open_notebook uv run --no-sync python -m open_notebook.ocr.cli bundle install /app/data/ocr-bundle
-docker compose exec open_notebook uv run --no-sync python -m open_notebook.ocr.cli runtime ensure --offline
-docker compose restart open_notebook
 ```
+
+`bundle install` prints OCR_TRUSTED_WHEELS_SHA256 / OCR_TRUSTED_DEBS_SHA256. Add them, plus
+OCR_OFFLINE=true and the OPEN_NOTEBOOK_ENABLE_OCR_* flags, to the service environment, then
+`docker compose up -d` (the entrypoint installs the staged runtimes only when the pins match).
 
 Model files are checked against the SHA-256 values pinned in ChatBot5400's source
 (open_notebook/ocr/catalog.py). Wheels / .deb packages are staged under

@@ -89,26 +89,36 @@ class LockBusy(RuntimeError):
 
 
 @contextlib.contextmanager
-def file_lock(name: str) -> Iterator[None]:
-    """Non-blocking exclusive lock (prevents duplicate concurrent installs)."""
+def file_lock(name: str, timeout: float = 0.0) -> Iterator[None]:
+    """Exclusive inter-process lock.
+
+    ``timeout=0`` fails immediately (prevents duplicate installs of one engine);
+    a positive timeout waits (files shared by several engines, e.g. osd).
+    """
+    import time as _time
+
     paths.ensure_dirs()
     lock_path = paths.downloads_dir() / f"{name}.lock"
     fh = open(lock_path, "a+")
+    deadline = _time.monotonic() + timeout
     try:
-        try:
-            import fcntl
-
+        while True:
             try:
-                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError as e:
-                raise LockBusy(f"{name} is already being installed") from e
-        except ImportError:  # pragma: no cover - Windows dev fallback
-            import msvcrt
+                try:
+                    import fcntl
 
-            try:
-                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore[attr-defined]
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except ImportError:  # pragma: no cover - Windows dev fallback
+                    import msvcrt
+
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore[attr-defined]
+                break
             except OSError as e:
-                raise LockBusy(f"{name} is already being installed") from e
+                if _time.monotonic() >= deadline:
+                    raise LockBusy(
+                        f"{name} is busy (another installation is running)"
+                    ) from e
+                _time.sleep(0.5)
         yield
     finally:
         fh.close()

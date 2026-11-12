@@ -27,10 +27,13 @@ def engine_status(engine_id: str, active_engine: str | None = None) -> dict[str,
         lifecycle = store.INCOMPATIBLE
     elif ms.status == "corrupted":
         lifecycle = store.FAILED
-    elif st.get("state") == store.FAILED and not ms.installed:
+    elif st.get("state") == store.FAILED:
+        # Even when the files verify: a failed smoke check must never be
+        # reported (or activated) as ready. Retry re-runs the checks.
         lifecycle = store.FAILED
-    elif st.get("state") in store.ACTIVE_JOB_STATES and not ms.installed:
-        lifecycle = store.FAILED  # stale job: the worker died mid-install
+    elif st.get("state") in store.ACTIVE_JOB_STATES:
+        # Stale job (worker died / job lost): never verified end to end.
+        lifecycle = store.FAILED
     elif ms.installed and rt.status == runtime.RUNTIME_REQUIRES_RESTART:
         lifecycle = store.REQUIRES_RESTART
     elif ms.installed and rt.ready:

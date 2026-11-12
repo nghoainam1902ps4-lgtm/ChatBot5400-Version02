@@ -26,8 +26,12 @@
 
 ## Kết quả test gần nhất
 
-Xem `OCR_TEST_REPORT.md` §1 (OCR 114 test PASS + 4 skip full-pipeline; frontend 399 PASS; build
-PASS; regression không lỗi mới).
+Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pipeline;
+`test_graphs.py` 22/22; frontend 401/401; tsc/lint/build PASS; regression không lỗi mới).
+
+## Review độc lập
+
+11 phát hiện; 10 đã sửa kèm test, 1 giữ nguyên có lý do (`OCR_TEST_REPORT.md` §6).
 
 ## Vấn đề chưa giải quyết
 
