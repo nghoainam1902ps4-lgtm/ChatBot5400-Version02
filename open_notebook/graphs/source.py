@@ -1,5 +1,4 @@
 import operator
-import os
 from typing import Any, Dict, List, Optional
 
 from content_core import ContentCoreConfig, extract_content
@@ -22,6 +21,11 @@ from open_notebook.ocr.docling_extract import (
     should_use_native_ocr_for_url,
 )
 from open_notebook.ocr.options import OcrSettings
+from open_notebook.utils.job_input_guard import (
+    resolve_upload_path,
+    safe_delete_upload,
+    validate_source_url,
+)
 from open_notebook.utils.runtime_capabilities import engine_runtime_missing
 
 # Default preferred languages for YouTube transcript selection, used when
@@ -83,7 +87,15 @@ def _usable_engine(engine: str, kind: str) -> str:
 
 
 async def content_process(state: SourceState) -> dict:
-    content_state: Dict[str, Any] = state["content_state"]
+    content_state: Dict[str, Any] = dict(state["content_state"])
+
+    # Defence in depth (docs/security/BACKGROUND_JOB_SECURITY.md): never trust
+    # job input, whoever queued it. Uploaded files must live inside the uploads
+    # directory; URLs are re-validated here (incl. redirects) with the API's policy.
+    if content_state.get("file_path"):
+        content_state["file_path"] = resolve_upload_path(content_state["file_path"])
+    if content_state.get("url") and not content_state.get("content"):
+        await validate_source_url(content_state["url"])
 
     # content-core 2.x takes engine/model overrides via ContentCoreConfig
     # (keyword-only), not inside the input dict.
@@ -235,13 +247,8 @@ async def content_process(state: SourceState) -> dict:
     # extraction (the delete_source flag it used to honor is gone). Preserve the
     # previous auto-delete behavior on our side.
     if content_state.get("delete_source") and content_state.get("file_path"):
-        file_path = content_state["file_path"]
-        try:
-            os.unlink(file_path)
-        except FileNotFoundError:
-            logger.warning(f"File not found while trying to delete: {file_path}")
-        except Exception as e:
-            logger.warning(f"Failed to delete source file {file_path}: {e}")
+        # Re-checked right before deletion (inside the uploads directory only).
+        safe_delete_upload(content_state["file_path"])
 
     return {"extraction": processed}
 

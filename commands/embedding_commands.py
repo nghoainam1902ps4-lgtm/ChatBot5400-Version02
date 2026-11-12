@@ -19,6 +19,7 @@ from open_notebook.domain.notebook import Note, Source, SourceInsight
 from open_notebook.exceptions import ConfigurationError, ContextLengthExceededError
 from open_notebook.utils.chunking import ContentType, chunk_text, detect_content_type
 from open_notebook.utils.embedding import generate_embedding, generate_embeddings
+from open_notebook.utils.job_input_guard import require_record_id
 
 # NOTE: `stop_on` below can never trigger in practice — each command catches
 # ValueError internally and returns success=False instead of raising, so the
@@ -236,6 +237,8 @@ async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
 
+    require_record_id(input_data.note_id, "note")  # untrusted job input
+
     async def embed() -> Tuple[Dict[str, Any], str]:
         return await _embed_markdown_record(
             input_data,
@@ -277,6 +280,8 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
     - Uses exponential-jitter backoff (1-60s)
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
+
+    require_record_id(input_data.insight_id, "source_insight")  # untrusted job input
 
     async def embed() -> Tuple[Dict[str, Any], str]:
         return await _embed_markdown_record(
@@ -322,6 +327,8 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
     - Uses exponential-jitter backoff (1-60s)
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
+
+    require_record_id(input_data.source_id, "source")  # untrusted job input
 
     async def embed() -> Tuple[Dict[str, Any], str]:
         # 1. Load source
@@ -425,6 +432,7 @@ async def create_insight_command(
     - Uses exponential-jitter backoff (1-60s)
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
+    require_record_id(input_data.source_id, "source")  # untrusted job input
     start_time = time.time()
 
     try:

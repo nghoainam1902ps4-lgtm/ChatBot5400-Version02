@@ -1,4 +1,8 @@
-# Rủi ro có sẵn: `POST /api/commands/jobs` (ngoài phạm vi OCR — cần xử lý trước production)
+# Rủi ro có sẵn: `POST /api/commands/jobs` — **ĐÃ KHẮC PHỤC trong Phase 8A**
+
+> Trạng thái: **đã khắc phục** (Phase 8A). Chi tiết biện pháp và test:
+> [`docs/security/BACKGROUND_JOB_SECURITY.md`](../security/BACKGROUND_JOB_SECURITY.md).
+> Phần dưới giữ nguyên phân tích ban đầu để truy vết.
 
 Phát hiện trong quá trình review OCR Engine Manager. **Không do tính năng OCR tạo ra** và
 **không sửa trong Phase 7** (ảnh hưởng kiến trúc Background Job ngoài phạm vi). Tài liệu này mô tả
@@ -45,3 +49,12 @@ vào mới.
 
 Khuyến nghị: **coi mục 1 và 3 là điều kiện bắt buộc trước khi đưa bản có tính năng này lên production**
 (rủi ro có sẵn từ trước, nhưng mức độ Cao).
+
+## 4. Trạng thái khắc phục (Phase 8A)
+
+| Đề xuất | Trạng thái |
+|---|---|
+| 1. POST/DELETE chỉ admin | **Xong** — toàn bộ router admin-only; POST bị tắt bằng allow-list rỗng (deny by default) |
+| 2. GET trạng thái giới hạn | **Xong** — admin-only (frontend chỉ admin dùng); danh sách job không lộ payload |
+| 3. Phòng thủ tại worker | **Xong** — `file_path` trong `UPLOADS_FOLDER` (canonical, chống symlink), kiểm tra lại trước khi xoá; `validate_url()` + mọi bước redirect; `content_state`/id ràng buộc với bản ghi source |
+| 4. Test | **Xong** — `tests/test_background_job_security.py` (57) |

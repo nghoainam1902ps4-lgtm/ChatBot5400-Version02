@@ -293,6 +293,13 @@ class TestContentProcessDeleteSource:
             "open_notebook.ocr.runtime.auto_resolves_to_rapidocr", lambda: True
         )
 
+    @pytest.fixture(autouse=True)
+    def _uploads_in_tmp(self, monkeypatch, tmp_path):
+        # The worker only accepts files inside UPLOADS_FOLDER
+        # (docs/security/BACKGROUND_JOB_SECURITY.md); these tests' uploads
+        # live in tmp_path, so make that the uploads directory.
+        monkeypatch.setattr("open_notebook.config.UPLOADS_FOLDER", str(tmp_path))
+
     @pytest.mark.asyncio
     @patch("open_notebook.graphs.source.extract_content")
     @patch("open_notebook.graphs.source.ModelManager")

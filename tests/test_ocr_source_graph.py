@@ -43,6 +43,14 @@ def wired(monkeypatch):
         classmethod(lambda cls: calls.__setitem__("clears", calls["clears"] + 1)),
     )
     monkeypatch.setattr(source_graph, "_usable_engine", lambda e, k: e)
+    # Routing tests only: the input guards have dedicated tests
+    # (tests/test_background_job_security.py).
+    monkeypatch.setattr(source_graph, "resolve_upload_path", lambda p: p)
+
+    async def _url_ok(url):
+        return None
+
+    monkeypatch.setattr(source_graph, "validate_source_url", _url_ok)
 
     class _MM:
         async def get_defaults(self):
