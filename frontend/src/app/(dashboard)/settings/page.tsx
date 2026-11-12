@@ -2,6 +2,7 @@
 
 import { AppShell } from '@/components/layout/AppShell'
 import { SettingsForm } from './components/SettingsForm'
+import { OcrEngineManager } from './components/OcrEngineManager'
 import { useSettings } from '@/lib/hooks/use-settings'
 import { Button } from '@/components/ui/button'
 import { PageShell } from '@/components/common/PageShell'
@@ -25,7 +26,13 @@ export default function SettingsPage() {
     if (!isAdmin) {
       return <AccessDenied />
     }
-    return <SettingsForm />
+    return (
+      <>
+        <SettingsForm />
+        {/* Settings → Content Processing → OCR Engine Manager (docs/ocr) */}
+        <OcrEngineManager />
+      </>
+    )
   }
 
   return (

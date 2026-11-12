@@ -16,6 +16,7 @@ vi.mock('@/components/layout/AppShell', () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 vi.mock('./components/SettingsForm', () => ({ SettingsForm: () => <div data-testid="settings-form" /> }))
+vi.mock('./components/OcrEngineManager', () => ({ OcrEngineManager: () => <div data-testid="ocr-engine-manager" /> }))
 const refetch = vi.fn()
 vi.mock('@/lib/hooks/use-settings', () => ({ useSettings: () => ({ refetch }) }))
 
@@ -34,6 +35,7 @@ describe('SettingsPage (P1C)', () => {
     expect(screen.queryByText('navigation.settings')).toBeNull()
     expect(document.querySelector('[data-slot="page-shell"]')).toHaveAttribute('data-width', 'config')
     expect(screen.getByTestId('settings-form')).toBeInTheDocument()
+    expect(screen.getByTestId('ocr-engine-manager')).toBeInTheDocument()
     expect(document.querySelector('[data-slot="toolbar"]')).toBeNull()
   })
 
@@ -60,6 +62,7 @@ describe('SettingsPage (P1C)', () => {
     expect(header()).toBeInTheDocument()
     expect(document.querySelector('[data-slot="access-denied"]')).toBeInTheDocument()
     expect(screen.queryByTestId('settings-form')).toBeNull()
+    expect(screen.queryByTestId('ocr-engine-manager')).toBeNull()
     expect(replace).not.toHaveBeenCalled()
     expect(push).not.toHaveBeenCalled()
   })

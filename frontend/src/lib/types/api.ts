@@ -70,6 +70,8 @@ export interface SettingsResponse {
   docling_vision?: boolean
   youtube_preferred_languages?: string[]
   podcast_enabled?: boolean
+  /** Read-only here; changed via POST /ocr/engines/{id}/activate. */
+  docling_ocr_engine?: string
 }
 
 export interface Capabilities {
@@ -334,4 +336,113 @@ export interface AdminFeedbackListParams {
   context?: 'notebook' | 'source'
   sort?: string
   direction?: 'asc' | 'desc'
+}
+
+// OCR Engine Manager (docs/ocr/OCR_ENGINE_MANAGER.md)
+export type OcrEngineId = 'rapidocr' | 'tesseract_fast' | 'tesseract_best' | 'easyocr'
+
+export type OcrLifecycleState =
+  | 'not_installed'
+  | 'pending'
+  | 'downloading'
+  | 'installing'
+  | 'requires_restart'
+  | 'ready'
+  | 'failed'
+  | 'incompatible'
+
+export interface OcrRuntimeStatus {
+  kind: string
+  status: 'ready' | 'missing' | 'incompatible' | 'requires_restart'
+  version?: string | null
+  detail?: string | null
+  install_env_var?: string | null
+  install_cli?: string | null
+  extra?: Record<string, unknown>
+}
+
+export interface OcrTestResult {
+  engine: string
+  display_name?: string
+  model?: string
+  languages?: string[]
+  device?: string
+  docling_class?: string
+  ocr_models?: string[]
+  text?: string
+  cer?: number
+  success: boolean
+  error?: string
+  elapsed_seconds?: number
+  tested_at?: number
+}
+
+export interface OcrEngineStatus {
+  id: OcrEngineId
+  display_name: string
+  description: string
+  languages: string[]
+  model_name: string
+  model_version: string
+  license: string
+  source_url: string
+  builtin: boolean
+  download_size_bytes: number
+  size_bytes: number
+  installed_size_bytes: number
+  runtime: OcrRuntimeStatus
+  model: { status: string; installed_bytes: number; files: { rel_path: string; present: boolean; verified: boolean }[] }
+  state: OcrLifecycleState
+  ready: boolean
+  active: boolean
+  job?: {
+    job_id?: string | null
+    state?: string | null
+    progress?: { bytes_done?: number; bytes_total?: number; file?: string } | null
+    updated_at?: number | null
+  } | null
+  error?: string | null
+  smoke?: { ok: boolean | null; detail: string } | null
+  last_test?: OcrTestResult | null
+  options: Record<string, unknown>
+}
+
+export interface OcrConfig {
+  docling_ocr: boolean
+  docling_ocr_engine: OcrEngineId
+  docling_ocr_device: string
+  docling_ocr_num_threads: number | null
+  docling_ocr_force_full_page: boolean
+}
+
+export interface OcrGeneralInfo {
+  document_engine: string
+  docling_available: boolean
+  docling_version?: string | null
+  docling_api_compatible?: boolean | null
+  docling_missing_api: string[]
+  layout_model?: string | null
+  table_model?: string | null
+  ocr_device: string
+  models_dir: string
+  offline_mode: boolean
+}
+
+export interface OcrEnginesResponse {
+  general: OcrGeneralInfo
+  config: OcrConfig
+  engines: OcrEngineStatus[]
+}
+
+export interface OcrJobResponse {
+  job_id: string
+  engine_id: string
+  state: string
+}
+
+export interface OcrJobStatus {
+  job_id: string
+  status: string
+  result?: { success?: boolean; result?: OcrTestResult; error_message?: string } | null
+  error_message?: string | null
 }
