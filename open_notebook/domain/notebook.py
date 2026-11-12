@@ -835,24 +835,25 @@ class Source(ObjectModel):
         """
         try:
             if scope_ids is None:
-                nb_filter = ""
+                nb_scope_filter = ""
                 where = "approval_status = 'pending'"
                 params: Dict[str, Any] = {}
             else:
                 if not scope_ids:
                     return []
                 params = {"ids": [ensure_record_id(x) for x in scope_ids]}
-                nb_filter = " AND out IN $ids"
+                nb_scope_filter = " AND out IN $ids"
+                # count(->reference[WHERE out IN $ids]) mirrors the graph-filter
+                # pattern already used in get_delete_preview().
                 where = (
                     "approval_status = 'pending' AND "
-                    "(SELECT VALUE out FROM reference "
-                    "WHERE in = $parent.id AND out IN $ids) != []"
+                    "count(->reference[WHERE out IN $ids]) > 0"
                 )
             rows = await repo_query(
                 f"""
                 SELECT id, title, asset, approval_status, submitted_at, submitted_by,
                     (SELECT out.id AS id, out.name AS name FROM reference
-                        WHERE in = $parent.id{nb_filter}) AS notebooks
+                        WHERE in = $parent.id{nb_scope_filter}) AS notebooks
                 FROM source
                 WHERE {where}
                 ORDER BY submitted_at DESC
@@ -879,8 +880,7 @@ class Source(ObjectModel):
                     return 0
                 rows = await repo_query(
                     "SELECT VALUE id FROM source WHERE approval_status = 'pending' "
-                    "AND (SELECT VALUE out FROM reference "
-                    "WHERE in = $parent.id AND out IN $ids) != []",
+                    "AND count(->reference[WHERE out IN $ids]) > 0",
                     {"ids": [ensure_record_id(x) for x in scope_ids]},
                 )
             return len(rows or [])

@@ -66,6 +66,7 @@ import {
   useDeleteUser,
   useResetUserPassword,
 } from '@/lib/hooks/use-users'
+import { useNotebooks, useUpdateNotebook } from '@/lib/hooks/use-notebooks'
 import type { User, UserRole } from '@/lib/types/auth'
 import { KeyRound, MoreHorizontal, Pencil, Plus, SearchX, Trash2, Users } from 'lucide-react'
 
@@ -79,6 +80,13 @@ export default function UsersPage() {
   const updateUser = useUpdateUser()
   const deleteUser = useDeleteUser()
   const resetPassword = useResetUserPassword()
+  const updateNotebook = useUpdateNotebook()
+  // Categories (top-level notebooks) an approver can be assigned to manage.
+  const { data: notebooks } = useNotebooks(false)
+  const categories = useMemo(
+    () => (notebooks ?? []).filter((nb) => !nb.parent),
+    [notebooks]
+  )
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<User | null>(null)
@@ -92,6 +100,37 @@ export default function UsersPage() {
   const [role, setRole] = useState<UserRole>('user')
   const [resetPw, setResetPw] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  // Approver -> managed categories assignment (stored on each notebook.managers).
+  const [managedCategoryIds, setManagedCategoryIds] = useState<string[]>([])
+  const [initialManagedCategoryIds, setInitialManagedCategoryIds] = useState<
+    string[]
+  >([])
+
+  const categoriesForUser = (userId?: string) =>
+    userId
+      ? categories.filter((c) => (c.managers ?? []).includes(userId)).map((c) => c.id)
+      : []
+
+  const toggleManagedCategory = (id: string) =>
+    setManagedCategoryIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+
+  /** Add/remove this user from the managers[] of each changed category. */
+  const applyManagedCategories = async (userId: string) => {
+    const target = new Set(managedCategoryIds)
+    const initial = new Set(initialManagedCategoryIds)
+    const changed = categories.filter(
+      (c) => target.has(c.id) !== initial.has(c.id)
+    )
+    for (const nb of changed) {
+      const current = nb.managers ?? []
+      const next = target.has(nb.id)
+        ? Array.from(new Set([...current, userId]))
+        : current.filter((m) => m !== userId)
+      await updateNotebook.mutateAsync({ id: nb.id, data: { managers: next } })
+    }
+  }
 
   // Counts always reflect the full dataset (never the search filter).
   const totalCount = users?.length ?? 0
@@ -130,6 +169,8 @@ export default function UsersPage() {
     setPassword('')
     setName('')
     setRole('user')
+    setManagedCategoryIds([])
+    setInitialManagedCategoryIds([])
     setFormOpen(true)
   }
 
@@ -139,6 +180,9 @@ export default function UsersPage() {
     setName(u.name ?? '')
     setRole(u.role)
     setPassword('')
+    const assigned = categoriesForUser(u.id)
+    setManagedCategoryIds(assigned)
+    setInitialManagedCategoryIds(assigned)
     setFormOpen(true)
   }
 
@@ -150,13 +194,19 @@ export default function UsersPage() {
         id: editing.id,
         data: { username, role, name: name || null },
       })
+      if (role === 'approver') {
+        await applyManagedCategories(editing.id)
+      }
     } else {
-      await createUser.mutateAsync({
+      const created = await createUser.mutateAsync({
         username,
         password,
         role,
         name: name || null,
       })
+      if (role === 'approver' && created?.id) {
+        await applyManagedCategories(created.id)
+      }
     }
     setFormOpen(false)
   }
@@ -182,9 +232,19 @@ export default function UsersPage() {
   const canSubmit =
     username.trim().length > 0 && (editing !== null || password.length > 0)
 
+  const roleLabel = (r: UserRole): string => {
+    const labels: Record<UserRole, string> = {
+      admin: t('users.roleAdmin'),
+      approver: t('users.roleApprover'),
+      contributor: t('users.roleContributor'),
+      user: t('users.roleUser'),
+    }
+    return labels[r] ?? r
+  }
+
   const renderRoleBadge = (u: User) => (
     <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>
-      {u.role === 'admin' ? t('users.roleAdmin') : t('users.roleUser')}
+      {roleLabel(u.role)}
     </Badge>
   )
 
@@ -473,6 +533,8 @@ export default function UsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="user" disabled={editingLastAdmin}>{t('users.roleUser')}</SelectItem>
+                  <SelectItem value="contributor" disabled={editingLastAdmin}>{t('users.roleContributor')}</SelectItem>
+                  <SelectItem value="approver" disabled={editingLastAdmin}>{t('users.roleApprover')}</SelectItem>
                   <SelectItem value="admin">{t('users.roleAdmin')}</SelectItem>
                 </SelectContent>
               </Select>
@@ -482,6 +544,38 @@ export default function UsersPage() {
                 </p>
               )}
             </div>
+
+            {/* Approver scope: which categories this approver manages. */}
+            {role === 'approver' && (
+              <div className="space-y-1.5">
+                <Label>{t('users.managedCategories')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('users.managedCategoriesHint')}
+                </p>
+                {categories.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t('users.noCategoriesAvailable')}
+                  </p>
+                ) : (
+                  <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border p-2">
+                    {categories.map((c) => (
+                      <label
+                        key={c.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-fern"
+                          checked={managedCategoryIds.includes(c.id)}
+                          onChange={() => toggleManagedCategory(c.id)}
+                        />
+                        <span className="truncate">{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>

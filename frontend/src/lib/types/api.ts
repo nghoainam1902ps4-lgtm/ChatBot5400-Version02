@@ -7,6 +7,10 @@ export interface NotebookResponse {
   updated: string
   source_count: number
   note_count: number
+  // Hierarchy / approval scope (ChatBot5400)
+  parent?: string | null
+  managers?: string[]
+  is_category?: boolean
 }
 
 export interface NoteResponse {
@@ -36,11 +40,15 @@ export interface SourceListResponse {
   command_id?: string
   status?: string
   processing_info?: Record<string, unknown>
+  // Approval workflow (ChatBot5400): approved | pending | rejected
+  approval_status?: string
 }
 
 export interface SourceDetailResponse extends SourceListResponse {
   full_text: string
   notebooks?: string[]  // List of notebook IDs this source is linked to
+  submitted_by?: string | null
+  review_note?: string | null
 }
 
 export type SourceResponse = SourceDetailResponse
@@ -73,12 +81,18 @@ export interface Capabilities {
 export interface CreateNotebookRequest {
   name: string
   description?: string
+  // Set parent to create a sub-notebook under a category (approver/admin).
+  parent?: string | null
+  // Admin-only: approver user ids assigned to manage this category.
+  managers?: string[]
 }
 
 export interface UpdateNotebookRequest {
   name?: string
   description?: string
   archived?: boolean
+  // Admin-only: reassign which approvers manage this category.
+  managers?: string[]
 }
 
 export interface NotebookDeletePreview {
