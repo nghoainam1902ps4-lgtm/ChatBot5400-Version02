@@ -14,8 +14,9 @@ Role = Literal["admin", "approver", "contributor", "user"]
 
 # Roles allowed to submit sources/van ban into the system. A plain "user" is a
 # read/chat-only consumer. A "contributor" submits content that must be approved;
-# "approver"/"admin" submit content that is approved immediately.
-SUBMITTER_ROLES = ("admin", "approver", "contributor")
+# "admin" submits content that is approved immediately. An "approver" is a
+# checker (maker-checker separation) and does NOT create new sources.
+SUBMITTER_ROLES = ("admin", "contributor")
 
 
 class User(ObjectModel):

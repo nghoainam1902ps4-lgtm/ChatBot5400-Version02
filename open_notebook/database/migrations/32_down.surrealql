@@ -1,0 +1,3 @@
+-- Rollback migration 32: drop the directed-approval field.
+REMOVE INDEX IF EXISTS idx_source_assigned_approver ON TABLE source;
+REMOVE FIELD IF EXISTS assigned_approver ON TABLE source;

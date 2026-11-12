@@ -87,8 +87,9 @@ def _expire_minutes() -> int:
 
 # Roles permitted to submit sources/van ban into the system (see
 # open_notebook/domain/user.py). Kept here too so the auth dependencies don't
-# need a domain import.
-SUBMITTER_ROLES = ("admin", "approver", "contributor")
+# need a domain import. Approvers are checkers (maker-checker separation): they
+# review and manage, but do NOT create new sources.
+SUBMITTER_ROLES = ("admin", "contributor")
 # Roles permitted to review pending sources and manage assigned categories.
 APPROVER_ROLES = ("admin", "approver")
 

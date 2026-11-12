@@ -23,6 +23,15 @@ export function useApprovalCount(enabled = true) {
   })
 }
 
+/** Approvers a submitter can route a source to, scoped to selected notebooks. */
+export function useEligibleReviewers(notebookIds: string[], enabled = true) {
+  return useQuery({
+    queryKey: [...APPROVAL_QUERY_KEYS.all, 'reviewers', [...notebookIds].sort()],
+    queryFn: () => approvalsApi.reviewers(notebookIds),
+    enabled,
+  })
+}
+
 /** The list of sources awaiting the current reviewer's action. */
 export function usePendingApprovals(enabled = true) {
   return useQuery({

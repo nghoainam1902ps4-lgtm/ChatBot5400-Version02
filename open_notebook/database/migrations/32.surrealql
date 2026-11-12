@@ -1,0 +1,8 @@
+-- Migration 32: directed approval — a contributor may pick which approver
+-- ("Kiểm soát") reviews a submitted source (ChatBot5400).
+--
+-- `assigned_approver` names the specific approver a submission is routed to.
+-- When set, only that approver (and admins) sees it in the queue; when unset,
+-- any approver managing the source's notebook category may review it.
+DEFINE FIELD IF NOT EXISTS assigned_approver ON TABLE source TYPE option<record<user>>;
+DEFINE INDEX IF NOT EXISTS idx_source_assigned_approver ON TABLE source COLUMNS assigned_approver;

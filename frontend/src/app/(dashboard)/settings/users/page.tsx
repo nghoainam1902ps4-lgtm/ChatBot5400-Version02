@@ -189,26 +189,39 @@ export default function UsersPage() {
   const submitForm = async () => {
     // Guard before the mutation: never send a payload demoting the last admin.
     if (editing && editingLastAdmin && role !== 'admin') return
-    if (editing) {
-      await updateUser.mutateAsync({
-        id: editing.id,
-        data: { username, role, name: name || null },
-      })
-      if (role === 'approver') {
-        await applyManagedCategories(editing.id)
+    try {
+      let userId: string | undefined
+      if (editing) {
+        await updateUser.mutateAsync({
+          id: editing.id,
+          data: { username, role, name: name || null },
+        })
+        userId = editing.id
+      } else {
+        const created = await createUser.mutateAsync({
+          username,
+          password,
+          role,
+          name: name || null,
+        })
+        userId = created?.id
       }
-    } else {
-      const created = await createUser.mutateAsync({
-        username,
-        password,
-        role,
-        name: name || null,
-      })
-      if (role === 'approver' && created?.id) {
-        await applyManagedCategories(created.id)
+      // Category assignment is best-effort: it writes notebook.managers via a
+      // separate request. A failure there must NOT keep the dialog open (which
+      // previously led the user to re-submit and hit a duplicate-username 400);
+      // the account itself is already saved at this point.
+      if (role === 'approver' && userId) {
+        try {
+          await applyManagedCategories(userId)
+        } catch {
+          // updateNotebook already surfaces its own error toast.
+        }
       }
+      setFormOpen(false)
+    } catch {
+      // createUser/updateUser already show an error toast; keep the dialog open
+      // so the user can correct the input (e.g. a duplicate username) and retry.
     }
-    setFormOpen(false)
   }
 
   const submitReset = async () => {

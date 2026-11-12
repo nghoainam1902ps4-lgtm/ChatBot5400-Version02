@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { NotebookList } from './components/NotebookList'
+import { NotebookHierarchy } from './components/NotebookHierarchy'
 import { RecentlyViewed } from './components/RecentlyViewed'
 import { Button } from '@/components/ui/button'
 import { Plus, RefreshCw, LayoutGrid, List, SearchX } from 'lucide-react'
@@ -33,7 +34,7 @@ function filterNotebooks(notebooks: NotebookResponse[] | undefined, query: strin
 
 export default function NotebooksPage() {
   const { t } = useTranslation()
-  const { isAdmin } = useAuth()
+  const { canReview } = useAuth()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const viewMode = useNotebookViewStore((state) => state.viewMode)
@@ -88,12 +89,12 @@ export default function NotebooksPage() {
     return (
       <>
         {(!isSearching || isLoading || activeMatches > 0) && (
-          <NotebookList
+          <NotebookHierarchy
             notebooks={filteredActive}
             isLoading={isLoading}
             title={t('notebooks.activeNotebooks')}
-            onAction={!isSearching && isAdmin ? () => setCreateDialogOpen(true) : undefined}
-            actionLabel={!isSearching && isAdmin ? t('notebooks.newNotebook') : undefined}
+            onAction={!isSearching && canReview ? () => setCreateDialogOpen(true) : undefined}
+            actionLabel={!isSearching && canReview ? t('notebooks.newNotebook') : undefined}
           />
         )}
 
@@ -157,7 +158,7 @@ export default function NotebooksPage() {
                 <List className="h-4 w-4" />
               </Button>
             </div>
-            {isAdmin && (
+            {canReview && (
               <PrimaryAction icon={Plus} onClick={() => setCreateDialogOpen(true)} className="sm:ml-auto">
                 {t('notebooks.newNotebook')}
               </PrimaryAction>

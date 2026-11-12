@@ -5,23 +5,36 @@ contributors submit. A pending source is invisible to regular users until an
 approver in whose managed category it was submitted approves it.
 """
 
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from loguru import logger
 
 from api import approvals_service
-from api.auth import TokenUser, require_approver
+from api.auth import TokenUser, require_approver, require_submitter
 from api.models import (
     ApprovalItemResponse,
     PendingApprovalCountResponse,
     RejectSourceRequest,
     ReviewActionResponse,
+    ReviewerResponse,
 )
 from open_notebook.domain.notebook import Source
 from open_notebook.exceptions import NotFoundError, OpenNotebookError
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
+
+
+@router.get("/reviewers", response_model=List[ReviewerResponse])
+async def list_reviewers(
+    notebook_id: Optional[List[str]] = Query(
+        None, description="Notebook id(s) to scope eligible approvers to"
+    ),
+    _current_user: TokenUser = Depends(require_submitter),
+):
+    """Approvers a submitter can route a source to (managers of the selected
+    notebooks' categories; all approvers when no notebook is selected)."""
+    return await approvals_service.eligible_reviewers(notebook_id or [])
 
 
 @router.get("/pending", response_model=List[ApprovalItemResponse])

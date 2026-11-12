@@ -97,8 +97,9 @@ export function useAuth() {
     isContributor: role === 'contributor',
     // Approvers and admins can review pending submissions and manage categories.
     canReview: role === 'admin' || role === 'approver',
-    // Admins, approvers and contributors can add sources/văn bản.
-    canSubmit: role === 'admin' || role === 'approver' || role === 'contributor',
+    // Only admins and contributors add new sources/văn bản. Approvers are
+    // checkers (maker-checker separation) and do not submit content.
+    canSubmit: role === 'admin' || role === 'contributor',
     login: handleLogin,
     logout: handleLogout,
   }

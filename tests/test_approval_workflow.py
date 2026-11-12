@@ -34,7 +34,8 @@ class TestTokenUserRoles:
         "role,submit,review,needs_approval",
         [
             ("admin", True, True, False),
-            ("approver", True, True, False),
+            # Approver is a checker: reviews but does NOT submit new sources.
+            ("approver", False, True, False),
             ("contributor", True, False, True),
             ("user", False, False, False),
         ],
@@ -61,13 +62,15 @@ class TestApprovalDependencies:
         with pytest.raises(AuthorizationError):
             require_approver(_req_as(role))
 
-    @pytest.mark.parametrize("role", ["admin", "approver", "contributor"])
+    @pytest.mark.parametrize("role", ["admin", "contributor"])
     def test_require_submitter_allows_submitters(self, role):
         assert require_submitter(_req_as(role)).role == role
 
-    def test_require_submitter_blocks_plain_user(self):
+    # Approver (checker) and plain user may not submit new sources.
+    @pytest.mark.parametrize("role", ["approver", "user"])
+    def test_require_submitter_blocks_non_submitters(self, role):
         with pytest.raises(AuthorizationError):
-            require_submitter(_req_as("user"))
+            require_submitter(_req_as(role))
 
 
 # --- Source approve / reject ---------------------------------------------
@@ -178,6 +181,21 @@ class TestApproverScope:
         source = Source(id="source:1", approval_status="pending")
         # No scope lookup needed for admins.
         await approvals_service.assert_can_review_source(admin, source)
+
+    def test_pending_scope_admin_is_unfiltered(self):
+        where, nb_filter, params = Source._pending_scope(None, None)
+        assert where == "approval_status = 'pending'"
+        assert nb_filter == ""
+        assert params == {}
+
+    def test_pending_scope_approver_matches_assignment_or_scope(self):
+        where, nb_filter, params = Source._pending_scope(
+            ["notebook:1"], "user:p"
+        )
+        assert "assigned_approver = $me" in where
+        assert "assigned_approver = NONE" in where
+        assert nb_filter == " AND out IN $ids"
+        assert "me" in params and "ids" in params
 
     @pytest.mark.asyncio
     async def test_manage_notebook_scope_enforced(self):

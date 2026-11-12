@@ -74,6 +74,7 @@ vi.mock('@/lib/hooks/use-approvals', () => ({
     isError: false,
     refetch: vi.fn(),
   })),
+  useEligibleReviewers: vi.fn(() => ({ data: [], isLoading: false })),
   useApproveSource: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useRejectSource: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
 }))

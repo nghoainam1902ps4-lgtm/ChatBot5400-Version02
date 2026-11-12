@@ -27,6 +27,12 @@ export interface ReviewActionResponse {
   message: string
 }
 
+export interface Reviewer {
+  id: string
+  username: string
+  name?: string | null
+}
+
 export const approvalsApi = {
   listPending: async () => {
     const response = await apiClient.get<ApprovalItem[]>('/approvals/pending')
@@ -49,6 +55,16 @@ export const approvalsApi = {
     const response = await apiClient.post<ReviewActionResponse>(
       `/approvals/sources/${sourceId}/reject`,
       { reason: reason ?? null }
+    )
+    return response.data
+  },
+
+  reviewers: async (notebookIds: string[]) => {
+    const params = new URLSearchParams()
+    notebookIds.forEach((id) => params.append('notebook_id', id))
+    const qs = params.toString()
+    const response = await apiClient.get<Reviewer[]>(
+      `/approvals/reviewers${qs ? `?${qs}` : ''}`
     )
     return response.data
   },

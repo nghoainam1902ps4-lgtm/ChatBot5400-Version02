@@ -20,10 +20,13 @@ import { WizardContainer, WizardStep } from '@/components/ui/wizard-container'
 import { SourceTypeStep, parseAndValidateUrls } from './steps/SourceTypeStep'
 import { NotebooksStep } from './steps/NotebooksStep'
 import { ProcessingStep } from './steps/ProcessingStep'
+import { ReviewerStep } from './steps/ReviewerStep'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useTransformations } from '@/lib/hooks/use-transformations'
 import { useCreateSource } from '@/lib/hooks/use-sources'
 import { useSettings } from '@/lib/hooks/use-settings'
+import { useAuth } from '@/lib/hooks/use-auth'
+import { useEligibleReviewers } from '@/lib/hooks/use-approvals'
 import { CreateSourceRequest } from '@/lib/types/api'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
@@ -93,15 +96,30 @@ export function AddSourceDialog({
   defaultNotebookId 
 }: AddSourceDialogProps) {
   const { t } = useTranslation()
+  const { isContributor } = useAuth()
+  // Contributors submit for approval, so they get an extra step to pick the
+  // approver ("Kiểm soát"). Admins add approved content directly (no step).
+  const needsApprover = isContributor
 
-  const WIZARD_STEPS: readonly WizardStep[] = [
-    { number: 1, title: t('sources.addSource'), description: t('sources.processDescription') },
-    { number: 2, title: t('navigation.notebooks'), description: t('notebooks.searchPlaceholder') },
-    { number: 3, title: t('navigation.process'), description: t('sources.processDescription') },
-  ]
+  const WIZARD_STEPS: readonly WizardStep[] = needsApprover
+    ? [
+        { number: 1, title: t('sources.addSource'), description: t('sources.processDescription') },
+        { number: 2, title: t('navigation.notebooks'), description: t('notebooks.searchPlaceholder') },
+        { number: 3, title: t('approvals.reviewer'), description: t('approvals.chooseReviewerDesc') },
+        { number: 4, title: t('navigation.process'), description: t('sources.processDescription') },
+      ]
+    : [
+        { number: 1, title: t('sources.addSource'), description: t('sources.processDescription') },
+        { number: 2, title: t('navigation.notebooks'), description: t('notebooks.searchPlaceholder') },
+        { number: 3, title: t('navigation.process'), description: t('sources.processDescription') },
+      ]
+  const totalSteps = WIZARD_STEPS.length
+  // The processing step is last; the approver step (contributors only) is 3.
+  const processingStep = totalSteps
 
   // Simplified state management
   const [currentStep, setCurrentStep] = useState(1)
+  const [selectedReviewer, setSelectedReviewer] = useState('')
   const [processing, setProcessing] = useState(false)
   const [processingStatus, setProcessingStatus] = useState<ProcessingState | null>(null)
   const [selectedNotebooks, setSelectedNotebooks] = useState<string[]>(
@@ -121,6 +139,10 @@ export function AddSourceDialog({
   const { data: notebooks = [], isLoading: notebooksLoading } = useNotebooks()
   const { data: transformations = [], isLoading: transformationsLoading } = useTransformations()
   const { data: settings } = useSettings()
+  const { data: reviewers = [], isLoading: reviewersLoading } = useEligibleReviewers(
+    selectedNotebooks,
+    open && needsApprover
+  )
 
   // Form setup
   const {
@@ -237,7 +259,16 @@ export function AddSourceDialog({
         }
         return true
       case 2:
+        return true
       case 3:
+        // Contributor flow: step 3 is "choose approver" — require a choice
+        // unless none are available (then it falls back to any category
+        // approver). Non-contributor flow: step 3 is Processing (always valid).
+        if (needsApprover) {
+          return selectedReviewer !== '' || reviewers.length === 0
+        }
+        return true
+      case 4:
         return true
       default:
         return false
@@ -259,7 +290,7 @@ export function AddSourceDialog({
       setUrlValidationErrors([])
     }
 
-    if (currentStep < 3 && isStepValid(currentStep)) {
+    if (currentStep < totalSteps && isStepValid(currentStep)) {
       setCurrentStep(currentStep + 1)
     }
   }
@@ -310,6 +341,7 @@ export function AddSourceDialog({
       embed: data.embed,
       delete_source: false,
       async_processing: true,
+      reviewer_id: selectedReviewer || undefined,
     }
 
     if (data.type === 'upload' && data.file) {
@@ -360,6 +392,7 @@ export function AddSourceDialog({
           embed: data.embed,
           delete_source: false,
           async_processing: true,
+          reviewer_id: selectedReviewer || undefined,
         }
 
         if (item.type === 'file') {
@@ -436,6 +469,7 @@ export function AddSourceDialog({
     setProcessing(false)
     setProcessingStatus(null)
     setSelectedNotebooks(defaultNotebookId ? [defaultNotebookId] : [])
+    setSelectedReviewer('')
     setUrlValidationErrors([])
     setBatchProgress(null)
 
@@ -573,8 +607,17 @@ export function AddSourceDialog({
                 loading={notebooksLoading}
               />
             )}
-            
-            {currentStep === 3 && (
+
+            {needsApprover && currentStep === 3 && (
+              <ReviewerStep
+                reviewers={reviewers}
+                selectedReviewer={selectedReviewer}
+                onSelect={setSelectedReviewer}
+                loading={reviewersLoading}
+              />
+            )}
+
+            {currentStep === processingStep && (
               <ProcessingStep
                 // @ts-expect-error - Type inference issue with zod schema
                 control={control}
@@ -608,8 +651,8 @@ export function AddSourceDialog({
                 </Button>
               )}
 
-              {/* Show Next button on steps 1 and 2, styled as outline/secondary */}
-              {currentStep < 3 && (
+              {/* Show Next button on every step except the last. */}
+              {currentStep < totalSteps && (
                 <Button
                   type="button"
                   variant="outline"

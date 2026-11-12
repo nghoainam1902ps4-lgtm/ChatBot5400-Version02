@@ -370,6 +370,10 @@ class SourceCreate(BaseModel):
         description="Transformation IDs to apply (max 50)",
     )
     embed: bool = Field(False, description="Whether to embed content for vector search")
+    reviewer_id: Optional[str] = Field(
+        None,
+        description="Approver (Kiểm soát) to route this submission to for approval",
+    )
     delete_source: bool = Field(
         False, description="Whether to delete uploaded file after processing"
     )
@@ -878,6 +882,14 @@ class RejectSourceRequest(BaseModel):
 
 class PendingApprovalCountResponse(BaseModel):
     count: int = Field(..., description="Pending sources awaiting the caller's review")
+
+
+class ReviewerResponse(BaseModel):
+    """An approver a contributor can route a submission to."""
+
+    id: str
+    username: str
+    name: Optional[str] = None
 
 
 class ReviewActionResponse(BaseModel):

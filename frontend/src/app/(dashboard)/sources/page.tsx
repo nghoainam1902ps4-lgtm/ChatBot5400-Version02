@@ -44,7 +44,7 @@ import { useAuth } from '@/lib/hooks/use-auth'
 
 export default function SourcesPage() {
   const { t, language } = useTranslation()
-  const { isAdmin } = useAuth()
+  const { isAdmin, canSubmit } = useAuth()
   const [sourceDialogOpen, setSourceDialogOpen] = useState(false)
   const failedToLoadMessage = t('sources.failedToLoad')
   const [sources, setSources] = useState<SourceListResponse[]>([])
@@ -419,7 +419,7 @@ export default function SourcesPage() {
             title={t('sources.noSourcesYet')}
             description={t('sources.allSourcesDescShort')}
             action={
-              isAdmin ? (
+              canSubmit ? (
                 <Button onClick={() => setSourceDialogOpen(true)} variant="outline" className="mt-4">
                   <Plus className="h-4 w-4 mr-2" />
                   {t('sources.newSource')}
@@ -594,7 +594,7 @@ export default function SourcesPage() {
             onChange={setSearchQuery}
             className="flex-1 basis-60 lg:max-w-md"
           />
-          {isAdmin && (
+          {canSubmit && (
             <PrimaryAction icon={Plus} onClick={() => setSourceDialogOpen(true)} className="sm:ml-auto">
               {t('sources.addSource')}
             </PrimaryAction>

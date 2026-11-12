@@ -543,8 +543,12 @@ class Source(ObjectModel):
     review_note: Optional[str] = None
     submitted_at: Optional[datetime] = None
     reviewed_at: Optional[datetime] = None
+    # Directed approval: the specific approver a contributor routed this to.
+    assigned_approver: Optional[str] = None
 
-    @field_validator("submitted_by", "reviewed_by", mode="before")
+    @field_validator(
+        "submitted_by", "reviewed_by", "assigned_approver", mode="before"
+    )
     @classmethod
     def _parse_reviewer_links(cls, value):
         return _record_to_str(value)
@@ -781,7 +785,7 @@ class Source(ObjectModel):
             data["command"] = ensure_record_id(data["command"])
 
         # Reviewer/submitter links are typed record<user> columns.
-        for link_field in ("submitted_by", "reviewed_by"):
+        for link_field in ("submitted_by", "reviewed_by", "assigned_approver"):
             if data.get(link_field) is not None:
                 data[link_field] = ensure_record_id(data[link_field])
 
@@ -821,34 +825,50 @@ class Source(ObjectModel):
         self.review_note = note
         await self.save()
 
+    @staticmethod
+    def _pending_scope(
+        scope_ids: Optional[List[str]], reviewer_id: Optional[str]
+    ) -> tuple[str, str, Dict[str, Any]]:
+        """Build the WHERE clause + notebooks-subquery filter + params for the
+        pending queue.
+
+        - admin (``scope_ids`` None): every pending source.
+        - approver (``scope_ids`` list + ``reviewer_id``): sources assigned to
+          them, plus unassigned sources in a category they manage. Directed
+          submissions (``assigned_approver`` set to someone else) stay hidden.
+        """
+        if scope_ids is None:
+            return "approval_status = 'pending'", "", {}
+        params: Dict[str, Any] = {"ids": [ensure_record_id(x) for x in scope_ids]}
+        in_scope = "count(->reference[WHERE out IN $ids]) > 0"
+        if reviewer_id:
+            params["me"] = ensure_record_id(reviewer_id)
+            assignment = (
+                f"(assigned_approver = $me OR "
+                f"(assigned_approver = NONE AND {in_scope}))"
+            )
+        else:
+            assignment = f"assigned_approver = NONE AND {in_scope}"
+        return f"approval_status = 'pending' AND {assignment}", " AND out IN $ids", params
+
     @classmethod
     async def get_pending(
-        cls, scope_ids: Optional[List[str]]
+        cls, scope_ids: Optional[List[str]], reviewer_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Pending sources for an approval queue, newest submission first.
 
         ``scope_ids`` is ``None`` for an admin (every pending source) or the list
         of notebook ids an approver manages; an empty list yields no results.
-        Each row carries the source fields plus a fetched ``submitted_by`` user
-        and a ``notebooks`` list of ``{id, name}`` the source is referenced in
-        (restricted to the scope for approvers).
+        ``reviewer_id`` is the approver's own id, used to surface submissions
+        routed directly to them. Each row carries the source fields plus a
+        fetched ``submitted_by`` user and a ``notebooks`` list of ``{id, name}``.
         """
         try:
-            if scope_ids is None:
-                nb_scope_filter = ""
-                where = "approval_status = 'pending'"
-                params: Dict[str, Any] = {}
-            else:
-                if not scope_ids:
-                    return []
-                params = {"ids": [ensure_record_id(x) for x in scope_ids]}
-                nb_scope_filter = " AND out IN $ids"
-                # count(->reference[WHERE out IN $ids]) mirrors the graph-filter
-                # pattern already used in get_delete_preview().
-                where = (
-                    "approval_status = 'pending' AND "
-                    "count(->reference[WHERE out IN $ids]) > 0"
-                )
+            if scope_ids is not None and not scope_ids and not reviewer_id:
+                return []
+            where, nb_scope_filter, params = cls._pending_scope(
+                scope_ids, reviewer_id
+            )
             rows = await repo_query(
                 f"""
                 SELECT id, title, asset, approval_status, submitted_at, submitted_by,
@@ -868,21 +888,17 @@ class Source(ObjectModel):
             raise DatabaseOperationError(e)
 
     @classmethod
-    async def count_pending(cls, scope_ids: Optional[List[str]]) -> int:
+    async def count_pending(
+        cls, scope_ids: Optional[List[str]], reviewer_id: Optional[str] = None
+    ) -> int:
         """Number of distinct pending sources in scope (see ``get_pending``)."""
         try:
-            if scope_ids is None:
-                rows = await repo_query(
-                    "SELECT VALUE id FROM source WHERE approval_status = 'pending'"
-                )
-            else:
-                if not scope_ids:
-                    return 0
-                rows = await repo_query(
-                    "SELECT VALUE id FROM source WHERE approval_status = 'pending' "
-                    "AND count(->reference[WHERE out IN $ids]) > 0",
-                    {"ids": [ensure_record_id(x) for x in scope_ids]},
-                )
+            if scope_ids is not None and not scope_ids and not reviewer_id:
+                return 0
+            where, _, params = cls._pending_scope(scope_ids, reviewer_id)
+            rows = await repo_query(
+                f"SELECT VALUE id FROM source WHERE {where}", params
+            )
             return len(rows or [])
         except Exception as e:
             logger.error(f"Error counting pending sources: {str(e)}")

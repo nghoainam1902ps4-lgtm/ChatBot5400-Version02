@@ -133,6 +133,8 @@ export interface CreateSourceRequest {
   delete_source?: boolean
   // New async processing support
   async_processing?: boolean
+  // Directed approval: the approver (Kiểm soát) to route a submission to.
+  reviewer_id?: string
 }
 
 export interface UpdateNoteRequest {

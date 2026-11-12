@@ -527,6 +527,7 @@ async def _create_source_async_path(
     file_path: Optional[str],
     approval_status: str = "approved",
     submitted_by: Optional[str] = None,
+    assigned_approver: Optional[str] = None,
 ) -> SourceResponse:
     """ASYNC PATH: Create source record first, then queue command."""
     logger.info("Using async processing path")
@@ -547,6 +548,7 @@ async def _create_source_async_path(
         approval_status=approval_status,
         submitted_by=submitted_by,
         submitted_at=datetime.now() if submitted_by else None,
+        assigned_approver=assigned_approver if approval_status == "pending" else None,
     )
     await source.save()
 
@@ -623,6 +625,7 @@ async def _create_source_sync_path(
     transformation_ids: List[str],
     approval_status: str = "approved",
     submitted_by: Optional[str] = None,
+    assigned_approver: Optional[str] = None,
 ) -> SourceResponse:
     """SYNC PATH: Execute synchronously using execute_command_sync."""
     logger.info("Using sync processing path")
@@ -642,6 +645,7 @@ async def _create_source_sync_path(
             approval_status=approval_status,
             submitted_by=submitted_by,
             submitted_at=datetime.now() if submitted_by else None,
+            assigned_approver=assigned_approver if approval_status == "pending" else None,
         )
         await source.save()
 
@@ -720,6 +724,10 @@ async def create_source(
     # A contributor's content must be reviewed before it becomes visible.
     approval_status = "pending" if current_user.requires_approval else "approved"
     submitted_by = current_user.id
+    # Optional directed approval: route a pending submission to a chosen approver.
+    assigned_approver = (
+        source_data.reviewer_id if approval_status == "pending" else None
+    )
 
     # Initialize file_path before try block so exception handlers can reference it
     file_path = None
@@ -762,6 +770,7 @@ async def create_source(
                 file_path,
                 approval_status=approval_status,
                 submitted_by=submitted_by,
+                assigned_approver=assigned_approver,
             )
         return await _create_source_sync_path(
             source_data,
@@ -769,6 +778,7 @@ async def create_source(
             transformation_ids,
             approval_status=approval_status,
             submitted_by=submitted_by,
+            assigned_approver=assigned_approver,
         )
 
     except HTTPException:
