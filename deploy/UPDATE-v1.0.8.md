@@ -14,8 +14,9 @@ Bản **v1.0.8** bổ sung **quy trình duyệt văn bản** và **phân quyền
 Chi tiết: xem [CHANGELOG.md](../CHANGELOG.md), mục 1.0.8.
 
 > Máy đã chạy bản thử nghiệm của tính năng này (trước khi phát hành, sidebar
-> hiện "Phiên bản 1.0.7") đã có sẵn migration 31–33: chỉ cần chạy khối lệnh thứ hai
-> dưới (khối lệnh `git checkout v1.0.8` ở mục VPS), không cần sao lưu lại.
+> hiện "Phiên bản 1.0.7") đã có sẵn migration 31–33: chỉ cần chạy khối lệnh
+> thứ hai ở mục VPS bên dưới (`git checkout v1.0.8` rồi build lại), không cần
+> sao lưu lại.
 
 > ⚠️ **Bản này CÓ migration cơ sở dữ liệu (31, 32, 33)** — khác các bản 1.0.5 và
 > 1.0.6. Migration chạy **tự động** khi API khởi động. Thay đổi chỉ **thêm**
