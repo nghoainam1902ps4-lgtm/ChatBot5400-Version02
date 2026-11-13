@@ -202,9 +202,11 @@ def main() -> int:
                 "category": category,
             }
             gt_path = pdf.with_suffix(".gt.txt")
-            gt = gt_path.read_text(encoding="utf-8") if gt_path.is_file() else None
             started = time.time()
             try:
+                # inside the try: an unreadable file would otherwise end the run
+                # with a traceback that names the document
+                gt = gt_path.read_text(encoding="utf-8") if gt_path.is_file() else None
                 result, _conv, prep = convert_document(
                     str(pdf), cc, OcrSettings(engine=engine)
                 )

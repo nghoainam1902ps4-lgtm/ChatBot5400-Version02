@@ -21,6 +21,8 @@ def test_readiness_timeout_env_falls_back(monkeypatch, raw):
 def test_readiness_timeout_env_is_used(monkeypatch):
     monkeypatch.setenv("OCR_READINESS_TIMEOUT", "600")
     assert readiness._check_timeout() == 600
+    monkeypatch.setenv("OCR_READINESS_TIMEOUT", "99999999999")  # would overflow run()
+    assert readiness._check_timeout() == readiness.MAX_CHECK_TIMEOUT
 
 
 def test_readiness_module_imports_with_a_bad_timeout(monkeypatch):

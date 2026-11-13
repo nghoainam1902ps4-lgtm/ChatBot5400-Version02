@@ -85,35 +85,36 @@ def test_the_script_never_writes_text_fields():
         assert forbidden not in source, forbidden
 
 
-def test_run_prints_no_file_name_and_no_log_line(tmp_path, monkeypatch, capfd):
-    """Phase 9B: the pipeline logs the file it converts (loguru and stdlib
-    logging). With real documents none of that may reach the terminal or the
-    report - only ``doc-NNN`` ids, the category folder and numbers."""
+SECRET_NAME = "HopDong_NguyenVanBiMat_9988776655"
+
+
+def _to_current_stderr(message) -> None:
+    """Loguru sink that looks sys.stderr up at write time (never a closed
+    capture stream left over from the test that installed it)."""
+    sys.stderr.write(str(message))
+
+
+def _run_tool(tmp_path, monkeypatch, capfd, convert):
+    """Run the tool's main() on one synthetic document with a stub pipeline.
+
+    Returns everything a person or a file could see, plus what reached two
+    probes installed BEFORE the run: a loguru sink and a stdlib log handler.
+    The probes make the check independent of import order (a library imported
+    earlier in the test session may already have bound loguru to a stream the
+    capture does not see).
+    """
     import logging
-    import types
+    import warnings
 
     from loguru import logger
 
     from open_notebook.ocr import docling_extract
 
-    secret_name = "HopDong_NguyenVanBiMat_9988776655"
     docs = tmp_path / "docs" / "cong_van"
-    docs.mkdir(parents=True)
-    (docs / f"{secret_name}.pdf").write_bytes(b"%PDF-1.4 synthetic")
-    (docs / f"{secret_name}.fields.txt").write_text("9988776655\n", encoding="utf-8")
-
-    def fake_convert(path, cc, ocr):
-        logger.info(f"OCR page orientation: corrected page(s) [1] of {Path(path).name}")
-        logger.warning(f"OCR PDF preparation skipped for {Path(path).name}: boom")
-        logging.getLogger("docling").warning("Processing document %s", Path(path).name)
-        doc = types.SimpleNamespace(export_to_markdown=lambda: MARKDOWN, tables=[1])
-        result = types.SimpleNamespace(document=doc, pages=[1, 2])
-        prep = types.SimpleNamespace(
-            rotated_pages={0: 90}, orientation="ok", scan_dpi=150.0
-        )
-        return result, None, prep
-
-    monkeypatch.setattr(docling_extract, "convert_document", fake_convert)
+    docs.mkdir(parents=True, exist_ok=True)
+    (docs / f"{SECRET_NAME}.pdf").write_bytes(b"%PDF-1.4 synthetic")
+    (docs / f"{SECRET_NAME}.fields.txt").write_text("9988776655\n", encoding="utf-8")
+    monkeypatch.setattr(docling_extract, "convert_document", convert)
     out, md = tmp_path / "bench.json", tmp_path / "bench.md"
     monkeypatch.setattr(
         sys,
@@ -121,25 +122,96 @@ def test_run_prints_no_file_name_and_no_log_line(tmp_path, monkeypatch, capfd):
         ["bench", "--dir", str(tmp_path / "docs"), "--engines", "tesseract_best",
          "--out", str(out), "--markdown", str(md)],
     )  # fmt: skip
+
+    probed: list[str] = []
+
+    class Probe(logging.Handler):
+        def emit(self, record):
+            probed.append(record.getMessage())
+
+    probe = Probe(level=logging.DEBUG)
+    logging.getLogger().addHandler(probe)
+    logger.add(lambda message: probed.append(str(message)))
     try:
-        assert bench.main() == 0
+        with warnings.catch_warnings():  # the tool also silences warnings
+            code = bench.main()
     finally:  # the tool silenced logging for the whole process: restore it
         logging.disable(logging.NOTSET)
-        logger.add(sys.stderr)
+        logging.getLogger().removeHandler(probe)
+        logger.remove()
+        logger.add(_to_current_stderr)
     captured = capfd.readouterr()
-    produced = (
-        captured.out + captured.err + out.read_text("utf-8") + md.read_text("utf-8")
+    produced = captured.out + captured.err + "".join(probed)
+    for path in (out, md):
+        if path.exists():
+            produced += path.read_text("utf-8")
+    return code, produced, out
+
+
+def _logging_pipeline(path, cc, ocr):
+    """What the real pipeline does: it names the file in loguru and stdlib logs."""
+    import logging
+    import types
+
+    from loguru import logger
+
+    logger.info(f"OCR page orientation: corrected page(s) [1] of {Path(path).name}")
+    logger.warning(f"OCR PDF preparation skipped for {Path(path).name}: boom")
+    logging.getLogger("docling").warning("Processing document %s", Path(path).name)
+    doc = types.SimpleNamespace(export_to_markdown=lambda: MARKDOWN, tables=[1])
+    result = types.SimpleNamespace(document=doc, pages=[1, 2])
+    prep = types.SimpleNamespace(
+        rotated_pages={0: 90}, orientation="ok", scan_dpi=150.0
     )
+    return result, None, prep
+
+
+def _assert_nothing_leaked(produced):
     for secret in (
-        secret_name,
+        SECRET_NAME,
         "NguyenVanBiMat",
         "9988776655",
         "BÍ MẬT",
         "corrected page",
+        "Processing document",
     ):
         assert secret not in produced, secret
+
+
+def test_run_prints_no_file_name_and_no_log_line(tmp_path, monkeypatch, capfd):
+    """Phase 9B: with real documents nothing but ``doc-NNN`` ids, the category
+    folder and numbers may reach the terminal, the logs or the report."""
+    code, produced, out = _run_tool(tmp_path, monkeypatch, capfd, _logging_pipeline)
+    assert code == 0
+    _assert_nothing_leaked(produced)
     assert "doc-001" in produced and "cong_van" in produced
     row = json.loads(out.read_text("utf-8"))["engines"]["tesseract_best"]["documents"][
         0
     ]
     assert row["id"] == "doc-001" and row["fields_found"] == 1 and row["pages"] == 2
+
+
+def test_the_leak_check_is_not_vacuous(tmp_path, monkeypatch, capfd):
+    """Without silence_logs() the same run DOES show the file name: the test
+    above would fail if the tool stopped silencing its libraries."""
+    monkeypatch.setattr(bench, "silence_logs", lambda: None)
+    _code, produced, _out = _run_tool(tmp_path, monkeypatch, capfd, _logging_pipeline)
+    assert SECRET_NAME in produced
+
+
+def test_unreadable_ground_truth_does_not_stop_the_run_or_name_the_file(
+    tmp_path, monkeypatch, capfd
+):
+    """A ground-truth file in another encoding is one failed document (the
+    error class only), not a traceback carrying the document's path."""
+    docs = tmp_path / "docs" / "cong_van"
+    docs.mkdir(parents=True)
+    (docs / f"{SECRET_NAME}.gt.txt").write_bytes("Quyết định".encode("utf-16"))
+    code, produced, out = _run_tool(tmp_path, monkeypatch, capfd, _logging_pipeline)
+    assert code == 0
+    _assert_nothing_leaked(produced)
+    assert "Traceback" not in produced
+    row = json.loads(out.read_text("utf-8"))["engines"]["tesseract_best"]["documents"][
+        0
+    ]
+    assert row["error"] == "UnicodeDecodeError" and "cer" not in row

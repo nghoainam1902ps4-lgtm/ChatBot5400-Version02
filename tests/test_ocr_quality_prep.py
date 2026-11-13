@@ -773,6 +773,23 @@ def test_orientation_page_cap_is_reported(scan_pdf, osd_available, monkeypatch):
     assert meta["orientation_checked_pages"] == 1
 
 
+def test_orientation_switched_off_by_page_cap_zero_is_not_a_limit(
+    scan_pdf, osd_available, monkeypatch
+):
+    """OCR_PAGE_OSD_MAX_PAGES=0 is a deliberate "do not check": no limit is
+    reported and no warning is logged for every document."""
+    calls: list[int] = []
+    warned: list[str] = []
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", lambda *a: calls.append(1))
+    monkeypatch.setattr(pdf_prep.logger, "warning", warned.append)
+    monkeypatch.setenv(pdf_prep.OSD_MAX_PAGES_ENV, "0")
+    prep = pdf_prep.prepare(str(scan_pdf), "tesseract")
+    meta = prep.as_meta()
+    assert calls == [] and warned == []
+    assert meta["page_orientation_limit"] is None
+    assert meta["orientation_checked_pages"] == 0 and prep.scan_dpi == 75.0
+
+
 @pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "0", "-5", "x", "", "1e400"])
 def test_orientation_budget_env_rejects_nonsense(monkeypatch, raw):
     monkeypatch.setenv(pdf_prep.OSD_BUDGET_ENV, raw)

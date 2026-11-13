@@ -341,7 +341,8 @@ def _prepare(path: str, tesseract_cmd: str | None, prep: PdfPrep) -> None:
                 if not can_detect or not tesseract_cmd:
                     continue
                 if checked >= max_pages:
-                    prep.orientation_limit = prep.orientation_limit or "max_pages"
+                    if max_pages:  # 0 = detection switched off on purpose
+                        prep.orientation_limit = prep.orientation_limit or "max_pages"
                     continue
                 if _now() >= deadline:
                     prep.orientation_limit = "time_budget"

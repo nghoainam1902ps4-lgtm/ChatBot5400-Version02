@@ -49,6 +49,7 @@ DEAD_PROXY = "http://127.0.0.1:9"
 # when the model is not cached (Phase 8B, found on a real host).
 DEAD_ENDPOINT = DEAD_PROXY
 DEFAULT_CHECK_TIMEOUT = 1800
+MAX_CHECK_TIMEOUT = 86400
 
 
 def _check_timeout() -> int:
@@ -60,7 +61,7 @@ def _check_timeout() -> int:
         )
     except ValueError:
         return DEFAULT_CHECK_TIMEOUT
-    return value if value > 0 else DEFAULT_CHECK_TIMEOUT
+    return min(value, MAX_CHECK_TIMEOUT) if value > 0 else DEFAULT_CHECK_TIMEOUT
 
 
 CHECK_TIMEOUT = _check_timeout()

@@ -545,7 +545,9 @@ async def get_provider_availability():
 
 
 @router.get(
-    "/models/discover/{provider}", response_model=List[DiscoveredModelResponse]
+    "/models/discover/{provider}",
+    response_model=List[DiscoveredModelResponse],
+    dependencies=[Depends(require_admin)],
 )
 async def discover_models(provider: str):
     """

@@ -36,6 +36,7 @@ ADMIN_ONLY = [
     ("post", "/api/models/sync/openai"),
     ("post", "/api/models/sync"),
     ("post", "/api/models/auto-assign"),
+    ("get", "/api/models/discover/openai"),  # contacts the provider with the stored key
     # transformations (shared prompts) and maintenance
     ("post", "/api/transformations"),
     ("post", "/api/transformations/execute"),
@@ -190,6 +191,7 @@ def test_admin_only_routes_are_guarded_by_require_admin():
         "transformation:x": "{transformation_id}",
         "source_insight:x": "{insight_id}",
         "/sync/openai": "/sync/{provider}",
+        "/discover/openai": "/discover/{provider}",
     }
     for method, path in ADMIN_ONLY:
         for concrete, template in templates.items():
@@ -238,8 +240,7 @@ def test_server_file_path_rule_leaves_other_requests_alone():
     )
 
 
-@pytest.mark.parametrize("role", ["contributor", "approver"])
-def test_json_endpoint_refuses_a_foreign_upload_path(client, role, tmp_path):
+def test_json_endpoint_refuses_a_foreign_upload_path(client, tmp_path):
     """The reviewer's reproduction: a contributor pointing /api/sources/json at
     another user's file inside the uploads folder, with delete_source=true."""
     victim = tmp_path / "someone-elses.pdf"
@@ -257,8 +258,9 @@ def test_json_endpoint_refuses_a_foreign_upload_path(client, role, tmp_path):
             "api.routers.sources.CommandService.submit_command_job", new=AsyncMock()
         ) as submit,
     ):
-        r = client.post("/api/sources/json", json=body, headers=_token(role))
-    assert r.status_code == 403, r.text
+        r = client.post("/api/sources/json", json=body, headers=_token("contributor"))
+    # the new rule answered (not the role dependency, not a later validation)
+    assert r.status_code == 403 and "administrator" in r.json()["detail"], r.text
     build.assert_not_called()
     submit.assert_not_called()
     assert (

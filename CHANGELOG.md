@@ -4,7 +4,7 @@ Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh L�
 
 ## [Chưa phát hành] — OCR Engine Manager RC1
 
-Release Candidate, **chưa triển khai**. Chi tiết: `docs/ocr/OCR_PHASE9A_REPORT.md`,
+Release Candidate. Chi tiết: `docs/ocr/OCR_PHASE9B_REPORT.md`, `docs/ocr/OCR_RELEASE_NOTES.md`,
 `docs/ocr/RELEASE_CANDIDATE.md`. Không có migration cơ sở dữ liệu.
 
 ### Thay đổi hành vi khi nâng cấp — cần đọc
@@ -18,6 +18,13 @@ Release Candidate, **chưa triển khai**. Chi tiết: `docs/ocr/OCR_PHASE9A_REP
   hiện lại rủi ro SSRF còn tồn tại (`docs/security/BACKGROUND_JOB_SECURITY.md` §5–6).
 - **Kết quả "Sẵn sàng offline" cũ hết hiệu lực** sau khi nâng cấp: chạy lại "Chuẩn bị"
   hoặc "Kiểm tra offline" một lần cho engine đang dùng. Việc xử lý tài liệu không bị chặn.
+- **Chỉ quản trị viên** được ghi / kiểm tra credential nhà cung cấp và model, quản lý
+  transformation, embed và dựng lại embedding, xóa insight (trước đây backend chỉ yêu
+  cầu đăng nhập; giao diện vốn đã ẩn các trang này). Tài khoản khác gọi trực tiếp các
+  API đó nhận 403. Người không phải quản trị viên không còn tạo được nguồn từ một file
+  đã nằm sẵn trên máy chủ (`POST /api/sources/json` với `file_path`).
+- **Lần khởi động đầu của image mới cần Internet** để cài Docling đúng phiên bản đã khóa.
+  Nếu file override đang đặt `UV_OFFLINE=1` / `HF_HUB_OFFLINE=1`, bỏ chúng trước khi nâng cấp.
 
 ### OCR Engine Manager
 
@@ -29,12 +36,23 @@ Release Candidate, **chưa triển khai**. Chi tiết: `docs/ocr/OCR_PHASE9A_REP
 - Chuẩn bị model khi có Internet, vận hành khi ngắt Internet
   (`docs/ocr/OCR_ONLINE_PREPARATION.md`).
 - Tự sửa hướng trang scan nằm ngang/ngược khi đã cài Tesseract Fast hoặc Best.
+- Bước dò hướng trang có giới hạn tổng thời gian (`OCR_PAGE_OSD_BUDGET_SECONDS`, mặc định
+  600 giây mỗi tài liệu): hết thời gian thì các trang còn lại giữ nguyên hướng, tài liệu
+  vẫn được xử lý; log ghi `page_orientation_limit`.
+- Log ghi `conversion_status` / `conversion_errors`: Docling chuyển đổi một phần không
+  còn im lặng.
+- `OCR_INSTALL_TESSERACT=true` trong `.env` giữ Tesseract qua mọi lần `up -d --build`.
+- Công cụ benchmark cục bộ cho tài liệu của đơn vị (`scripts/ocr/local_document_benchmark.py`)
+  và script kiểm tra sức khỏe chỉ đọc (`scripts/ocr/production_health_check.sh`).
 - Giới hạn đã biết: xem `docs/ocr/OCR_ENGINE_MANAGER.md` §8.
 
 ### Bảo mật
 
 - API job nền tổng quát bị khóa; job xử lý nguồn kiểm tra lại đường dẫn file và URL.
 - Công tắc tắt URL ingestion (ở trên).
+- Thực thi vai trò quản trị viên ở backend cho credential, model và các chức năng bảo trì
+  (ở trên): đóng đường đổi `base_url` của credential để lấy khóa API và đường dò địa chỉ
+  nội bộ qua "kiểm tra kết nối".
 
 ## [1.0.8] - 2026-11-12
 
