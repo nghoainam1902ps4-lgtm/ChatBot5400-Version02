@@ -355,3 +355,29 @@ Báo cáo đầy đủ: [OCR_PHASE8D_REPORT.md](OCR_PHASE8D_REPORT.md).
   script đã tự dọn container. Chạy lại bằng tiến trình tách rời.
 - Xác minh KL-1: với Tesseract Best, assertion tiêu đề là assertion **duy nhất** thất bại ở cả 3 bài. Với
   Tesseract Fast còn thêm `table_rows` (nhãn `Tổng cộng`), nên ngoại lệ không áp dụng.
+
+## 12. Phase 9A — Cổng bảo mật cuối (2026-11-13)
+
+Báo cáo đầy đủ: [OCR_PHASE9A_REPORT.md](OCR_PHASE9A_REPORT.md).
+
+| Kiểm thử | Kết quả |
+|---|---|
+| `tests/test_url_ingestion_switch.py` (mới) | 43 passed |
+| `tests/test_ocr_local_benchmark.py` (mới) | 4 passed |
+| `tests/test_ocr_quality_prep.py` | 62 passed (2 mới: khóa pdfium, bọc lỗi Hub timeout) |
+| `pytest tests/` | 1288 passed / 10 failed / 44 skipped — cùng 10 lỗi của `main` |
+| Test bảo mật (`-k security/guard/commands/auth/url`) | 185 passed |
+| Frontend | lint 0 error, tsc 0, vitest 411/411 (3 mới), build OK |
+| Bộ gốc 48 bài, strict (chạy lại) | 38 PASS / 10 FAIL / 0 NOT VERIFIED |
+| `-k tesseract_best` (chạy lại) | 6 PASS / 3 FAIL |
+| `scripts/ocr/release_criteria.py` (chạy lại) | Best 7/7 (3 kèm KL-1) · Fast 5/7 · RapidOCR 7/7 · EasyOCR 2/7; critical 7/7 · 7/7 · 7/7 · 2/7 |
+| Docker quick (Tesseract Best), URL ingestion tắt | 42 PASS / 0 FAIL |
+| Trực tiếp trên stack cô lập: công tắc URL / bảo mật / đồng thời | 7/7 PASS · 16/16 · 6/6 |
+
+- 13 test có sẵn kiểm tra hành vi khi URL được bật; 6 module đó giờ bật công tắc tường minh bằng fixture.
+  Không test nào bị xóa, skip hay nới lỏng.
+- Bộ test mới bắt được thiếu sót của bản vá đầu (hàm tải của lớp OCR chưa có chốt chặn): fixture chặn mạng
+  ghi nhận một lần thử phân giải DNS; đã sửa trước khi commit.
+- Sai sót thao tác đã hoàn tác: một lệnh `ruff format tests` định dạng lại 40 file test không liên quan; đã
+  `git checkout` toàn bộ rồi chỉ áp lại thay đổi có chủ đích. `tests/test_ocr_integration.py` và fixture
+  không đổi.

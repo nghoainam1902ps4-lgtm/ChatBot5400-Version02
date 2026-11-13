@@ -63,3 +63,11 @@
 | 8D | Regression / frontend / bảo mật | DONE — cùng 10 lỗi của `main`; 408/408; 16/16 |
 | 8D | SSRF qua redirect | **OPEN — chặn production**, cần biện pháp được duyệt (D-28) |
 | 8D | Trạng thái | READY FOR MERGE (có điều kiện) · READY FOR CONDITIONAL RELEASE · NOT READY FOR PRODUCTION |
+| 9A | Khảo sát mọi đường nhập nguồn từ URL; công tắc `OPEN_NOTEBOOK_ENABLE_URL_INGESTION` (mặc định tắt), chặn 4 tầng | DONE (D-29) |
+| 9A | Giao diện theo trạng thái backend (vi/en); cấu hình compose, `.env.example`, CHANGELOG | DONE |
+| 9A | Security test: 43 backend + 3 frontend + trực tiếp trên stack cô lập | DONE |
+| 9A | Regression backend / frontend; bộ OCR gốc; Docker quick | DONE — không lỗi mới; bộ gốc vẫn 38/48 |
+| 9A | Review độc lập cuối `45e2254..HEAD` | DONE — 0 High, 0 Medium; 6 Low đã sửa |
+| 9A | Kế hoạch triển khai, checklist, hướng dẫn + công cụ benchmark tài liệu thật | DONE (chỉ soạn, không thực hiện) |
+| 9A | Bundle `phase9a-backup.bundle`, branch `release/ocr-engine-manager-rc1` | xem `OCR_PHASE9A_REPORT.md` §J–K |
+| 9A | Benchmark tài liệu thật, backup/restore, triển khai production | **OPEN — việc của chủ dự án** |

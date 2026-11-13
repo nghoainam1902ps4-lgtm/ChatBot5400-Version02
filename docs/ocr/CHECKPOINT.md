@@ -120,3 +120,19 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
   RapidOCR) · NOT READY FOR PRODUCTION (SSRF qua redirect, benchmark tài liệu thật).
 - Còn mở: `OCR_PHASE8D_REPORT.md` §11 F và §15.
 - Bằng chứng: `/home/admin/cb5400-ocr-accept/evidence/phase8d/`. Chưa push, chưa merge, chưa triển khai.
+
+## Phase 9A
+
+- Branch làm việc `local/ocr-phase8c`; branch phát hành `release/ocr-engine-manager-rc1` (cùng commit).
+- Commit: `3288a73` (công tắc URL ingestion), `d671218` (sửa theo review cuối, benchmark cục bộ, tài liệu
+  triển khai), + commit tài liệu cuối của phase.
+- File mới: `open_notebook/utils/url_ingestion.py`, `scripts/ocr/local_document_benchmark.py`,
+  `tests/test_url_ingestion_switch.py`, `tests/test_ocr_local_benchmark.py`, `OCR_PHASE9A_REPORT.md`,
+  `OCR_PRODUCTION_DEPLOYMENT_PLAN.md`, `OCR_PRODUCTION_CHECKLIST.md`, `OCR_REAL_DOCUMENT_BENCHMARK.md`.
+- Quyết định: D-29 (`OPEN_NOTEBOOK_ENABLE_URL_INGESTION`, mặc định tắt).
+- Kết quả: backend 1288 / 10 (cùng 10 lỗi của `main`); frontend 411/411; review cuối 0 High / 0 Medium;
+  bộ OCR gốc không đổi (38/48).
+- Trạng thái: READY FOR MERGE · READY FOR CONDITIONAL RELEASE (URL ingestion tắt) · NOT READY FOR PRODUCTION.
+- Còn thiếu trước production: benchmark tài liệu thật, backup + restore, kiểm tra môi trường đích, phê duyệt.
+- Push: xem `OCR_PHASE9A_REPORT.md` §K.
+- Bằng chứng: `/home/admin/cb5400-ocr-accept/evidence/phase9a/`. Chưa merge, chưa triển khai.

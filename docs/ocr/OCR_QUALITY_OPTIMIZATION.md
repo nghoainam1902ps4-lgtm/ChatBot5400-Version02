@@ -127,6 +127,13 @@ nhau; điều quan trọng là có một độ phân giải hợp lệ thay cho 
 - Trang vừa có text layer vừa có ảnh scan lớn **và** ảnh đó nằm ngang so với text: `/Rotate` xoay cả
   trang, nên không được sửa (OSD cả trang không đạt ngưỡng). Chưa có fixture cho trường hợp này.
 - Chi phí: mỗi trang scan tốn thêm khoảng 1 giây (render + OSD); số đo ở OCR_QUALITY_BENCHMARK §4.
+- Trường hợp xấu nhất của bước dò hướng: 200 trang × 30 giây timeout ≈ 100 phút trước khi Docling bắt đầu
+  (thực tế ~1 giây/trang). Với tài liệu scan rất dài, giảm `OCR_PAGE_OSD_MAX_PAGES`.
+- Trang được coi là "scan" khi có một ảnh phủ ≥ 50 % trang. Một PDF sinh từ phần mềm có ảnh nền độ phân giải
+  thấp phủ cả trang sẽ khiến scale OCR của Tesseract hạ theo ảnh nền đó (tối thiểu 2,0). Tắt bằng
+  `OCR_PDF_PREP=false` nếu gặp loại tài liệu này.
+- Xử lý sync song song (API, `async_processing=false`): `pdf_prep` dùng chung khóa pdfium của Docling cho mọi
+  lời gọi pdfium và nhả khóa trong lúc chạy Tesseract (bổ sung ở Phase 9A theo review cuối).
 
 ### 2.6. Điểm cần chủ dự án xác nhận
 

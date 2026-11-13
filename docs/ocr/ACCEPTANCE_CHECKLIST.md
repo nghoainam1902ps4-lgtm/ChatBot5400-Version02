@@ -118,3 +118,32 @@ Bộ gốc và bộ có điều kiện được báo **riêng**; bộ có điề
 | SSRF qua redirect đã khắc phục | **KHÔNG** — rủi ro còn lại, cần biện pháp được duyệt | `OCR_SECURITY_REVIEW.md` |
 | `offline_verified` ngoài Docker | NOT VERIFIED — cần ngắt mạng máy chủ | — |
 | Production không bị ảnh hưởng; không xóa volume/image/cache | PASS | `preflight/production-{before,after}.txt` |
+
+## Phase 9A — Cổng bảo mật cuối và Release Candidate
+
+| Hạng mục | Kết quả | Bằng chứng (`evidence/phase9a/`) |
+|---|---|---|
+| Công tắc URL ingestion: mặc định tắt; thiếu / sai giá trị ⇒ tắt | PASS | `test_switch_parsing` |
+| API tạo nguồn URL bị chặn (multipart sync + async, JSON) | PASS — 403 | `tests/test_url_ingestion_switch.py` |
+| Retry / xử lý lại nguồn URL cũ bị chặn | PASS — 403 | như trên |
+| Worker và graph từ chối trước mọi hoạt động mạng | PASS | như trên (fixture chặn DNS / kết nối) |
+| Admin cũng bị chặn | PASS | như trên + kiểm tra trực tiếp |
+| Nguồn URL cũ vẫn đọc được nội dung đã lưu | PASS | như trên |
+| Upload file, nhập văn bản, OCR không bị ảnh hưởng | PASS | như trên + `runs/url_switch_live-9a.json` |
+| Khi bật: chính sách kiểm tra URL hiện có vẫn áp dụng | PASS | như trên |
+| LLM, embedding, chuẩn bị model không đọc công tắc | PASS | `test_switch_is_only_used_by_url_ingestion_code` |
+| Giao diện: tab URL vô hiệu hóa theo backend, thông báo vi/en | PASS | `SourceTypeStep.test.tsx` |
+| Kiểm tra trực tiếp trên stack cô lập (biến không đặt ⇒ tắt) | 7/7 PASS | `runs/url_switch_live-9a.json` |
+| Bộ gốc 48 bài (chạy lại trên mã cuối) | 38 PASS / 10 FAIL / 0 NOT VERIFIED — không đổi | `runs/ocr-acceptance-full-9a.json` |
+| Lộ trình nhanh gốc | 6 PASS / 3 FAIL — không đổi | `runs/ocr-acceptance-quick-9a.json` |
+| Tiêu chí có điều kiện, Tesseract Best | 7/7 (4 PASS + 3 PASS kèm KL-1), critical 7/7 | `runs/release-criteria-9a.json` |
+| Docker quick (Tesseract Best), URL ingestion tắt | 42 PASS / 0 FAIL | `runs/docker-quick-9a.log` |
+| Backend regression | PASS — 1288 / 10, cùng 10 lỗi của `main` | `runs/pytest-full-9a.txt` |
+| Frontend lint / tsc / vitest / build | PASS — 0 error / 0 / 411 / OK | `runs/frontend-9a.txt` |
+| Bảo mật: test + trực tiếp | PASS — 185 passed; 16/16 | `runs/security_live-9a.json` |
+| Review độc lập cuối `45e2254..HEAD` | PASS — 0 High, 0 Medium | `OCR_PHASE9A_REPORT.md` §G |
+| Không bí mật, model, cache, wheel, DB, tài liệu thật trong branch | PASS | `OCR_PHASE9A_REPORT.md` §K |
+| SSRF đã sửa triệt để | **KHÔNG** — giảm thiểu khi tắt, còn tồn tại khi bật | `BACKGROUND_JOB_SECURITY.md` §5–6 |
+| Benchmark tài liệu nghiệp vụ thật | **CHƯA THỰC HIỆN** — việc của chủ dự án | `OCR_REAL_DOCUMENT_BENCHMARK.md` |
+| Backup / restore / triển khai production | **CHƯA THỰC HIỆN** — chỉ có kế hoạch | `OCR_PRODUCTION_DEPLOYMENT_PLAN.md` |
+| Production không bị ảnh hưởng | PASS — container ID, image, thời điểm start, restart (0), mount giống hệt; `/health` 200 | `preflight/production-{before,after}.txt` |

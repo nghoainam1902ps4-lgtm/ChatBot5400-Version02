@@ -1,10 +1,19 @@
-# Release Candidate — OCR Engine Manager (Phase 0 → 8D)
+# Release Candidate — OCR Engine Manager (Phase 0 → 9A)
 
 - **Branch:** `claude/friendly-mendel-a2b6m5`.
 - **Gốc so sánh:** `5e04227` (trước tính năng) và `e32eae8` (Phase 7).
 - **Không merge main, không triển khai production** trong phiên phát triển.
 
-Trạng thái (sau Phase 8D, 2026-11-13) — chi tiết ở §8:
+Trạng thái (sau Phase 9A, 2026-11-13) — chi tiết ở §9:
+
+- **READY FOR MERGE** — theo tiêu chí phát hành có điều kiện (D-27) đã được chủ dự án chấp nhận; review cuối
+  0 High / 0 Medium.
+- **READY FOR CONDITIONAL RELEASE** — Tesseract Vietnamese Best và RapidOCR, **với URL ingestion tắt** (D-29).
+- **NOT READY FOR PRODUCTION** — còn thiếu benchmark tài liệu thật, backup + kiểm tra restore, kiểm tra trên
+  môi trường đích, phê duyệt kế hoạch triển khai.
+- Branch phát hành: `release/ocr-engine-manager-rc1`. Bộ nghiệm thu gốc không đổi: 38 PASS / 10 FAIL.
+
+Trạng thái sau Phase 8D (giữ để đối chiếu) — chi tiết ở §8:
 
 - **READY FOR MERGE (có điều kiện)** — theo tiêu chí phát hành có điều kiện D-27; chờ chủ dự án xác nhận.
 - **READY FOR CONDITIONAL RELEASE** — Tesseract Vietnamese Best (khuyến nghị) và RapidOCR (tương thích ngược).
@@ -224,3 +233,42 @@ khi **tất cả** các điều sau đúng cho engine được phát hành:
 
 Xem `OCR_PHASE8D_REPORT.md` §15. Tóm tắt: merge cần chủ dự án xác nhận D-27 và hai điểm còn mở về Tesseract;
 production cần thêm biện pháp SSRF được duyệt, benchmark tài liệu thật, backup và quy trình vận hành.
+
+## 9. Phase 9A — cổng bảo mật cuối và Release Candidate
+
+Báo cáo: [OCR_PHASE9A_REPORT.md](OCR_PHASE9A_REPORT.md). Quyết định: D-29.
+
+### 9.1 Phạm vi phát hành đã chốt
+
+- **Engine:** Tesseract Vietnamese Best (khuyến nghị), RapidOCR (mặc định, tương thích ngược). Tesseract Fast
+  và EasyOCR vẫn có trong OCR Engine Manager nhưng chưa đạt chuẩn phát hành nghiệp vụ / ở mức thử nghiệm.
+- **Ngoại lệ duy nhất được chấp nhận:** KL-1 — mất dấu ở tiêu đề in đậm `BẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU`.
+  Không mở rộng sang số tiền, ngày, số hiệu, nhãn dòng bảng hay nội dung nghiệp vụ.
+- **Cấu hình bảo mật:** `OPEN_NOTEBOOK_ENABLE_URL_INGESTION` **tắt** (mặc định). Bản phát hành cho môi trường
+  ngân hàng chỉ được đánh giá ở cấu hình này.
+
+### 9.2 Đối chiếu điều kiện
+
+| Điều kiện | Kết quả Phase 9A |
+|---|---|
+| §3.1 gốc: lộ trình nhanh `FAIL == 0` | **KHÔNG ĐẠT theo đúng chữ** — 6 PASS / 3 FAIL (giới hạn đã ghi nhận) |
+| §3.1 theo tiêu chí có điều kiện (Tesseract Best) | **ĐẠT** — 7/7 (4 PASS + 3 PASS kèm KL-1), critical 7/7 |
+| §3.1 §5 Docker lộ trình nhanh | **ĐẠT** — 42 PASS / 0 FAIL |
+| §3.2 commands / job guard | **ĐẠT** — không commit nào đụng tới kể từ `45e2254`; bảo mật trực tiếp 16/16 |
+| §3.3 10 lỗi backend có sẵn | **ĐẠT** — 1288 passed / 10 failed, cùng 10 lỗi của `main` |
+| Rủi ro SSRF qua redirect (D-28) | **Giảm thiểu khi URL ingestion tắt** (mặc định); **còn tồn tại khi bật**. Không tuyên bố đã sửa triệt để |
+| Review độc lập cuối `45e2254..HEAD` | **ĐẠT** — 0 High, 0 Medium; 9 Low (6 đã sửa, 2 ghi nhận, 1 có sẵn ngoài phạm vi) |
+| §4.2 Benchmark tài liệu thật | **CHƯA** — có công cụ và hướng dẫn; chủ dự án thực hiện tại chỗ |
+| §4.3 Backup, restore, môi trường đích | **CHƯA** — chỉ có kế hoạch và checklist |
+
+### 9.3 Thay đổi hành vi khi nâng cấp
+
+1. Thêm nguồn từ URL (kể cả YouTube) **bị tắt** cho tới khi đặt `OPEN_NOTEBOOK_ENABLE_URL_INGESTION=true`.
+   Nguồn URL cũ vẫn đọc được; không xử lý lại được.
+2. Kết quả readiness cũ hết hiệu lực: chạy lại "Chuẩn bị" một lần.
+3. `POST /api/commands/jobs` luôn bị từ chối (từ Phase 8A).
+
+### 9.4 Tài liệu phát hành
+
+`OCR_PRODUCTION_DEPLOYMENT_PLAN.md`, `OCR_PRODUCTION_CHECKLIST.md`, `OCR_REAL_DOCUMENT_BENCHMARK.md`,
+`OCR_ONLINE_PREPARATION.md`, `OCR_ROLLBACK.md`, `CHANGELOG.md`.

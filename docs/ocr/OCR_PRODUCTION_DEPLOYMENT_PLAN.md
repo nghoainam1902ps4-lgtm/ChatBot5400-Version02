@@ -12,7 +12,7 @@ Phase 9A không backup, không restart, không sửa compose / `.env`, không tr
 |---|---|---|
 | Thư mục | `/home/admin/ChatBot5400-Version02` | cùng thư mục, sau khi cập nhật mã |
 | Compose project | `chatbot5400-version02` (`docker-compose.yml` + `docker-compose.override.yml`) | không đổi tên project |
-| Commit | `5e042279439302d3ccf39bef4d1d8d402314d194` (v1.0.8, trước tính năng OCR) | `@@RC_SHA@@` — branch `release/ocr-engine-manager-rc1` |
+| Commit | `5e042279439302d3ccf39bef4d1d8d402314d194` (v1.0.8, trước tính năng OCR) | `HEAD của `release/ocr-engine-manager-rc1` (lấy bằng `git rev-parse origin/release/ocr-engine-manager-rc1`; mã đã kiểm thử là `d671218`, các commit sau đó chỉ thêm tài liệu)` — branch `release/ocr-engine-manager-rc1` |
 | Image ứng dụng | `chatbot5400:local`, ID `sha256:7d26c1203a65…` (build 2026-11-12) | build lại từ commit RC, gắn thêm tag `chatbot5400:rc1-<ngày>` |
 | Image DB | `surrealdb/surrealdb:v2` | không đổi |
 | Dữ liệu | bind mount `./notebook_data` → `/app/data`, `./surreal_data` → `/mydata` | không đổi; không có migration DB |
