@@ -127,8 +127,87 @@ def rapidocr_force_cpu() -> bool:
     )
 
 
-def build_ocr_options(engine_id: str, force_full_page: bool = False) -> Any:
-    """Return a Docling ``OcrOptions`` instance for ``engine_id``."""
+# Docling's EasyOcrOptions.confidence_threshold defaults to 0.5, which drops
+# most correct Vietnamese lines of a 150 DPI scan (they score 0.2-0.5). Measured
+# in Phase 8C (docs/ocr/OCR_QUALITY_OPTIMIZATION.md): below 0.2 only garbage
+# lines were found, between 0.2 and 0.5 mostly correct or partly correct ones.
+EASYOCR_CONFIDENCE_DEFAULT = 0.2
+EASYOCR_CONFIDENCE_ENV = "OCR_EASYOCR_CONFIDENCE"
+
+
+def easyocr_confidence_threshold() -> float:
+    """Deployment-wide EasyOCR line confidence threshold, 0.0-1.0 (D-26)."""
+    import os
+
+    raw = os.environ.get(EASYOCR_CONFIDENCE_ENV, "").strip()
+    if not raw:
+        return EASYOCR_CONFIDENCE_DEFAULT
+    try:
+        value = float(raw)
+    except ValueError:
+        return EASYOCR_CONFIDENCE_DEFAULT
+    return value if 0.0 <= value <= 1.0 else EASYOCR_CONFIDENCE_DEFAULT
+
+
+TESSERACT_GATE_ENV = "OCR_TESSERACT_OSD_GATE"
+
+
+def tesseract_osd_gate_enabled() -> bool:
+    """On by default; ``OCR_TESSERACT_OSD_GATE=false`` calls Tesseract directly."""
+    import os
+
+    return os.environ.get(TESSERACT_GATE_ENV, "").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def tesseract_command(real_cmd: str) -> str:
+    """The value for ``TesseractCliOcrOptions.tesseract_cmd`` (D-25).
+
+    Docling rotates every OCR crop by Tesseract's orientation guess whatever
+    its confidence. ``tesseract_gate.py`` sits in front of the real binary and
+    turns low-confidence guesses into "upright"; everything else is passed
+    through untouched. The real path travels in ``OCR_TESSERACT_REAL`` — the
+    same value for every job, so setting it is race-free (like D-04).
+    """
+    import os
+    from pathlib import Path
+
+    from open_notebook.ocr import tesseract_gate
+
+    if not tesseract_osd_gate_enabled():
+        return real_cmd
+    gate = Path(tesseract_gate.__file__).resolve()
+    if not os.access(gate, os.X_OK):
+        try:
+            gate.chmod(gate.stat().st_mode | 0o111)
+        except OSError:
+            pass
+    if not os.access(gate, os.X_OK):
+        # Never break OCR over this: Tesseract still works, only the
+        # protection against wrongly rotated crops is missing.
+        from loguru import logger
+
+        logger.warning(
+            f"{gate} is not executable; Tesseract runs without orientation "
+            f"gating (run 'chmod +x {gate}' to restore it)."
+        )
+        return real_cmd
+    os.environ[tesseract_gate.REAL_ENV] = real_cmd
+    return str(gate)
+
+
+def build_ocr_options(
+    engine_id: str, force_full_page: bool = False, scale: float | None = None
+) -> Any:
+    """Return a Docling ``OcrOptions`` instance for ``engine_id``.
+
+    ``scale`` is Docling's official ``OcrOptions.scale`` (72 DPI x scale);
+    None keeps Docling's default. Only the Tesseract engines use it (D-25).
+    """
     from docling.datamodel.pipeline_options import (
         EasyOcrOptions,
         OcrMode,
@@ -160,9 +239,14 @@ def build_ocr_options(engine_id: str, force_full_page: bool = False) -> Any:
         if not ok:
             raise ValueError(detail)
         runtime.ensure_tessdata_layout()
-        cmd = runtime.tesseract_cmd() or "tesseract"
+        cmd = tesseract_command(runtime.tesseract_cmd() or "tesseract")
+        tess_extra: dict[str, Any] = {"scale": scale} if scale else {}
         return TesseractCliOcrOptions(
-            lang=lang, path=str(paths.tessdata_dir()), tesseract_cmd=cmd, mode=mode
+            lang=lang,
+            path=str(paths.tessdata_dir()),
+            tesseract_cmd=cmd,
+            mode=mode,
+            **tess_extra,
         )
     if spec.docling_kind == "easyocr":
         return EasyOcrOptions(
@@ -170,6 +254,7 @@ def build_ocr_options(engine_id: str, force_full_page: bool = False) -> Any:
             use_gpu=False,  # OCR on CPU only (D-09); layout/table devices untouched
             model_storage_directory=str(paths.easyocr_dir()),
             download_enabled=False,  # never download during document processing
+            confidence_threshold=easyocr_confidence_threshold(),
             mode=mode,
         )
     raise ValueError(f"Unsupported OCR engine kind: {spec.docling_kind}")

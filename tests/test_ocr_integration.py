@@ -363,9 +363,20 @@ def test_pipeline_identity_heron_tableformer_and_engine(
 @pytest.mark.parametrize("fixture", sorted(MANIFEST))
 @pytest.mark.parametrize("engine_id", ENGINES)
 def test_full_pipeline_content(engine_id, fixture, full_pipeline_enabled):
+    from content_core import ContentCoreConfig
+
+    from open_notebook.ocr.docling_extract import convert_document
+    from open_notebook.ocr.options import OcrSettings
+
     spec = MANIFEST[fixture]
-    conv = _converter(engine_id)
-    result = conv.convert(str(FIXTURES / spec["file"]))
+    _converter(engine_id)  # prerequisites (engine ready, Docling models present)
+    # The production entry point (what a worker job runs), so the Tesseract
+    # PDF preparation of D-25 is part of what is accepted.
+    result, conv, _prep = convert_document(
+        str(FIXTURES / spec["file"]),
+        ContentCoreConfig(document_engine="docling", docling_ocr=True),
+        OcrSettings(engine=engine_id),
+    )
     doc = result.document
     md = doc.export_to_markdown()
     nmd = _norm(md)

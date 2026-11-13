@@ -116,6 +116,11 @@ e2e() {  # $1 engine
   while IFS= read -r line; do args+=(--expect "$line"); done < <(expects_for "$1")
   api ocr-e2e --engine "$1" --pdf /tmp/vb_scan.pdf "${args[@]}"
 }
+# An E2E run whose ONLY problem is the recognised text (every step up to and
+# including source processing succeeded).
+declare -A CONTENT_FAIL=()
+content_only_failure() { printf '%s' "$1" | grep -q '"error": "expected text missing from the processed source"'; }
+missing_of() { printf '%s' "$1" | grep -o '"expected_missing": \[[^]]*\]' | tail -1; }
 internet_blocked() {
   ! docker exec "$(app_id)" /app/.venv/bin/python -c "import urllib.request;urllib.request.urlopen('https://pypi.org/simple/',timeout=10)" >/dev/null 2>&1
 }
@@ -186,7 +191,18 @@ for E in $SCENARIOS; do
     *) fail "$E: prepare: $out"; continue;;
   esac
   out="$(e2e "$E")"; rc=$?; echo "$out"
-  if [ $rc -eq 0 ]; then pass "$E: online E2E (activate/test/upload/process)"; else fail "$E: online E2E: $out"; continue; fi
+  if [ $rc -eq 0 ]; then
+    pass "$E: online E2E (activate/test/upload/process)"
+  elif content_only_failure "$out"; then
+    # The pipeline ran with this engine; only the recognised TEXT is not good
+    # enough. That is reported as a FAIL here, once. The engine still goes through
+    # the offline steps, which then require the SAME result as online: offline
+    # operation and OCR quality are two different things to accept.
+    fail "$E: online E2E content (pipeline ran, expected text missing): $out"
+    CONTENT_FAIL[$E]="$(missing_of "$out")"
+  else
+    fail "$E: online E2E: $out"; continue
+  fi
   docker logs "$(app_id)" 2>&1 | grep -q "Docling OCR finished: engine=$E actual_models=\['$(class_for "$E")'\]" &&
     pass "$E: worker log shows $(class_for "$E")" || fail "$E: engine not confirmed in worker log"
   before="$(model_sums)"
@@ -209,7 +225,13 @@ offline_round() {  # $1 label
     out="$(api readiness-check --engine "$E" --require-offline)"; rc=$?
     [ $rc -eq 0 ] && pass "$1: $E readiness offline_verified" || fail "$1: $E readiness: $out"
     out="$(e2e "$E")"; rc=$?
-    [ $rc -eq 0 ] && pass "$1: $E processed a PDF (Heron/TableFormer + OCR)" || fail "$1: $E processing: $out"
+    if [ $rc -eq 0 ]; then
+      pass "$1: $E processed a PDF (Heron/TableFormer + OCR)"
+    elif [ -n "${CONTENT_FAIL[$E]:-}" ] && content_only_failure "$out" && [ "$(missing_of "$out")" = "${CONTENT_FAIL[$E]}" ]; then
+      pass "$1: $E processed a PDF with the same result as online (content FAIL already reported in step 2)"
+    else
+      fail "$1: $E processing: $out"
+    fi
   done
   [ "$(model_sums)" = "$SUMS" ] && pass "$1: OCR model checksums unchanged" || fail "$1: OCR models changed"
   [ "$(hf_state)" = "$HF" ] && pass "$1: Hugging Face cache unchanged" || fail "$1: HF cache changed"

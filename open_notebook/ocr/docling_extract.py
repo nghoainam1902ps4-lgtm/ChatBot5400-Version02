@@ -148,7 +148,10 @@ async def extract_url_with_selected_ocr(
 
 
 def build_pipeline_options(
-    cc_config: Any, ocr: OcrSettings, for_image: bool = False
+    cc_config: Any,
+    ocr: OcrSettings,
+    for_image: bool = False,
+    scale: float | None = None,
 ) -> Any:
     """content-core's pipeline options + the selected ocr_options.
 
@@ -160,7 +163,7 @@ def build_pipeline_options(
     from docling.datamodel.pipeline_options import PdfPipelineOptions
 
     kwargs: dict[str, Any] = {
-        "ocr_options": build_ocr_options(ocr.engine, ocr.force_full_page)
+        "ocr_options": build_ocr_options(ocr.engine, ocr.force_full_page, scale=scale)
     }
     if not for_image:
         kwargs.update(
@@ -175,7 +178,10 @@ def build_pipeline_options(
     return PdfPipelineOptions(**kwargs)
 
 
-def build_converter(cc_config: Any, ocr: OcrSettings) -> Any:
+def build_converter(
+    cc_config: Any, ocr: OcrSettings, scale: float | None = None
+) -> Any:
+    """``scale``: OCR render scale for PDFs (see ``pdf_prep``); None = Docling default."""
     from docling.datamodel.base_models import InputFormat
 
     from open_notebook.ocr.hub_http import bound_hub_timeouts
@@ -190,7 +196,7 @@ def build_converter(cc_config: Any, ocr: OcrSettings) -> Any:
     return DocumentConverter(
         format_options={
             InputFormat.PDF: PdfFormatOption(
-                pipeline_options=build_pipeline_options(cc_config, ocr)
+                pipeline_options=build_pipeline_options(cc_config, ocr, scale=scale)
             ),
             InputFormat.IMAGE: ImageFormatOption(
                 pipeline_options=build_pipeline_options(cc_config, ocr, for_image=True)
@@ -210,13 +216,38 @@ def actual_ocr_models(converter: Any) -> list[str]:
     return sorted(set(names))
 
 
+def convert_document(
+    path: str, cc_config: Any, ocr: OcrSettings
+) -> tuple[Any, Any, Any]:
+    """The production conversion: (Docling result, converter, PdfPrep).
+
+    A PDF is first inspected by ``pdf_prep`` (D-25): scanned pages that are
+    sideways or upside down are corrected in a temporary copy (every engine,
+    when Tesseract's orientation data is installed), and with a Tesseract
+    engine the OCR render scale follows the scan resolution. Other file types
+    are converted exactly as before.
+    """
+    from open_notebook.ocr import pdf_prep, runtime
+
+    prep = pdf_prep.PdfPrep()
+    if ocr.enabled:
+        prep = pdf_prep.prepare(path, runtime.tesseract_cmd())
+        if catalog.get_engine(ocr.engine).docling_kind != "tesseract":
+            prep.scale = None  # measured for Tesseract only
+    try:
+        converter = build_converter(cc_config, ocr, scale=prep.scale)
+        result = converter.convert(prep.path or path)
+    finally:
+        prep.cleanup()
+    return result, converter, prep
+
+
 def convert_file(
     path: str, cc_config: Any, ocr: OcrSettings
 ) -> tuple[str, dict[str, Any]]:
     """Synchronous conversion (same blocking behaviour as content-core)."""
-    converter = build_converter(cc_config, ocr)
     started = time.time()
-    result = converter.convert(path)
+    result, converter, prep = convert_document(path, cc_config, ocr)
     doc = result.document
     fmt = getattr(cc_config, "docling_output_format", "markdown")
     if fmt == "html":
@@ -230,6 +261,7 @@ def convert_file(
         "ocr_engine": ocr.engine,
         "ocr_models": actual_ocr_models(converter),
         "ocr_seconds": round(time.time() - started, 2),
+        **prep.as_meta(),
         **pipeline_identity(converter),
     }
     return output, meta
@@ -278,7 +310,9 @@ async def extract_with_selected_ocr(
     content, meta = convert_file(file_path, cc_config, ocr)
     logger.info(
         f"Docling OCR finished: engine={ocr.engine} actual_models={meta.get('ocr_models')} "
-        f"in {meta.get('ocr_seconds')}s"
+        f"in {meta.get('ocr_seconds')}s (ocr_scale={meta.get('ocr_scale')}, "
+        f"scan_dpi={meta.get('scan_dpi')}, "
+        f"orientation_corrected_pages={sorted(meta.get('rotated_pages') or {})})"
     )
     expected = {
         "rapidocr": "RapidOcrModel",

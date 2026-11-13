@@ -136,8 +136,16 @@ def ensure_tessdata_prefix() -> tuple[bool, str]:
 
 # Tesseract resolves output configs (``tesseract img stdout tsv``, which Docling
 # uses) from ``$TESSDATA_PREFIX/configs/``. Our dedicated tessdata directory
-# therefore needs the standard one-line ``tsv`` config shipped by Tesseract.
-_TSV_CONFIG = "tessedit_create_tsv 1\n"
+# therefore needs the standard ``tsv`` config shipped by Tesseract.
+#
+# ``user_defined_dpi`` (the variable behind ``tesseract --dpi``): Docling saves
+# OCR crops as PNG without resolution metadata, so Tesseract falls back to
+# "Invalid resolution 0 dpi. Using 70 instead" and its page segmentation then
+# garbles ruled tables. Docling renders crops at 72 DPI x scale (default 3).
+# Measured in Phase 8C: any credible value (150 / 216 / 300) gives identical
+# output; what matters is that the resolution is valid (D-25).
+TESSERACT_RENDER_DPI = 216
+_TSV_CONFIG = f"tessedit_create_tsv 1\nuser_defined_dpi {TESSERACT_RENDER_DPI}\n"
 
 
 def ensure_tessdata_layout() -> Path:
