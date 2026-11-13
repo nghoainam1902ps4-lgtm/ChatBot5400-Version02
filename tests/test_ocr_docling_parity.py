@@ -19,6 +19,14 @@ from open_notebook.ocr.options import OcrSettings  # noqa: E402
 _ALLOWED_DIFF = {"ocr_options", "accelerator_options"}
 
 
+@pytest.fixture(autouse=True)
+def _url_ingestion_enabled(monkeypatch):
+    """This module covers behaviour WITH URL ingestion switched on (URL policy,
+    engine routing). The deployment default is OFF (D-29); the switched-off
+    behaviour is covered by tests/test_url_ingestion_switch.py."""
+    monkeypatch.setenv("OPEN_NOTEBOOK_ENABLE_URL_INGESTION", "true")
+
+
 def _content_core_options(monkeypatch, cfg):
     from content_core.processors.document import docling as cc_docling
 

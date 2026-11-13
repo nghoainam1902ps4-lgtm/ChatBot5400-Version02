@@ -10,6 +10,14 @@ from open_notebook.graphs import source as source_graph
 from open_notebook.ocr.options import OcrSettings
 
 
+@pytest.fixture(autouse=True)
+def _url_ingestion_enabled(monkeypatch):
+    """This module covers behaviour WITH URL ingestion switched on (URL policy,
+    engine routing). The deployment default is OFF (D-29); the switched-off
+    behaviour is covered by tests/test_url_ingestion_switch.py."""
+    monkeypatch.setenv("OPEN_NOTEBOOK_ENABLE_URL_INGESTION", "true")
+
+
 class _Settings:
     youtube_preferred_languages = None
     default_content_processing_engine_url = None

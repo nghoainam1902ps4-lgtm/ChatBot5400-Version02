@@ -16,6 +16,14 @@ from open_notebook.ocr import catalog, installer, paths, runtime, store
 from open_notebook.ocr.options import OcrSettings
 
 
+@pytest.fixture(autouse=True)
+def _url_ingestion_enabled(monkeypatch):
+    """This module covers behaviour WITH URL ingestion switched on (URL policy,
+    engine routing). The deployment default is OFF (D-29); the switched-off
+    behaviour is covered by tests/test_url_ingestion_switch.py."""
+    monkeypatch.setenv("OPEN_NOTEBOOK_ENABLE_URL_INGESTION", "true")
+
+
 @pytest.fixture
 def ocr_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("OCR_DATA_DIR", str(tmp_path / "ocr"))

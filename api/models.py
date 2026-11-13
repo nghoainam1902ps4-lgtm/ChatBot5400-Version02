@@ -682,6 +682,11 @@ class CapabilitiesResponse(BaseModel):
         ...,
         description="A remote Crawl4AI endpoint is configured via CRAWL4AI_API_URL (no local install needed).",
     )
+    url_ingestion_enabled: bool = Field(
+        False,
+        description="Sources may be added / re-processed from a URL (OPEN_NOTEBOOK_ENABLE_URL_INGESTION). "
+        "Read-only: deployment configuration, enforced by the backend for every role.",
+    )
 
 
 # OCR Engine Manager API models (docs/ocr/OCR_ENGINE_MANAGER.md)

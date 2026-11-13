@@ -123,6 +123,10 @@ async def should_use_native_ocr_for_url(
         return False
     from content_core.processors.url import detect_remote_mime
 
+    from open_notebook.utils.url_ingestion import assert_url_ingestion_enabled
+
+    assert_url_ingestion_enabled()  # D-29: no outbound fetch when switched off
+
     mime = await detect_remote_mime(url)
     return _decide(mime, document_engine, ocr)
 
@@ -134,6 +138,10 @@ async def extract_url_with_selected_ocr(
     # Same downloader content-core's _extract_url uses (aiohttp, trust_env,
     # retry policy); guarded by tests/test_ocr_docling_parity.py on upgrades.
     from content_core.extraction import _download_remote_file
+
+    from open_notebook.utils.url_ingestion import assert_url_ingestion_enabled
+
+    assert_url_ingestion_enabled()  # D-29: no download when switched off
 
     tmp = await _download_remote_file(url)
     try:

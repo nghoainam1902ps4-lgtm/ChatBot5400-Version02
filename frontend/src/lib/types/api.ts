@@ -78,6 +78,9 @@ export interface Capabilities {
   docling_available: boolean
   crawl4ai_available: boolean
   crawl4ai_remote_configured: boolean
+  /** Deployment configuration (OPEN_NOTEBOOK_ENABLE_URL_INGESTION). Read-only:
+   *  the backend refuses URL sources for every role when it is false. */
+  url_ingestion_enabled?: boolean
 }
 
 export interface CreateNotebookRequest {

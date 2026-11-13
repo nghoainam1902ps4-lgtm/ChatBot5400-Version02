@@ -28,6 +28,14 @@ from open_notebook.graphs.transformation import (
 # ============================================================================
 
 
+@pytest.fixture(autouse=True)
+def _url_ingestion_enabled(monkeypatch):
+    """This module covers behaviour WITH URL ingestion switched on (URL policy,
+    engine routing). The deployment default is OFF (D-29); the switched-off
+    behaviour is covered by tests/test_url_ingestion_switch.py."""
+    monkeypatch.setenv("OPEN_NOTEBOOK_ENABLE_URL_INGESTION", "true")
+
+
 class TestGraphTools:
     """Test suite for graph tool definitions."""
 

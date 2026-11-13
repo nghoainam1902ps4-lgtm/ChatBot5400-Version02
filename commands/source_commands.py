@@ -14,6 +14,7 @@ from open_notebook.utils.job_input_guard import (
     require_record_id,
     same_upload,
 )
+from open_notebook.utils.url_ingestion import assert_url_ingestion_enabled
 
 try:
     from open_notebook.graphs.source import source_graph
@@ -96,6 +97,10 @@ async def process_source_command(
         unknown = set(input_data.content_state) - allowed_keys
         if unknown:
             raise UnsafeJobInput(f"Unsupported content_state keys: {sorted(unknown)}")
+        if input_data.content_state.get("url"):
+            # URL ingestion switched off (D-29): applies to new jobs, retries,
+            # re-processing and jobs queued before the switch was turned off.
+            assert_url_ingestion_enabled()
 
         # 1. Load transformation objects from IDs
         transformations = []

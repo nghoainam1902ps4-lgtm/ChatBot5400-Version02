@@ -59,6 +59,13 @@ services:
       - SURREAL_NAMESPACE=open_notebook
       - SURREAL_DATABASE=open_notebook
 
+      # SECURITY: adding / re-processing sources from a URL. OFF unless set to
+      # "true" (a missing or mistyped value keeps it off). Turning it on brings
+      # back a known residual SSRF risk: the URL is checked before the download,
+      # but the downloader follows redirects on its own. Keep it off on internal /
+      # bank deployments. See docs/security/BACKGROUND_JOB_SECURITY.md.
+      - OPEN_NOTEBOOK_ENABLE_URL_INGESTION=${OPEN_NOTEBOOK_ENABLE_URL_INGESTION:-false}
+
       # OPTIONAL: heavy extraction runtimes, installed on first startup when
       # enabled (downloads are cached on the ./notebook_data volume, so only the
       # first boot is slow). See docs/5-CONFIGURATION/environment-reference.md.

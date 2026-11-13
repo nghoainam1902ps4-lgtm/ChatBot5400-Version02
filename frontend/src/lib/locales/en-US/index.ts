@@ -502,6 +502,7 @@ export const enUS = {
     selectedCount: "{{count}} sources selected",
     added: "Added on {{date}}",
     addUrl: "Add URL",
+    urlIngestionDisabled: "Adding sources from a URL is switched off on this deployment by the system administrator. Upload the document as a file or paste its text instead.",
     uploadFile: "Upload File",
     enterText: "Enter Text",
     processDescription: "Content will be processed and analyzed by AI.",

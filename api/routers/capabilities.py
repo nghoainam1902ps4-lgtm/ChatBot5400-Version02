@@ -24,6 +24,7 @@ from open_notebook.utils.runtime_capabilities import (
     crawl4ai_remote_configured,
     docling_available,
 )
+from open_notebook.utils.url_ingestion import url_ingestion_enabled
 
 router = APIRouter(prefix="/capabilities", tags=["capabilities"])
 
@@ -37,4 +38,5 @@ async def get_capabilities():
         docling_available=docling_available(),
         crawl4ai_available=crawl4ai_local or crawl4ai_remote,
         crawl4ai_remote_configured=crawl4ai_remote,
+        url_ingestion_enabled=url_ingestion_enabled(),
     )

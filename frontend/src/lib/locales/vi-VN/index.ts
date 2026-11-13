@@ -505,6 +505,7 @@ export const viVN = {
     selectedCount: "Đã chọn {{count}} nguồn",
     added: "Đã thêm vào {{date}}",
     addUrl: "Thêm URL",
+    urlIngestionDisabled: "Quản trị hệ thống đã tắt chức năng thêm nguồn từ URL trên bản triển khai này. Hãy tải tài liệu lên dưới dạng tệp hoặc dán nội dung văn bản.",
     uploadFile: "Tải tệp lên",
     enterText: "Nhập văn bản",
     processDescription: "Nội dung sẽ được xử lý và phân tích bởi AI.",

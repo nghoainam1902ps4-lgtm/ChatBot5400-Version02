@@ -53,6 +53,10 @@ from open_notebook.exceptions import (
     UnsupportedTypeException,
 )
 from open_notebook.utils.text_utils import build_accent_insensitive_pattern
+from open_notebook.utils.url_ingestion import (
+    DISABLED_MESSAGE as URL_INGESTION_DISABLED_MESSAGE,
+)
+from open_notebook.utils.url_ingestion import url_ingestion_enabled
 
 router = APIRouter()
 
@@ -337,8 +341,7 @@ async def get_sources(
         if not auth_disabled() and not current_user.is_admin:
             params["me"] = ensure_record_id(current_user.id)
             conditions.append(
-                "((approval_status OR 'approved') = 'approved' "
-                "OR submitted_by = $me)"
+                "((approval_status OR 'approved') = 'approved' OR submitted_by = $me)"
             )
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
@@ -471,6 +474,12 @@ def _cleanup_uploaded_file(
             pass
 
 
+def _require_url_ingestion() -> None:
+    """403 when adding / re-processing sources from a URL is switched off."""
+    if not url_ingestion_enabled():
+        raise HTTPException(status_code=403, detail=URL_INGESTION_DISABLED_MESSAGE)
+
+
 async def _build_content_state(
     source_data: SourceCreate, file_path: Optional[str]
 ) -> dict[str, Any]:
@@ -479,6 +488,9 @@ async def _build_content_state(
     content_state: dict[str, Any] = {}
 
     if source_data.type == "link":
+        # Deployment switch (D-29): refused for every role, before the URL is
+        # even looked at (no DNS lookup, no request).
+        _require_url_ingestion()
         if not source_data.url:
             raise HTTPException(status_code=400, detail="URL is required for link type")
         # Block SSRF to internal/metadata addresses before the server ever
@@ -658,7 +670,9 @@ async def _create_source_sync_path(
             approval_status=approval_status,
             submitted_by=submitted_by,
             submitted_at=datetime.now() if submitted_by else None,
-            assigned_approver=assigned_approver if approval_status == "pending" else None,
+            assigned_approver=assigned_approver
+            if approval_status == "pending"
+            else None,
         )
         await source.save()
 
@@ -1127,6 +1141,9 @@ async def retry_source_processing(source_id: str):
                     "delete_source": False,  # Don't delete on retry
                 }
             elif source.asset.url:
+                # Re-fetching an old URL source is URL ingestion too (D-29).
+                # Its stored content stays readable; only the re-download is refused.
+                _require_url_ingestion()
                 content_state = {"url": source.asset.url}
             else:
                 raise HTTPException(

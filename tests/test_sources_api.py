@@ -10,6 +10,14 @@ from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.domain.notebook import Source
 
 
+@pytest.fixture(autouse=True)
+def _url_ingestion_enabled(monkeypatch):
+    """This module covers behaviour WITH URL ingestion switched on (URL policy,
+    engine routing). The deployment default is OFF (D-29); the switched-off
+    behaviour is covered by tests/test_url_ingestion_switch.py."""
+    monkeypatch.setenv("OPEN_NOTEBOOK_ENABLE_URL_INGESTION", "true")
+
+
 @pytest.fixture
 def client():
     """Create test client after environment variables have been cleared by conftest."""

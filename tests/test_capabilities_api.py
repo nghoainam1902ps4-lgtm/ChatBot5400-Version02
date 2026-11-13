@@ -34,6 +34,7 @@ def _patch_probes(monkeypatch, *, docling, crawl4ai_local, crawl4ai_remote):
 
 class TestCapabilitiesEndpoint:
     def test_all_unavailable(self, client, monkeypatch):
+        monkeypatch.delenv("OPEN_NOTEBOOK_ENABLE_URL_INGESTION", raising=False)
         _patch_probes(
             monkeypatch, docling=False, crawl4ai_local=False, crawl4ai_remote=False
         )
@@ -43,6 +44,7 @@ class TestCapabilitiesEndpoint:
             "docling_available": False,
             "crawl4ai_available": False,
             "crawl4ai_remote_configured": False,
+            "url_ingestion_enabled": False,  # D-29: off unless explicitly enabled
         }
 
     def test_docling_available_is_independent_of_crawl4ai(self, client, monkeypatch):

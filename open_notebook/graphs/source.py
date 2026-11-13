@@ -28,6 +28,7 @@ from open_notebook.utils.job_input_guard import (
     validate_source_url,
 )
 from open_notebook.utils.runtime_capabilities import engine_runtime_missing
+from open_notebook.utils.url_ingestion import assert_url_ingestion_enabled
 
 # Default preferred languages for YouTube transcript selection, used when
 # ContentSettings.youtube_preferred_languages is unset. content-core's own
@@ -95,6 +96,10 @@ async def content_process(state: SourceState) -> dict:
     # directory; URLs are re-validated here (incl. redirects) with the API's policy.
     if content_state.get("file_path"):
         content_state["file_path"] = resolve_upload_path(content_state["file_path"])
+    if content_state.get("url"):
+        # Deployment switch (D-29): refuse before any DNS lookup or request,
+        # whoever queued the job and whatever else the job carries.
+        assert_url_ingestion_enabled()
     if content_state.get("url") and not content_state.get("content"):
         await validate_source_url(content_state["url"])
 
