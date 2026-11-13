@@ -717,3 +717,150 @@ def test_hub_timeout_install_never_fails_a_document(monkeypatch):
 
     monkeypatch.setattr(hub_http, "_install", broken)
     assert hub_http.bound_hub_timeouts() is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 9B: total time budget of the orientation step, pdfium lock coverage
+# ---------------------------------------------------------------------------
+def test_orientation_time_budget_limits_the_step_not_the_document(
+    scan_pdf, osd_available, monkeypatch
+):
+    """A slow orientation step stops checking pages; it never fails or drops the
+    document, keeps what it already corrected and says that it was limited."""
+    clock = [1000.0]
+    calls = []
+
+    def slow(*a):
+        calls.append(1)
+        clock[0] += 400.0  # each page "takes" 400 s
+        return (90, 9.0)
+
+    monkeypatch.setattr(pdf_prep, "_now", lambda: clock[0])
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", slow)
+    monkeypatch.setenv(pdf_prep.OSD_BUDGET_ENV, "300")
+    before = _sha(scan_pdf)
+    prep = pdf_prep.prepare(str(scan_pdf), "tesseract")
+    try:
+        assert len(calls) == 1  # page 2 was not checked: budget spent
+        assert prep.rotated_pages == {0: 90}  # the finished page is kept
+        assert prep.path and Path(prep.path).is_file()
+        assert prep.orientation == "ok" and prep.scan_dpi == 75.0
+        meta = prep.as_meta()
+        assert meta["page_orientation_limit"] == "time_budget"
+        assert meta["orientation_checked_pages"] == 1
+        assert _sha(scan_pdf) == before  # the upload is never modified
+    finally:
+        prep.cleanup()
+    assert prep.path is None
+
+
+def test_orientation_within_budget_reports_no_limit(
+    scan_pdf, osd_available, monkeypatch
+):
+    monkeypatch.delenv(pdf_prep.OSD_BUDGET_ENV, raising=False)
+    monkeypatch.delenv(pdf_prep.OSD_MAX_PAGES_ENV, raising=False)
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", lambda *a: (0, 9.0))
+    meta = pdf_prep.prepare(str(scan_pdf), "tesseract").as_meta()
+    assert meta["page_orientation_limit"] is None
+    assert meta["orientation_checked_pages"] == 2
+
+
+def test_orientation_page_cap_is_reported(scan_pdf, osd_available, monkeypatch):
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", lambda *a: (0, 9.0))
+    monkeypatch.setenv(pdf_prep.OSD_MAX_PAGES_ENV, "1")
+    meta = pdf_prep.prepare(str(scan_pdf), "tesseract").as_meta()
+    assert meta["page_orientation_limit"] == "max_pages"
+    assert meta["orientation_checked_pages"] == 1
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "0", "-5", "x", "", "1e400"])
+def test_orientation_budget_env_rejects_nonsense(monkeypatch, raw):
+    monkeypatch.setenv(pdf_prep.OSD_BUDGET_ENV, raw)
+    assert pdf_prep.osd_budget_seconds() == pdf_prep.DEFAULT_OSD_BUDGET_SECONDS
+
+
+def test_orientation_budget_env_is_capped(monkeypatch):
+    monkeypatch.setenv(pdf_prep.OSD_BUDGET_ENV, "45")
+    assert pdf_prep.osd_budget_seconds() == 45.0
+    monkeypatch.setenv(pdf_prep.OSD_BUDGET_ENV, "1e9")
+    assert pdf_prep.osd_budget_seconds() == pdf_prep.MAX_OSD_BUDGET_SECONDS
+    assert pdf_prep.orientation_status("tesseract")["time_budget_seconds"] == (
+        pdf_prep.MAX_OSD_BUDGET_SECONDS
+    )
+
+
+def test_orientation_budget_does_not_change_the_readiness_fingerprint(
+    osd_available, monkeypatch
+):
+    """The budget bounds time, not results: an earlier verdict stays valid."""
+    from open_notebook.ocr import readiness
+
+    monkeypatch.delenv(pdf_prep.OSD_BUDGET_ENV, raising=False)
+    base = readiness.quality_config("tesseract_best")
+    monkeypatch.setenv(pdf_prep.OSD_BUDGET_ENV, "30")
+    assert readiness.quality_config("tesseract_best") == base
+
+
+def test_every_pdfium_call_of_pdf_prep_holds_doclings_lock(
+    scan_pdf, osd_available, monkeypatch
+):
+    """get_size / render / rotation / close / save included (pdfium is not
+    thread-safe and synchronous API requests convert in threads)."""
+    pytest.importorskip("docling")
+    import pypdfium2 as pdfium
+    from docling.utils.locks import pypdfium2_lock
+
+    unlocked: list[str] = []
+
+    def spy(cls, name):
+        original = getattr(cls, name)
+
+        def wrapper(self, *a, **k):
+            if not pypdfium2_lock.locked():
+                unlocked.append(f"{cls.__name__}.{name}")
+            return original(self, *a, **k)
+
+        monkeypatch.setattr(cls, name, wrapper)
+
+    for name in (
+        "get_size",
+        "render",
+        "get_rotation",
+        "set_rotation",
+        "get_objects",
+        "close",
+    ):
+        spy(pdfium.PdfPage, name)
+    for name in ("__init__", "__len__", "__getitem__", "save", "close"):
+        spy(pdfium.PdfDocument, name)
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", lambda *a: (90, 9.0))
+    prep = pdf_prep.prepare(str(scan_pdf), "tesseract")
+    try:
+        assert prep.rotated_pages == {0: 90, 1: 90}  # the whole path really ran
+        assert unlocked == []
+        assert not pypdfium2_lock.locked()
+    finally:
+        prep.cleanup()
+
+
+def test_one_unloadable_page_does_not_undo_the_others(
+    scan_pdf, osd_available, monkeypatch
+):
+    """Phase 9B (A11): a page pdfium cannot load is skipped, not the document."""
+    import pypdfium2 as pdfium
+
+    original = pdfium.PdfDocument.__getitem__
+
+    def flaky(self, index):
+        if index == 0:
+            raise RuntimeError("Failed to load page.")
+        return original(self, index)
+
+    monkeypatch.setattr(pdfium.PdfDocument, "__getitem__", flaky)
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", lambda *a: (180, 9.0))
+    prep = pdf_prep.prepare(str(scan_pdf), "tesseract")
+    try:
+        assert prep.orientation == "ok"  # not "skipped": the rest was prepared
+        assert prep.rotated_pages == {1: 180} and prep.scale == 2.0
+    finally:
+        prep.cleanup()

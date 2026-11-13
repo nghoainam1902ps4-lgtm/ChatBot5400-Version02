@@ -135,3 +135,24 @@ def test_install_is_idempotent_and_keeps_explicit_timeouts(
 def test_timeout_env(monkeypatch, raw, expected):
     monkeypatch.setenv("OCR_HF_HUB_TIMEOUT", raw)
     assert ours.hub_timeout() == expected
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("nan", 20.0),
+        ("inf", 20.0),
+        ("-inf", 20.0),
+        ("1e400", 20.0),  # parses to inf
+        ("-3", 20.0),
+        ("", 20.0),
+        ("0.5", 0.5),
+        ("300", 300.0),
+        ("100000", 300.0),  # capped: an unbounded wait is the bug D-24 fixed
+    ],
+)
+def test_timeout_env_rejects_non_finite_and_caps(monkeypatch, raw, expected):
+    """Phase 9B: the value always ends up a finite, positive, bounded number."""
+    monkeypatch.setenv("OCR_HF_HUB_TIMEOUT", raw)
+    value = ours.hub_timeout()
+    assert value == expected and 0 < value <= ours.MAX_TIMEOUT

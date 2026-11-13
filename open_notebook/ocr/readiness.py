@@ -48,7 +48,22 @@ DEAD_PROXY = "http://127.0.0.1:9"
 # reproduces exactly that: connection refused -> cache, or LocalEntryNotFound
 # when the model is not cached (Phase 8B, found on a real host).
 DEAD_ENDPOINT = DEAD_PROXY
-CHECK_TIMEOUT = int(os.environ.get("OCR_READINESS_TIMEOUT", "1800"))
+DEFAULT_CHECK_TIMEOUT = 1800
+
+
+def _check_timeout() -> int:
+    """Seconds one readiness check may run. This module is imported by the
+    source graph, so a mistyped value must never stop the API or the worker."""
+    try:
+        value = int(
+            os.environ.get("OCR_READINESS_TIMEOUT", "") or DEFAULT_CHECK_TIMEOUT
+        )
+    except ValueError:
+        return DEFAULT_CHECK_TIMEOUT
+    return value if value > 0 else DEFAULT_CHECK_TIMEOUT
+
+
+CHECK_TIMEOUT = _check_timeout()
 
 # States (MASTER_PLAN Phase 8A B4)
 RUNTIME_MISSING = "runtime_missing"
@@ -130,10 +145,34 @@ def _rapidocr_weights_signature(persistent: bool) -> list[list[Any]]:
         )
         if where is None or not where.is_dir():
             return []
-        return sorted(
+        files = sorted(
             [f.name, f.stat().st_size]
             for f in where.iterdir()
             if f.is_file() and f.name in known
+        )
+    except Exception:
+        return []
+    return files + _rapidocr_package_dictionaries()
+
+
+def _rapidocr_package_dictionaries() -> list[list[Any]]:
+    """The recognition dictionary the torch backend needs next to the weights.
+
+    RapidOCR 3.9 always keeps it in its package directory (container layer),
+    also when ``Global.model_root_dir`` points at the data volume: after a
+    container recreate it is gone and RapidOCR downloads it again. Tracking it
+    makes an earlier "offline ready" verdict stale instead of wrong.
+    """
+    from open_notebook.ocr import installer
+
+    try:
+        package = installer.rapidocr_package_model_dir()
+        if package is None or not package.is_dir():
+            return []
+        return sorted(
+            [f"package/{f.name}", f.stat().st_size]
+            for f in package.glob("*.txt")
+            if f.is_file()
         )
     except Exception:
         return []

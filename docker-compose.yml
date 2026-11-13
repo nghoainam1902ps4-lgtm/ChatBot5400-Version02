@@ -34,6 +34,11 @@ services:
       context: .
       dockerfile: Dockerfile
       target: runtime
+      args:
+        # Bake the Tesseract binary into the image (needed by the Tesseract
+        # Vietnamese engines). Set OCR_INSTALL_TESSERACT=true in .env so EVERY
+        # later `docker compose up -d --build` keeps it; default: not installed.
+        OCR_INSTALL_TESSERACT: ${OCR_INSTALL_TESSERACT:-false}
     image: chatbot5400:local
     ports:
       - "8502:8502"  # Web UI

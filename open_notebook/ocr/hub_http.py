@@ -16,10 +16,14 @@ downloads during online preparation) are untouched.
 
 from __future__ import annotations
 
+import math
 import os
 from typing import Any
 
 DEFAULT_TIMEOUT = 20.0
+# An unbounded value would bring the ~15 minute hang back, and ``inf`` is not a
+# timeout the socket layer accepts (every Hub request would fail).
+MAX_TIMEOUT = 300.0
 
 
 def hub_timeout() -> float:
@@ -27,7 +31,9 @@ def hub_timeout() -> float:
         value = float(os.environ.get("OCR_HF_HUB_TIMEOUT", DEFAULT_TIMEOUT))
     except ValueError:
         return DEFAULT_TIMEOUT
-    return value if value > 0 else DEFAULT_TIMEOUT
+    if not math.isfinite(value) or value <= 0:  # nan, inf, zero, negative
+        return DEFAULT_TIMEOUT
+    return min(value, MAX_TIMEOUT)
 
 
 def bound_hub_timeouts() -> bool:

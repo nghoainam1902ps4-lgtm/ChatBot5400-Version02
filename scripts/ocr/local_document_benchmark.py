@@ -143,6 +143,23 @@ def to_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def silence_logs() -> None:
+    """Keep application and library logs off the terminal.
+
+    They name the file being converted ("... corrected page(s) [1] of <file>")
+    and an error line could quote it. With real documents the only output is
+    this tool's own lines: ``doc-NNN`` ids and numbers.
+    """
+    import logging
+    import warnings
+
+    from loguru import logger
+
+    logger.remove()
+    logging.disable(logging.CRITICAL)
+    warnings.simplefilter("ignore")
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[2]
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -163,6 +180,8 @@ def main() -> int:
     from open_notebook.ocr.docling_extract import convert_document
     from open_notebook.ocr.options import OcrSettings
 
+    if not args.keep_names:
+        silence_logs()  # after the imports: libraries install log sinks on import
     pdfs = sorted(p for p in args.dir.rglob("*.pdf") if p.is_file())
     if not pdfs:
         print("no PDF found", file=sys.stderr)

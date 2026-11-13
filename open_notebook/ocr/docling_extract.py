@@ -271,8 +271,28 @@ def convert_file(
         "ocr_seconds": round(time.time() - started, 2),
         **prep.as_meta(),
         **pipeline_identity(converter),
+        **conversion_outcome(result, path),
     }
     return output, meta
+
+
+def conversion_outcome(result: Any, path: str) -> dict[str, Any]:
+    """Docling's own verdict on the conversion, made visible.
+
+    Docling does not raise for a partial conversion (a page or an OCR region it
+    could not process): it returns what it has with ``PARTIAL_SUCCESS`` and an
+    error list. The result is kept as before - failing the document would be a
+    behaviour change - but it is no longer silent.
+    """
+    status = getattr(result, "status", None)
+    name = str(getattr(status, "value", status) or "").lower() or None
+    errors = len(getattr(result, "errors", None) or [])
+    if errors or (name is not None and name != "success"):
+        logger.warning(
+            f"Docling finished {os.path.basename(path)} with status={name} and "
+            f"{errors} error(s): part of the document may be missing from the result"
+        )
+    return {"conversion_status": name, "conversion_errors": errors}
 
 
 def pipeline_identity(converter: Any) -> dict[str, Any]:
@@ -321,6 +341,10 @@ async def extract_with_selected_ocr(
         f"in {meta.get('ocr_seconds')}s (ocr_scale={meta.get('ocr_scale')}, "
         f"scan_dpi={meta.get('scan_dpi')}, "
         f"page_orientation={meta.get('page_orientation')}, "
+        f"orientation_checked_pages={meta.get('orientation_checked_pages')}, "
+        f"page_orientation_limit={meta.get('page_orientation_limit')}, "
+        f"conversion_status={meta.get('conversion_status')}, "
+        f"conversion_errors={meta.get('conversion_errors')}, "
         f"orientation_corrected_pages={sorted(meta.get('rotated_pages') or {})})"
     )
     expected = {

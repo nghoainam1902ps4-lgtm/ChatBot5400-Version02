@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,16 @@ OSD_TIMEOUT_SECONDS = 30
 # keep it bounded on very long scans (the remaining pages are left as they are).
 DEFAULT_OSD_MAX_PAGES = 200
 OSD_MAX_PAGES_ENV = "OCR_PAGE_OSD_MAX_PAGES"
+# Wall-clock budget for the whole orientation step of ONE document. Measured:
+# 0.55-0.65 s per scanned page on 8 CPUs, so the 200-page cap normally needs
+# about 2.5 minutes. Without a total bound, 200 pages that each hit the 30 s
+# page timeout would hold a job for 100 minutes before Docling starts (the
+# worker has no job timeout). When the budget is spent the remaining pages are
+# converted as they are; the page being checked may finish, so the hard bound
+# is the budget plus one page timeout.
+DEFAULT_OSD_BUDGET_SECONDS = 600.0
+MAX_OSD_BUDGET_SECONDS = float(DEFAULT_OSD_MAX_PAGES * OSD_TIMEOUT_SECONDS)
+OSD_BUDGET_ENV = "OCR_PAGE_OSD_BUDGET_SECONDS"
 DEFAULT_PAGE_MIN_CONFIDENCE = 2.0
 PAGE_MIN_CONFIDENCE_ENV = "OCR_PAGE_OSD_MIN_CONFIDENCE"
 DISABLE_ENV = "OCR_PDF_PREP"
@@ -81,6 +92,20 @@ def osd_max_pages() -> int:
     return value if value >= 0 else DEFAULT_OSD_MAX_PAGES
 
 
+def osd_budget_seconds() -> float:
+    try:
+        value = float(os.environ.get(OSD_BUDGET_ENV, "") or DEFAULT_OSD_BUDGET_SECONDS)
+    except ValueError:
+        return DEFAULT_OSD_BUDGET_SECONDS
+    # nan / inf / zero / negative must never remove the bound or skip every page
+    if not math.isfinite(value) or value <= 0:
+        return DEFAULT_OSD_BUDGET_SECONDS
+    return min(value, MAX_OSD_BUDGET_SECONDS)
+
+
+_now = time.monotonic
+
+
 @dataclass
 class PdfPrep:
     """What to convert and how. ``path`` is None when the original is used."""
@@ -91,6 +116,10 @@ class PdfPrep:
     rotated_pages: dict[int, int] = field(default_factory=dict)
     # ok | disabled | tesseract_missing | osd_data_missing | not_a_pdf | skipped
     orientation: str = "skipped"
+    # Scanned pages whose orientation was really checked, and why the others
+    # were not: None | "max_pages" | "time_budget".
+    orientation_checked: int = 0
+    orientation_limit: str | None = None
     _tmpdir: str | None = None
 
     def cleanup(self) -> None:
@@ -107,6 +136,9 @@ class PdfPrep:
             "rotated_pages": {str(p + 1): r for p, r in self.rotated_pages.items()},
             # Whether orientation correction was able to run for this document.
             "page_orientation": self.orientation,
+            "orientation_checked_pages": self.orientation_checked,
+            # Set when some scanned pages were left unchecked (page cap / time budget).
+            "page_orientation_limit": self.orientation_limit,
         }
 
 
@@ -134,6 +166,7 @@ def orientation_status(tesseract_cmd: str | None) -> dict[str, Any]:
         "reason": reason,
         "min_confidence": page_min_confidence(),
         "max_pages": osd_max_pages(),
+        "time_budget_seconds": osd_budget_seconds(),
     }
 
 
@@ -217,11 +250,13 @@ def detect_page_rotation(
 def _page_rotation(
     page: Any, index: int, workdir: str, tesseract_cmd: str, tessdata: str
 ) -> tuple[int, float] | None:
-    width, height = page.get_size()
-    render_scale = min(OSD_RENDER_SCALE, OSD_MAX_SIDE_PX / max(width, height, 1.0))
     image_path = os.path.join(workdir, f"page-{index}.png")
     try:
         with _pdfium_lock():
+            width, height = page.get_size()
+            render_scale = min(
+                OSD_RENDER_SCALE, OSD_MAX_SIDE_PX / max(width, height, 1.0)
+            )
             image = page.render(scale=render_scale, grayscale=True).to_pil()
         image.save(image_path)
         # The Tesseract call runs outside the lock: it does not touch pdfium.
@@ -234,8 +269,9 @@ def _page_rotation(
 def _pdfium_lock() -> Any:
     """Docling's own lock for pdfium, which is not thread-safe.
 
-    The worker converts one document at a time, but synchronous API requests
-    run in threads: this module must not use pdfium while Docling does.
+    The worker converts one document at a time on its event loop, but an
+    engine test runs a Docling conversion in a thread of the same process:
+    this module must not use pdfium while Docling does.
     """
     try:
         from docling.utils.locks import pypdfium2_lock
@@ -276,24 +312,39 @@ def _prepare(path: str, tesseract_cmd: str | None, prep: PdfPrep) -> None:
     # with either Tesseract engine); without them pages are left as they are.
     can_detect = bool(tesseract_cmd) and (Path(tessdata) / "osd.traineddata").is_file()
     lock = _pdfium_lock()  # held per pdfium call, never across Tesseract
+    workdir = tempfile.mkdtemp(prefix="ocr-prep-")
+    prep._tmpdir = workdir  # removed by prepare() if anything below fails
     with lock:
         pdf = pdfium.PdfDocument(path)
-        page_count = len(pdf)
-    workdir = tempfile.mkdtemp(prefix="ocr-prep-")
-    prep._tmpdir = workdir
     try:
+        with lock:
+            page_count = len(pdf)
         dpis: list[float] = []
         checked, max_pages = 0, osd_max_pages()
+        deadline = _now() + osd_budget_seconds()
         for index in range(page_count):
-            with lock:
-                page = pdf[index]
+            try:
+                with lock:
+                    page = pdf[index]
+            except Exception as e:  # one unloadable page must not undo the others
+                logger.warning(
+                    f"OCR PDF preparation skipped page {index + 1} of "
+                    f"{os.path.basename(path)}: {type(e).__name__}"
+                )
+                continue
             try:
                 with lock:
                     dpi = _scan_dpi(page)
                 if dpi is None:
                     continue  # born-digital page: nothing to do
                 dpis.append(dpi)
-                if not can_detect or not tesseract_cmd or checked >= max_pages:
+                if not can_detect or not tesseract_cmd:
+                    continue
+                if checked >= max_pages:
+                    prep.orientation_limit = prep.orientation_limit or "max_pages"
+                    continue
+                if _now() >= deadline:
+                    prep.orientation_limit = "time_budget"
                     continue
                 checked += 1
                 try:
@@ -313,6 +364,15 @@ def _prepare(path: str, tesseract_cmd: str | None, prep: PdfPrep) -> None:
             finally:
                 with lock:
                     page.close()
+        prep.orientation_checked = checked
+        if prep.orientation_limit:
+            # Not a failure: the document is converted, these pages just keep
+            # the orientation they were scanned with.
+            logger.warning(
+                f"OCR page orientation limited by {prep.orientation_limit} for "
+                f"{os.path.basename(path)}: {checked} scanned page(s) checked, "
+                f"the remaining pages are converted as they are"
+            )
         if dpis:
             # One scale per document (Docling has one OcrOptions): the HIGHEST scan
             # resolution, so no page is ever rendered below its own resolution or
