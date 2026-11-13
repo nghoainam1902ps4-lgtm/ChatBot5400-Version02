@@ -77,6 +77,17 @@ def _download(endpoint, cache_dir, box):
 def test_dead_link_falls_back_to_cache_within_timeout(
     blackhole, cached_repo, restore_backend, monkeypatch
 ):
+    from huggingface_hub import constants
+
+    if constants.HF_HUB_OFFLINE:
+        pytest.skip("HF_HUB_OFFLINE is set: the Hub is never contacted")
+    # Independent of the harness proxy: the black hole must be reached directly
+    # (a proxy would turn it into ProxyError, which the Hub re-raises).
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+        monkeypatch.delenv(var.lower(), raising=False)
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
     monkeypatch.setenv("OCR_HF_HUB_TIMEOUT", "1")
     cache_dir, snap = cached_repo
     assert ours.bound_hub_timeouts() is True

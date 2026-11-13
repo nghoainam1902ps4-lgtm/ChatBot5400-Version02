@@ -233,6 +233,11 @@ Mỗi quyết định: bối cảnh → quyết định → phương án bị lo
   `requests.Timeout` là "offline" và dùng cache. Request có timeout riêng (tải file khi chuẩn bị
   online) giữ nguyên. Cài ở `content_process` (mọi đường xử lý, kể cả RapidOCR mặc định qua
   content-core) và `build_converter` (test engine, readiness, test tích hợp).
+- Phạm vi: backend session của huggingface_hub là **toàn tiến trình** (API và worker), không chỉ
+  Docling. Mọi request Hub không tự đặt timeout đều nhận 20 s chờ byte đầu tiên (timeout đọc, không
+  phải tổng thời gian; tải file lớn không bị ảnh hưởng). Hub phản hồi chậm hơn 20 s khi `prepare`
+  online ⇒ Hub client coi như offline và dùng cache / báo thiếu model; tăng `OCR_HF_HUB_TIMEOUT` nếu
+  cần.
 - Không chọn `HF_HUB_OFFLINE=1` cho worker: biến này được đọc lúc import, buộc phải recreate container
   để đổi, trái với mô hình "cùng container, online rồi offline" (D-20, D-23).
 - Test: `tests/test_ocr_hub_http.py` dùng socket thật nhận kết nối nhưng không trả lời; không có bản
