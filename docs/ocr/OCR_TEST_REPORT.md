@@ -154,3 +154,45 @@ digest ghim đã kiểm chứng thật.
 | mypy + ruff (mã thay đổi) | sạch |
 | ShellCheck 0.11 (`docker-acceptance.sh`, entrypoint; khối lệnh trong tài liệu nghiệm thu, trừ SC2164 có chủ đích) | sạch |
 | Docker build / E2E / offline / rebuild / upgrade | **NOT VERIFIED** — Docker Hub 429, ghcr blob 403, Debian apt 403; tải SurrealDB binary bị chặn bởi chính sách quyền của phiên |
+
+## 8. Phase 8A — Bảo mật cuối, chuẩn bị online / vận hành offline
+
+Môi trường như trên; ngày 2026-11-13; so sánh với `e32eae8` (Phase 7).
+
+### 8.1 Kết quả chạy trong Cloud
+
+| Bộ test / kiểm tra | Kết quả |
+|---|---|
+| `test_background_job_security.py` (mới: quyền router commands, tắt submit tổng quát, upload path / delete / URL redirect / record id, `process_source` binding, nonce OCR) | 57 passed |
+| `test_ocr_readiness.py` (mới: trạng thái, lỗi thời theo fingerprint gồm cache Docling + trọng số RapidOCR, tiến trình con chặn mạng, prepare, lỗi offline, RapidOCR bền vững, API) | 32 passed |
+| `test_ocr_acceptance_driver.py` (driver Docker với stub HTTP — **không phải** nghiệm thu runtime) | 9 passed |
+| `test_ocr_engine_manager.py` / `test_ocr_docling_parity.py` / `test_ocr_dependency_compat.py` / `test_ocr_bundle_cli.py` / `test_ocr_source_graph.py` | 99 / 24 / 12 / 11 / 5 passed |
+| `test_graphs.py` (uploads chuyển vào tmp vì guard mới) | 22 passed |
+| `test_ocr_doc_commands.py` (khối bash trong docs/ocr, `bash -n`) | 2 passed |
+| Regression backend toàn bộ (offline harness) | **1044 passed, 10 failed**; `e32eae8`: 951 passed, 10 failed — **cùng 10 lỗi có sẵn**, 0 lỗi mới |
+| Frontend: tsc / lint / vitest / build | 0 lỗi / 0 error (7 warning có sẵn) / 404 passed / PASS |
+| ruff + mypy (file thay đổi) | sạch |
+| ShellCheck + `bash -n` (`docker-acceptance.sh`) | sạch |
+| Hadolint (Dockerfile) | 0 error; DL3008 (tesseract không ghim phiên bản apt — theo quy ước có sẵn), DL3059 (info) |
+
+### 8.2 Chạy thật (không mock)
+
+| Kiểm tra | Kết quả |
+|---|---|
+| `cli prepare --engines tesseract_best` khi huggingface.co bị chặn | Đúng hành vi: model Tesseract đã có (checksum hợp lệ, không tải lại); chạy kiểm tra `online` rồi `local_only`, đều thất bại với `huggingface.co', port=443): Max retries exceeded with url: /api/models/docling-project/...`; trạng thái `not_offline_ready`, exit ≠ 0. **Không báo sẵn sàng sai** |
+| Tiến trình con `local_only` thật | Proxy `127.0.0.1:9` ⇒ mọi lần tải lỗi ngay (`test_real_local_only_child_process`) |
+| RapidOCR `Global.model_root_dir` (backend onnxruntime, overlay chỉ để test) khi mạng bị chặn | RapidOCR log `File exists and is valid: <OCR_DATA_DIR>/models/rapidocr/PP-OCRv6_det_small.onnx` (+ rec, cls) và OCR chạy; không tải |
+| RapidOCR backend torch (production) với thư mục bền vững | **NOT VERIFIED** — modelscope.cn bị chặn |
+| Full pipeline 4 engine | **NOT VERIFIED** — huggingface.co 403 |
+| Docker: cập nhật online / chuẩn bị / offline / restart offline / cập nhật online | **NOT VERIFIED** — Docker Hub 429, ghcr 403, Debian apt 403 |
+| API + worker E2E thật | **NOT VERIFIED** — tải SurrealDB binary bị chính sách quyền của phiên từ chối; không tìm cách vượt qua |
+
+### 8.3 Phát hiện và xử lý trong Phase 8A
+
+| # | Phát hiện | Xử lý |
+|---|---|---|
+| P8-1 | `/api/commands/jobs` cho user thường chạy command tuỳ ý (đọc / xoá file, SSRF) | Chỉ admin + tắt submit tổng quát + guard trong worker (D-19) |
+| P8-2 | Không có cách chứng minh "chạy được offline" | Readiness bằng pipeline thật, có ba mức (D-20) |
+| P8-3 | Kết quả sẵn sàng có thể bị dùng lại sau khi recreate làm mất trọng số RapidOCR / cache HF | Fingerprint gồm snapshot Docling + trọng số RapidOCR ⇒ kết quả lỗi thời |
+| P8-4 | Thiếu model khi offline ⇒ job retry nhiều lần với lỗi khó hiểu | `ValueError` + hướng dẫn (D-22) |
+| P8-5 | Test proxy phụ thuộc biến môi trường của harness | Test tự đặt proxy, độc lập môi trường |

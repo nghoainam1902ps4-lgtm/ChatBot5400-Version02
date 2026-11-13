@@ -11,6 +11,9 @@
 | Python `easyocr` | venv trong layer image | giữ | **mất** | `OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true` |
 | `tesseract-ocr` | filesystem container | giữ | **mất** (trừ build arg) | build arg `OCR_INSTALL_TESSERACT=true` (khuyến nghị) hoặc `OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true` |
 | Layout/TableFormer | `HF_HOME=/app/data/.cache/huggingface` (có sẵn) | giữ | giữ | không đổi |
+| Trọng số RapidOCR (mặc định) | thư mục gói `rapidocr/models` trong venv | giữ | **mất** | `prepare` khi có Internet; hoặc `OCR_RAPIDOCR_PERSISTENT=true` |
+| Trọng số RapidOCR (`OCR_RAPIDOCR_PERSISTENT=true`) | `/app/data/ocr/models/rapidocr` | giữ | giữ | không cần |
+| Kết quả readiness | `/app/data/ocr/manifests` | giữ | giữ (lỗi thời nếu phiên bản / cache / trọng số đổi) | `readiness --check` |
 | Cấu hình OCR | SurrealDB | giữ | giữ | – |
 
 Không có thành phần OCR nào được tải khi cài mới hay khi khởi động: entrypoint chỉ khôi phục
@@ -75,3 +78,16 @@ nối, Internet bị chặn), build lại image thật và recreate. Chi tiết:
   engine mặc định RapidOCR sẽ không tải lại được sau recreate. Engine Tesseract/EasyOCR không bị ảnh
   hưởng (model nằm trên volume). Không thay đổi trong phạm vi này để giữ nguyên hành vi mặc định.
 - Nghiệm thu thực tế: `docs/ocr/OCR_LOCAL_ACCEPTANCE.md`.
+
+## 6. Phase 8A — chuẩn bị online, vận hành offline
+
+- Quy trình đầy đủ: `OCR_ONLINE_PREPARATION.md`. Tóm tắt: cập nhật khi online →
+  `cli prepare --engines ...` → trạng thái `offline_ready` → ngắt Internet ở tầng mạng của server.
+- **Restart** khi offline: an toàn với mọi engine đã chuẩn bị.
+- **Recreate** khi offline cần `OCR_OFFLINE=true` (cài lại Docling / EasyOCR từ cache uv). RapidOCR
+  mặc định mất trọng số khi recreate; readiness phát hiện và báo lại "chưa kiểm tra". Muốn giữ trọng số:
+  `OCR_RAPIDOCR_PERSISTENT=true` (backend torch NOT VERIFIED trong Cloud).
+- Nghiệm thu Docker theo mô hình này: `OCR_LOCAL_ACCEPTANCE.md` §5. Offline được giả lập bằng
+  `docker network disconnect` của container đang chạy (D-23).
+- Đoạn "Giới hạn có sẵn" ở §5 vẫn đúng với chế độ mặc định. Tuỳ chọn `OCR_RAPIDOCR_PERSISTENT` là cách
+  khắc phục, không bật mặc định.

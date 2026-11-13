@@ -20,11 +20,11 @@ Trạng thái: **PASS** (có bằng chứng thực tế) · **FAIL** · **NOT VE
 | Offline installation | PASS | Bundle thật, mạng bị chặn, 4/4 ready; bundle giả mạo bị từ chối |
 | Chuyển engine an toàn | PASS | Settings đọc lại mỗi job (`test_settings_reloaded_for_every_job`); activate từ chối engine chưa ready (`test_activate_refuses_not_ready_engine_and_keeps_current`); chạy Fast+Best đồng thời |
 | Gỡ model đang dùng bị chặn | PASS | `test_active_engine_cannot_be_removed`, `test_delete_active_model_refused`, UI ẩn nút |
-| Regression: không lỗi mới | PASS (trong phạm vi chạy được) | Phase 7: 951 passed / 10 failed = đúng 10 lỗi có sẵn ở commit gốc; 4 file cần tiktoken NOT VERIFIED (mạng) |
+| Regression: không lỗi mới | PASS (trong phạm vi chạy được) | Phase 8A: 1044 passed / 10 failed so với `e32eae8`: 951 passed / 10 failed — đúng 10 lỗi có sẵn, 0 lỗi mới; 4 file cần tiktoken NOT VERIFIED (mạng) |
 | Backend test | PASS | Phase 7: 167 test OCR (+39 full pipeline NOT VERIFIED) + `test_graphs.py` 22/22 (Test Report §7.2) |
 | Frontend build | PASS | `npm run build` |
 | Docker test | NOT VERIFIED | Script viết lại (mạng internal, upgrade, rebuild thật, E2E API+worker) — chưa chạy: Docker Hub 429 / ghcr 403 / Debian apt 403 trong Cloud. Chạy theo `OCR_LOCAL_ACCEPTANCE.md` §5 |
-| Security review | PASS (có điều kiện) | `OCR_SECURITY_REVIEW.md` (gồm Phase 7). Lỗ hổng có sẵn `/api/commands/jobs` mức Cao — **phải xử lý trước production** (`OCR_COMMANDS_JOBS_RISK.md`) |
+| Security review | PASS | `OCR_SECURITY_REVIEW.md` (gồm Phase 7, 8A). Lỗ hổng `/api/commands/jobs` **đã sửa** ở Phase 8A (`docs/security/BACKGROUND_JOB_SECURITY.md`, 57 test) |
 | Rollback có tài liệu | PASS | `OCR_ROLLBACK.md` |
 | Dữ liệu người dùng không bị xoá | PASS | Không migration; không lệnh xoá volume; script Docker dùng thư mục tạm riêng |
 | Không triển khai production | PASS | Chỉ push branch `claude/friendly-mendel-a2b6m5` |
@@ -36,3 +36,28 @@ Trạng thái: **PASS** (có bằng chứng thực tế) · **FAIL** · **NOT VE
 | Offline khôi phục runtime từ cache | PASS (ngoài Docker) | Mạng chặn: EasyOCR cài lại từ cache uv/gói staged với constraints |
 | Upgrade từ phiên bản hiện tại (5e04227) giữ dữ liệu/settings | NOT VERIFIED | `docker-acceptance.sh` bước 0–1 (cần Docker có mạng) |
 | Tài liệu nghiệm thu máy thật | PASS | `OCR_LOCAL_ACCEPTANCE.md`; 24 khối bash qua `bash -n`; ShellCheck sạch |
+
+## Phase 8A — Bảo mật cuối, chuẩn bị online / vận hành offline
+
+Test mô phỏng (mock/stub) **không** thay thế nghiệm thu runtime: tiêu chí runtime chỉ PASS khi đã
+chạy thật.
+
+| Tiêu chí | Trạng thái | Bằng chứng |
+|---|---|---|
+| `/api/commands/*` chỉ admin; submit tổng quát bị tắt | PASS | `api/routers/commands.py`; `test_background_job_security.py` (user thường 403 mọi route, admin bị từ chối submit tổng quát) |
+| Worker không tin API: path traversal, xoá file ngoài uploads, SSRF qua redirect, id sai bảng | PASS | `job_input_guard.py`; 57 test với file canary trong tmp: ngoài uploads, `../`, symlink thoát, NUL; URL `file://`, metadata 169.254.169.254, redirect tới metadata |
+| Không chạy pip/apt từ HTTP; web app không root mới; không mount Docker socket | PASS | prepare qua API không cài runtime (`--install-runtime` chỉ ở CLI); compose không đổi user/socket |
+| Prepare online tải đúng phần thiếu, dùng lại model đã có | PASS (mã + test) / NOT VERIFIED (Docker) | `test_prepare_online_runs_online_then_local_only`, `test_prepare_offline_with_missing_model_fails_fast`, `test_prepare_never_installs_runtime`; Docker bước 2 (prepare lần 2: checksum không đổi) chưa chạy |
+| Không báo OFFLINE READY chỉ từ file/checksum | PASS | `test_files_present_are_not_enough`, `test_online_check_alone_is_not_offline_ready` |
+| Phân biệt OCR-only / full pipeline / local-only / offline thật | PASS (mã + test) | `readiness_status` (`ocr_ok`, `pipeline_ok`, `local_only_verified`, `offline_verified`); UI hiển thị riêng từng dòng |
+| Kết quả lỗi thời sau cập nhật / mất cache / mất trọng số RapidOCR | PASS | `test_changed_dependencies_make_verdict_stale`, `test_cleared_docling_cache_makes_verdict_stale`, `test_lost_rapidocr_weights_make_verdict_stale` |
+| Chạy thật `prepare` khi model Docling không tải được ⇒ không báo sẵn sàng | PASS (Cloud, thật) | `prepare --engines tesseract_best` ⇒ `not_offline_ready` kèm lỗi Hugging Face chính xác, exit ≠ 0 |
+| Thiếu model khi offline ⇒ lỗi rõ ràng, không treo, không fallback | PASS (mã + test) / NOT VERIFIED (E2E) | `explain_offline_failure` ⇒ `ValueError` (không retry); `test_content_process_fails_fast_without_retry`, `test_ordinary_url_errors_untouched` |
+| RapidOCR lưu bền vững qua tham số chính thức | PASS (onnx, thật) / NOT VERIFIED (torch) | `Global.model_root_dir`; chạy offline với overlay onnxruntime: log RapidOCR "File exists and is valid" từ thư mục bền vững; torch cần modelscope (bị chặn) |
+| RapidOCR mặc định không đổi | PASS | `test_default_unchanged`; mặc định vẫn đi Content Core |
+| UI trạng thái sẵn sàng + nút Chuẩn bị / Kiểm tra (vi/en) | PASS | `ReadinessPanel`; 3 test UI; tsc/lint/vitest 404/build |
+| Full pipeline 4 engine | NOT VERIFIED | huggingface.co / modelscope.cn 403 trong Cloud; `OCR_LOCAL_ACCEPTANCE.md` §4.3–4.4 |
+| Docker: cập nhật online → chuẩn bị → offline (mọi engine) → restart offline → cập nhật online | NOT VERIFIED | Script hoàn chỉnh (`bash -n`, ShellCheck sạch, driver 9 test với stub); Docker Hub 429 / ghcr 403 / apt 403 |
+| API + worker E2E thật | NOT VERIFIED | Tải SurrealDB binary bị chính sách phiên từ chối — không vượt qua |
+| Regression so với `e32eae8` | PASS | 1044 passed / 10 failed vs 951 / 10, cùng 10 lỗi có sẵn |
+| Tài liệu `OCR_ONLINE_PREPARATION.md` (15 chủ đề), lệnh qua `bash -n` | PASS | `check_doc_commands.py` |

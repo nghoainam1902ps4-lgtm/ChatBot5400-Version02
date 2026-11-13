@@ -2,7 +2,15 @@
 
 Tài liệu thống nhất để nghiệm thu những hạng mục **chưa thể chạy trong Claude Code Cloud**
 (Cloud chặn Hugging Face, modelscope, Debian apt và Docker Hub): toàn bộ pipeline Docling (Layout
-Heron + TableFormer + OCR), Docker end-to-end, offline, cập nhật image, benchmark thực tế.
+Heron + TableFormer + OCR), Docker end-to-end, chuẩn bị online → vận hành offline, restart offline,
+cập nhật online, benchmark thực tế. Mô hình vận hành: `OCR_ONLINE_PREPARATION.md`.
+
+**Chọn lộ trình:**
+
+| Lộ trình | Thời gian (ước tính) | Mục |
+|---|---|---|
+| Nhanh — chỉ Tesseract Best | ~30–60 phút | 1 → 2 → 3 → 4.1 → 4.3 (`-k tesseract_best`) → 5 (`SCENARIOS=tesseract_best`) → 9 |
+| Đầy đủ — 4 engine | vài giờ (build image ×3, EasyOCR ~4 GB RAM) | 1 → 2 → 3 → 4 → 5 (`SCENARIOS` đủ 4 engine) → 8 → 9 |
 
 > **An toàn dữ liệu:** mọi bước dùng **thư mục, compose project và dữ liệu tạm riêng**. Không cần
 > và **không được** dừng, xoá hay sửa deployment hiện tại, database, volume `notebook_data` /
@@ -94,6 +102,27 @@ OCR_ACCEPTANCE_STRICT=1 OCR_TEST_DATA_DIR="$OCR_DATA" OCR_ACCEPTANCE_REPORT="$AC
 python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['summary'])" "$ACCEPT_DIR/ocr-acceptance.json"
 ```
 
+Lộ trình nhanh (chỉ các test của Tesseract Best; engine khác không được chạy ⇒ không được tính là PASS):
+
+```bash
+cd "$ACCEPT_DIR/src"
+OCR_ACCEPTANCE_STRICT=1 OCR_TEST_DATA_DIR="$OCR_DATA" OCR_ACCEPTANCE_REPORT="$ACCEPT_DIR/ocr-acceptance-quick.json" uv run pytest tests/test_ocr_integration.py -k tesseract_best -p no:warnings -q
+```
+
+### 4.4 Chuẩn bị online và kiểm tra sẵn sàng offline (ngoài Docker)
+
+```bash
+cd "$ACCEPT_DIR/src"
+export OCR_DATA_DIR="$OCR_DATA"
+uv run python -m open_notebook.ocr.cli prepare --engines rapidocr tesseract_fast tesseract_best easyocr
+uv run python -m open_notebook.ocr.cli readiness --check --json > "$ACCEPT_DIR/readiness.json"
+python3 -c "import json,sys; [print(r['engine'], r['state'], r['local_only_verified'], r['offline_verified']) for r in json.load(open(sys.argv[1]))]" "$ACCEPT_DIR/readiness.json"
+```
+
+Mong đợi: mỗi engine `offline_ready`, `local_only_verified=True` (kiểm tra chạy với proxy chết
+`127.0.0.1:9`). `offline_verified=True` chỉ xuất hiện khi chạy `readiness --check` lúc máy **thật sự**
+không có Internet (ví dụ tắt Wi-Fi/rút mạng rồi chạy lại lệnh thứ hai).
+
 - Strict: thiếu engine/model/model Docling ⇒ **FAIL ghi rõ "NOT VERIFIED"**, không bao giờ skip-rồi-PASS.
 - Kiểm tra: engine OCR thực tế, Layout Heron, TableFormer accurate, nội dung Markdown, thứ tự đọc,
   số tiền/ngày/số hiệu, số bảng, số hàng/cột, nội dung từng hàng, ô gộp "Số tiền (đồng)", và phân
@@ -101,27 +130,44 @@ python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['summary'])
 - Ngưỡng chất lượng (`MAX_CER`, `MIN_FIELD_RECALL` trong test) được hiệu chỉnh từ benchmark Cloud;
   nếu lần chạy thật cho số đo khác, ghi số đo vào `OCR_TEST_REPORT.md` trước khi đổi ngưỡng.
 
-## 5. Docker end-to-end
+## 5. Docker end-to-end (online → chuẩn bị → offline → restart → cập nhật)
+
+Lộ trình nhanh:
 
 ```bash
 cd "$ACCEPT_DIR/src"
-SCENARIOS="tesseract_best easyocr" OLD_REF=5e042279439302d3ccf39bef4d1d8d402314d194 KEEP_WORK=1 bash scripts/ocr/docker-acceptance.sh 2>&1 | tee "$ACCEPT_DIR/docker-acceptance.log"
+SCENARIOS="tesseract_best" OLD_REF=e32eae830440512494fcbd08d9d7e755970088aa KEEP_WORK=1 bash scripts/ocr/docker-acceptance.sh 2>&1 | tee "$ACCEPT_DIR/docker-acceptance-quick.log"
 ```
 
+Lộ trình đầy đủ (4 engine):
+
+```bash
+cd "$ACCEPT_DIR/src"
+SCENARIOS="rapidocr tesseract_fast tesseract_best easyocr" OLD_REF=e32eae830440512494fcbd08d9d7e755970088aa KEEP_WORK=1 bash scripts/ocr/docker-acceptance.sh 2>&1 | tee "$ACCEPT_DIR/docker-acceptance.log"
+```
+
+`OLD_REF` là phiên bản đang chạy cần nâng cấp từ đó (ví dụ trên: bản Phase 7; dùng commit production
+thật của bạn, hoặc `5e042279439302d3ccf39bef4d1d8d402314d194` cho bản trước tính năng OCR).
+
 Script tự build image test (`chatbot5400:ocr-accept`, build arg `OCR_INSTALL_TESSERACT=true`) và image
-của phiên bản đang chạy (`OLD_REF`), tạo compose project + thư mục dữ liệu tạm riêng, rồi kiểm tra
-qua **API thật + worker thật**:
+của `OLD_REF`, tạo compose project + thư mục dữ liệu tạm riêng, rồi kiểm tra qua **API thật + worker
+thật**. "Offline" = container app **đang chạy** bị ngắt khỏi mạng egress (`docker network disconnect`,
+không recreate); app và SurrealDB dùng chung mạng `internal: true` nên DB vẫn kết nối — cả hai điều
+được kiểm tra.
 
 | Bước | Nội dung |
 |---|---|
-| 0 | Bản cũ chạy, lưu marker settings |
-| 1 | Nâng cấp lên bản mới: DB/API/worker sẵn sàng, Docling bật, phiên bản dependency đúng, **không tải OCR model lúc khởi động**, settings cũ còn nguyên |
-| 2 | Mỗi engine: cài model qua API → trạng thái job → kích hoạt → test → upload PDF → xử lý xong → có văn bản tiếng Việt mong đợi → log worker xác nhận class OCR Docling; cài 1 engine không tải engine khác |
-| 3 | Restart: checksum model không đổi, settings + engine đang dùng còn nguyên |
-| 4 | Offline: app chỉ nối mạng `internal` (vẫn tới SurrealDB, **không** ra Internet — được kiểm tra), recreate với `OCR_OFFLINE=true HF_HUB_OFFLINE=1`: runtime khôi phục từ cache, xử lý tài liệu, HF cache + model không đổi, không có log tải |
-| 5 | Build lại image thật (`--no-cache-filter runtime-base,runtime`, image ID mới), recreate: runtime khôi phục, checksum model không đổi, settings giữ nguyên, engine vẫn xử lý tài liệu |
+| 0 | Bản cũ chạy; lưu marker settings + notebook marker |
+| 1 | **Cập nhật online** lên bản mới: DB/API/worker sẵn sàng, Docling bật, phiên bản dependency đúng, không tải model OCR lúc khởi động, dữ liệu cũ còn |
+| 2 | **Chuẩn bị online** từng engine trong `SCENARIOS`: cài model → `prepare` (Heron/TableFormer/RapidOCR) → readiness `offline_ready` → E2E qua API + worker (kích hoạt, test, upload PDF, xử lý xong, có văn bản mong đợi, engine trong log); `prepare` lần hai dùng lại model (checksum không đổi) |
+| 3 | **Vận hành offline** (cùng container): Internet bị chặn, DB tới được; với **mọi** engine đã chuẩn bị: readiness check `offline_verified`, xử lý tài liệu E2E; model + HF cache không đổi, không có log tải |
+| 4 | **Restart khi offline**: runtime/model còn, mọi engine đã chuẩn bị xử lý tài liệu lại |
+| 5 | **Cập nhật online**: kết nối lại, build lại image thật (image ID mới), recreate, dữ liệu + settings giữ, model dùng lại (checksum), `prepare` lại (chỉ tải phần thiếu), readiness `offline_ready`; 5b: offline lại và xử lý tài liệu |
 
-Kết quả cuối: bảng PASS / FAIL / NOT VERIFIED; exit code ≠ 0 nếu có FAIL.
+Kết quả cuối: bảng PASS / FAIL / NOT VERIFIED; exit code ≠ 0 nếu có FAIL. RapidOCR ở chế độ mặc
+định tải lại trọng số sau recreate ở bước 5 (vẫn online) — đúng thiết kế (`OCR_ONLINE_PREPARATION.md`
+§7); muốn kiểm tra chế độ bền vững, chạy thêm một lần với `OCR_RAPIDOCR_PERSISTENT=true` trong môi
+trường (script chuyển biến này vào container).
 
 ## 6. Kiểm tra API và worker thủ công (tuỳ chọn)
 
@@ -134,7 +180,11 @@ docker exec "$APP" sh -c 'grep -c . /app/runtime-constraints.txt'
 docker logs "$APP" 2>&1 | grep -E "Docling OCR finished|OCR model install finished|Using locked runtime constraints" | tail -20
 ```
 
-## 7. Môi trường không có Internet
+## 7. Máy air-gapped (tuỳ chọn — không bắt buộc từ Phase 8A)
+
+Mô hình chuẩn là chuẩn bị online rồi vận hành offline trên **cùng** server (mục 5,
+`OCR_ONLINE_PREPARATION.md`). Mục này chỉ dành cho máy chưa từng có Internet; offline bundle được
+giữ nguyên nhưng không mở rộng.
 
 ### 7.1 Trên máy có Internet (cùng kiến trúc CPU, ví dụ x86_64)
 
@@ -183,7 +233,7 @@ Chỉ dùng tài liệu tổng hợp ở đây. Đánh giá trên tài liệu th
 ```bash
 cd "$ACCEPT_DIR"
 mkdir -p evidence
-cp -f ocr-acceptance.json docker-acceptance.log bench-*.json evidence/ 2>/dev/null || true
+cp -f ocr-acceptance*.json readiness.json docker-acceptance*.log bench-*.json evidence/ 2>/dev/null || true
 docker images --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedSince}}' | grep chatbot5400 > evidence/images.txt
 tar czf "ocr-acceptance-evidence-$(date +%Y%m%d).tar.gz" evidence
 ```
@@ -205,5 +255,6 @@ Rollback deployment thật (nếu đã cập nhật lên bản OCR): xem `OCR_RO
 | Hạng mục | Lệnh | PASS khi |
 |---|---|---|
 | Full pipeline (4 engine × 7 fixture) | mục 4.3 | `summary.FAIL == 0` và `NOT VERIFIED == 0` |
-| Docker E2E / restart / offline / rebuild / upgrade | mục 5 | không có dòng `FAIL`, không có `NOT VERIFIED` ngoài engine cố ý bỏ |
+| Chuẩn bị online / sẵn sàng offline (ngoài Docker) | mục 4.4 | mọi engine `offline_ready`; `offline_verified` khi chạy lúc ngắt mạng thật |
+| Docker: cập nhật online / chuẩn bị / offline / restart offline / cập nhật lại | mục 5 | không có dòng `FAIL`, không có `NOT VERIFIED` ngoài engine cố ý bỏ |
 | Benchmark | mục 8 | có số đo `--mode pipeline`; cập nhật `OCR_BENCHMARK.md` |

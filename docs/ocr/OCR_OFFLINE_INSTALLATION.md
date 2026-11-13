@@ -1,5 +1,13 @@
 # OCR — Cài đặt offline (môi trường hạn chế Internet)
 
+> **Phase 8A:** mô hình vận hành chuẩn là **chuẩn bị online → vận hành offline** trên cùng server
+> (`OCR_ONLINE_PREPARATION.md`). Cài đặt / cập nhật hoàn toàn offline không bắt buộc. Offline bundle
+> trong tài liệu này được giữ nguyên cho máy air-gapped, nhưng không được mở rộng. Bundle chỉ chứa
+> model OCR, không chứa Heron / TableFormer / RapidOCR; các model đó cần `prepare` khi có Internet hoặc
+> chép `HF_HOME`. Sau khi cài bundle, chạy `python -m open_notebook.ocr.cli readiness --check` để xác
+> nhận: chỉ chép file không được tính là sẵn sàng.
+
+
 ## 1. Chuẩn bị bundle trên máy có Internet
 
 Chạy **trong container dựng từ cùng image** (để bộ wheel/.deb khớp đúng cái máy đích thiếu):

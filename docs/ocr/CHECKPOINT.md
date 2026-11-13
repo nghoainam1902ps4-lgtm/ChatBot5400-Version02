@@ -51,3 +51,26 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
 - Hạng mục cần máy thật: full pipeline strict (`OCR_LOCAL_ACCEPTANCE.md` §4.3), Docker E2E/offline/
   rebuild/upgrade (§5), benchmark pipeline (§8).
 - Điều kiện trước production: xử lý `OCR_COMMANDS_JOBS_RISK.md` (mục 1 và 3).
+
+## Phase 8A
+
+- Commit (trên `e32eae8`):
+  - `2a1dd13` — bảo mật job nền;
+  - `52bcba3` — prepare / readiness;
+  - `2d3bc9e` — UI readiness;
+  - `d87a9b3` — Docker acceptance online / offline;
+  - `b27f87b` — test proxy độc lập harness;
+  - `cbfb198` — fingerprint gồm cache Docling + trọng số RapidOCR;
+  - commit tài liệu Phase 8A.
+- File mới:
+  - `open_notebook/utils/job_input_guard.py`, `open_notebook/ocr/readiness.py`;
+  - `tests/test_background_job_security.py`, `tests/test_ocr_readiness.py`;
+  - `docs/security/BACKGROUND_JOB_SECURITY.md`;
+  - `docs/ocr/OCR_ONLINE_PREPARATION.md`, `docs/ocr/RELEASE_CANDIDATE.md`.
+- `/api/commands/jobs` đã sửa; điều kiện production cũ (#24) đã đóng.
+- Còn NOT VERIFIED (cần máy thật, `OCR_LOCAL_ACCEPTANCE.md`):
+  - full pipeline 4 engine (§4.3–4.4);
+  - Docker online → chuẩn bị → offline → restart offline → cập nhật (§5);
+  - API + worker E2E;
+  - RapidOCR torch với `OCR_RAPIDOCR_PERSISTENT=true`.
+- Trạng thái phát hành: `RELEASE_CANDIDATE.md`.

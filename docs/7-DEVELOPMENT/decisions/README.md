@@ -55,5 +55,6 @@ What this makes easier, what it makes harder, what to watch. (bullets)
 | [ADR-011](ADR-011-m1-mobile-shell.md) | Mobile / responsive chat (M1) is a below-lg presentation layer | Accepted |
 | [ADR-012](ADR-012-approval-workflow.md) | Maker-checker approval of sources, scoped by a two-level notebook hierarchy | Accepted |
 | [ADR-013](ADR-013-ocr-engine-manager.md) | OCR Engine Manager: native Docling OCR engines selected per install, models on demand | Accepted |
+| [ADR-014](ADR-014-background-job-api-lockdown.md) | Background job API is admin-only; workers re-validate job input | Accepted |
 | [PDR-001](PDR-001-single-user-first.md) | Single-user first; don't preclude multi-user | Accepted |
 | [PDR-002](PDR-002-provider-agnostic-core.md) | Provider-agnostic core by default | Accepted |

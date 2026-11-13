@@ -163,3 +163,61 @@ Mỗi quyết định: bối cảnh → quyết định → phương án bị lo
 - `OCR_OFFLINE=true`: entrypoint cài Docling với `uv --offline` (cache uv trên volume); CLI cài
   EasyOCR từ gói staged (cần digest ghim) hoặc, nếu không có, từ cache uv với `--offline`. Docker
   acceptance kiểm tra bằng mạng `internal` (DB vẫn tới được, Internet bị chặn).
+
+## D-19. Khoá API job nền và kiểm tra lại đầu vào trong worker (Phase 8A)
+
+- `/api/commands/*` chỉ dành cho admin (`require_admin` ở cấp router). Submit command tổng quát bị
+  **tắt**: allowlist `GENERIC_SUBMIT_ALLOWLIST` để trống. Mọi tính năng đều có endpoint riêng, nên
+  không cần đường tổng quát.
+- Worker áp dụng phòng thủ nhiều lớp, không tin API (`open_notebook/utils/job_input_guard.py`):
+  - `file_path` phải nằm trong `UPLOADS_FOLDER` (kiểm tra bằng `realpath`);
+  - chỉ xoá file nằm trong uploads;
+  - URL được `validate_url()` kiểm tra lại ở **mọi** bước redirect;
+  - record id phải đúng bảng;
+  - với `process_source`, file/URL phải trùng với asset của chính source đó.
+- Không tiếp tục chặn ở API rồi tin tưởng worker. Chi tiết: `docs/security/BACKGROUND_JOB_SECURITY.md`.
+
+## D-20. Mô hình sẵn sàng offline: chứng minh bằng chạy pipeline thật
+
+- Có thể chẩn đoán từ file và checksum, nhưng **không bao giờ** được coi đó là "sẵn sàng". Sẵn sàng
+  chỉ xác định bằng cách chạy pipeline production (Heron + TableFormer accurate + OCR đã chọn) trong
+  tiến trình con. Có ba mức `online` / `local_only` / `offline`; `local_only` cho mọi proxy trỏ tới
+  một cổng đóng.
+- Kết quả kiểm tra gắn với một fingerprint, gồm:
+  - phiên bản các thành phần;
+  - checksum model;
+  - snapshot Heron/TableFormer trong cache;
+  - trọng số RapidOCR;
+  - các cờ RapidOCR.
+
+  Bất kỳ thay đổi nào cũng làm kết quả **lỗi thời**.
+- Phân biệt rõ OCR-only, full pipeline, local-only và offline thật.
+- Lý do chọn cách này thay vì `HF_HUB_OFFLINE=1`: biến đó chỉ chặn được Hugging Face. Proxy chết chặn
+  được cả modelscope (RapidOCR) và mọi lần tải khác.
+
+## D-21. RapidOCR lưu bền vững là tuỳ chọn (`OCR_RAPIDOCR_PERSISTENT`)
+
+- Mặc định giữ nguyên hành vi: trọng số nằm trong thư mục gói của venv, warm-up bằng `prepare`. Hệ quả
+  là trọng số mất khi recreate, và readiness phát hiện được việc này.
+- Khi bật tuỳ chọn, dùng tham số chính thức `RapidOcrOptions.rapidocr_params["Global.model_root_dir"]`,
+  trỏ tới `<OCR_MODELS_DIR>/rapidocr`. Vẫn cùng model và backend. Trọng số được nhập từ venv, chỉ nhận
+  file có SHA-256 khớp `default_models.yaml` của RapidOCR. Đường Content Core mặc định không bị ảnh hưởng.
+- Không bật làm mặc định vì hai lý do:
+  - đổi đường xử lý mặc định (phải đi lớp OCR thay vì Content Core);
+  - backend torch chưa được kiểm chứng thực tế (modelscope bị chặn trong Cloud).
+
+## D-22. Thiếu model khi offline ⇒ lỗi vĩnh viễn, có hướng dẫn
+
+- Lỗi tải model (`LocalEntryNotFoundError`, `OfflineModeIsEnabled`, `DownloadFileException`, hoặc lỗi
+  nhắc tới host HF/modelscope) trong `content_process` được đổi thành `ValueError` kèm hướng dẫn
+  "Prepare models". Job vì vậy `failed` ngay, không retry vô ích và không treo.
+- Không fallback sang engine khác (vẫn giữ D-07).
+
+## D-23. Docker acceptance: offline bằng cách ngắt mạng egress của container đang chạy
+
+- `docker network disconnect`, không recreate. Lý do: recreate khi offline đã thay đổi đúng thứ cần
+  kiểm tra, cụ thể là trọng số RapidOCR trong layer container.
+- App và DB dùng chung mạng `internal: true`, nên DB vẫn tới được. Script kiểm tra cả hai chiều:
+  Internet bị chặn, DB vẫn tới được.
+- Restart khi offline cũng thực hiện trên cùng container. Recreate/cập nhật thực hiện khi online, rồi
+  chạy thêm một vòng offline.

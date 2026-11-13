@@ -86,6 +86,27 @@ ngoài; đổi các tích hợp AI/embedding khác.
   regression.
 - **Phase 6** — Security review, tài liệu bàn giao, review độc lập toàn bộ diff.
 
+- **Phase 7** — Hardening: khoá dependency, guard tương thích, parity, nghiệm thu full pipeline strict,
+  Docker acceptance viết lại, CPU mode, đánh giá `/api/commands/jobs`, `OCR_LOCAL_ACCEPTANCE.md`.
+- **Phase 8A** — Bảo mật cuối và mô hình vận hành mới:
+  - **Mô hình:** ONLINE để cài / cập nhật / chuẩn bị model; OFFLINE để xử lý tài liệu (OCR, Layout,
+    Table, trích xuất, Markdown). Không hứa LLM / embedding chạy offline. Cài / cập nhật hoàn toàn
+    offline không bắt buộc; offline bundle giữ nguyên, không mở rộng.
+  - **A — Bảo mật job nền:** API commands chỉ cho admin, tắt submit tổng quát, worker kiểm tra lại đầu
+    vào (D-19).
+  - **B — Chuẩn bị online + trạng thái sẵn sàng:**
+    - lệnh `prepare` / `readiness`;
+    - các trạng thái `runtime_missing`, `model_missing`, `model_incomplete`, `incompatible`,
+      `pipeline_not_verified`, `not_offline_ready`, `offline_ready`;
+    - không bao giờ báo `offline_ready` chỉ dựa trên file (D-20).
+  - **C — RapidOCR:** mặc định warm-up; lưu bền vững là tuỳ chọn (D-21).
+  - **D — UI:** khung trạng thái sẵn sàng với nút Chuẩn bị / Kiểm tra; lỗi rõ ràng khi thiếu model
+    offline (D-22).
+  - **E — Cập nhật online:** dùng lại cache và model; kết quả cũ thành lỗi thời.
+  - **F — Nghiệm thu:** 4 engine; Docker gồm chuẩn bị online → offline → restart offline → cập nhật
+    online (D-23); regression so với `e32eae8`.
+  - **G–H — Tài liệu:** `OCR_ONLINE_PREPARATION.md` và `RELEASE_CANDIDATE.md`.
+
 ## 5. Tiêu chí nghiệm thu
 
 Xem `ACCEPTANCE_CHECKLIST.md` — mỗi tiêu chí PASS / FAIL / NOT VERIFIED kèm bằng chứng.

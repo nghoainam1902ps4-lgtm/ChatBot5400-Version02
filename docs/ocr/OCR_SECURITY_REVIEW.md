@@ -44,7 +44,7 @@ Phạm vi: toàn bộ diff của tính năng (`open_notebook/ocr/`, `api/routers
    đợi trống.
 5. Khi bật cờ Tesseract mà không có mạng và không có gói staged, entrypoint chờ `apt-get update`
    hết thời gian rồi mới khởi động (không chặn boot). Dùng build arg hoặc `OCR_OFFLINE=true`.
-2. Lỗ hổng phân quyền có sẵn của `/api/commands/jobs` cho các command không phải OCR.
+2. ~~Lỗ hổng phân quyền có sẵn của `/api/commands/jobs`~~ — **đã sửa ở Phase 8A** (xem mục Phase 8A).
 3. Image chạy root (có sẵn).
 
 ## Phase 7 — Bổ sung
@@ -58,3 +58,21 @@ Phạm vi: toàn bộ diff của tính năng (`open_notebook/ocr/`, `api/routers
 | 22 | Nguồn URL đi qua lớp OCR mới | Cùng URL đã qua `validate_url()` ở API; tải bằng chính `_download_remote_file` của Content Core (aiohttp, theo redirect như trước), thêm 1 HEAD như Content Core vốn làm; tệp tạm luôn bị xoá (kể cả khi lỗi) | Không thêm bề mặt SSRF mới; `test_url_output_and_cleanup_match_content_core`, `test_url_temp_file_removed_when_conversion_fails`. Rủi ro có sẵn: worker không kiểm tra lại URL — xem `OCR_COMMANDS_JOBS_RISK.md` |
 | 23 | Dependency runtime bị thay đổi | Container mới trước đây cài Docling mới nhất (2.150) ⇒ hành vi khác bản đã kiểm thử | Constraints từ `uv.lock` + guard phiên bản/dấu vân tay (D-14); override phải tường minh; gói staged cần digest ghim |
 | 24 | `POST /api/commands/jobs` (có sẵn) | **Cao**: user thường có thể chạy `process_source` với `file_path`/`delete_source` ⇒ đọc/xoá file tuỳ ý dưới quyền root, SSRF; các command khác ⇒ chi phí/ghi dữ liệu | Không sửa trong Phase 7 (ngoài phạm vi). Phân tích + phương án: `OCR_COMMANDS_JOBS_RISK.md`. **Khuyến nghị bắt buộc xử lý trước production** |
+
+## Phase 8A — Bảo mật cuối
+
+| # | Tình huống | Đánh giá | Biện pháp / bằng chứng |
+|---|---|---|---|
+| 25 | `/api/commands/jobs` (#24): user thường chạy `process_source` với `file_path` / `delete_source` / URL tuỳ ý | **Đã sửa** | Router `commands` chỉ admin; submit tổng quát bị tắt (allowlist rỗng) kể cả với admin; list / status không lộ payload. `tests/test_background_job_security.py` |
+| 26 | Worker tin dữ liệu job (phòng thủ nhiều lớp) | **Đã sửa** | `job_input_guard`: `realpath` nằm trong `UPLOADS_FOLDER`; xoá chỉ trong uploads (symlink: xoá link, không xoá đích); `validate_url()` ở mọi hop redirect (tối đa 5); id đúng bảng; `process_source` chỉ nhận file / URL trùng asset của source. Test dùng file canary trong thư mục tạm |
+| 27 | Job prepare / readiness qua API | Không cài runtime (không `pip` / `apt` từ HTTP); không nhận tham số nào ngoài engine id (catalog); chạy tiến trình con `shell=False`, argv cố định | `test_prepare_never_installs_runtime`; nonce riêng cho mỗi command (`test_commands_require_their_own_nonce`) |
+| 28 | Proxy chết trong kiểm tra `local_only` | Chỉ áp dụng trong tiến trình con kiểm tra; không đổi mạng của app hay môi trường | `_child_env` |
+| 29 | Nhập trọng số RapidOCR vào thư mục bền vững | Chỉ file có tên và SHA-256 khớp `default_models.yaml` của RapidOCR; bỏ qua symlink; ghi nguyên tử | `test_import_copies_only_checksum_valid_weights` |
+| 30 | Lỗi offline lộ thông tin | Thông báo cố định, không chứa đường dẫn nội bộ hay token | `explain_offline_failure` |
+
+Rủi ro còn lại (ghi trong `docs/security/BACKGROUND_JOB_SECURITY.md` §5):
+
+- **DNS rebinding:** có cửa sổ giữa lúc worker kiểm tra URL và lúc Content Core tải (cửa sổ này đã có
+  từ trước ở API).
+- **Host nội bộ:** vẫn tới được, theo thiết kế (Ollama nội bộ).
+- **Image chạy root:** có sẵn, không đổi.

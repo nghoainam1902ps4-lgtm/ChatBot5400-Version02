@@ -31,3 +31,10 @@
 | 7 | CPU mode (RapidOCR opt-in CPU, EasyOCR device thật) | DONE |
 | 7 | Security bổ sung + tài liệu `/api/commands/jobs` | DONE |
 | 7 | `OCR_LOCAL_ACCEPTANCE.md` + kiểm tra cú pháp lệnh | DONE |
+| 8A | Bảo mật job nền: commands chỉ admin, tắt submit tổng quát, guard trong worker, 57 test | DONE |
+| 8A | Prepare online + readiness (`online`/`local_only`/`offline`, fingerprint, CLI, job, API) | DONE (chạy thật trong Cloud: `not_offline_ready` đúng vì HF bị chặn) |
+| 8A | RapidOCR: warm-up mặc định, `OCR_RAPIDOCR_PERSISTENT` tuỳ chọn | DONE (onnx kiểm chứng; torch BLOCKED — modelscope) |
+| 8A | UI trạng thái sẵn sàng + nút Chuẩn bị / Kiểm tra (vi/en); lỗi rõ khi thiếu model offline | DONE |
+| 8A | Docker acceptance: cập nhật online → chuẩn bị → offline → restart offline → cập nhật online | DONE (chạy thật: BLOCKED — registry/apt) |
+| 8A | Regression so với `e32eae8` | DONE (0 lỗi mới) |
+| 8A | Tài liệu (`OCR_ONLINE_PREPARATION.md`, cập nhật bộ docs/ocr, `RELEASE_CANDIDATE.md`) | DONE |
