@@ -156,3 +156,22 @@ Production readiness phụ thuộc vào việc một biện pháp được phê 
   frontend, và kiểm tra trực tiếp trên stack nghiệm thu cô lập (`OCR_PHASE9A_REPORT.md` §D).
 - Bộ test đã bắt được một lỗi trong chính bản vá đầu tiên: hàm tải của lớp OCR
   (`extract_url_with_selected_ocr`) chưa có chốt chặn. Đã sửa trước khi commit.
+
+## Phase 9B — Review độc lập trước merge
+
+Ba reviewer độc lập (chỉ đọc) trên toàn bộ `5e04227..76b63b5`, sau đó một reviewer rà lại phần sửa.
+Chi tiết và danh sách đầy đủ: [OCR_PHASE9B_REPORT.md](OCR_PHASE9B_REPORT.md).
+
+| Hạng mục | Kết luận |
+|---|---|
+| Lách công tắc URL ingestion khi tắt | **Không tìm thấy.** API (multipart, JSON), retry, worker, graph, hai hàm URL của lớp OCR đều từ chối trước DNS / request. `type` so khớp chính xác; `url` kèm `text` / `upload` bị bỏ qua; `file_path` là URL bị chặn bởi kiểm tra thư mục uploads; công tắc đọc ở mỗi lần gọi, không API nào ghi được |
+| Phân quyền endpoint mới (`/api/ocr/*`, `/api/commands/*`) | Đạt — đều `require_admin` ở backend; job OCR cần nonce một lần |
+| Command injection | Không tìm thấy — mọi subprocess dùng danh sách tham số, không shell; engine id kiểm theo catalog; binary lấy từ cấu hình vận hành |
+| Toàn vẹn model tải về | Đạt cho model trong catalog: HTTPS, URL cố định, kiểm host ở từng bước redirect, ghim kích thước + SHA-256, kiểm trước khi đổi tên nguyên tử |
+| **Lỗi có sẵn, đã sửa ở Phase 9B (D-31)** | Route credential / model không kiểm tra vai trò (đánh cắp khóa API, SSRF qua "kiểm tra kết nối" bất kể công tắc URL); `POST /api/sources/json` nhận `file_path` của người khác; các route bảo trì mà giao diện chỉ hiện cho quản trị viên |
+| Còn mở (mức thấp, đã ghi nhận) | Cài runtime online ghim phiên bản nhưng không ghim hash; wheel EasyOCR stage: file không có trong danh sách checksum không bị từ chối; cache SHA-256 theo (đường dẫn, kích thước, mtime) — cả ba đều cần quyền ghi vào data volume hoặc kho gói bị xâm nhập; route podcast mở cho mọi tài khoản (quyết định sản phẩm); upload sync chạy trong worker không có hạn mức theo người dùng |
+
+Phạm vi rủi ro SSRF sau Phase 9B: với công tắc URL ingestion **tắt** và D-31, người dùng không phải quản trị
+viên không còn đường nào để máy chủ gọi tới một URL do họ chọn. Quản trị viên vẫn cấu hình được URL nhà cung
+cấp (qua `validate_url`; địa chỉ nội bộ được phép có chủ đích cho mô hình tự host). Bộ tải của Content Core /
+Docling không đổi: **không tuyên bố SSRF đã được sửa triệt để**.

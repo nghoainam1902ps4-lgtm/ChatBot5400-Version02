@@ -1,6 +1,6 @@
 # Hướng dẫn benchmark trên tài liệu nghiệp vụ thật (thực hiện tại chỗ)
 
-Cập nhật: 2026-11-13 (Phase 9A)
+Cập nhật: 2026-11-14 (Phase 9B)
 
 **Trạng thái: CHƯA THỰC HIỆN.** Mọi số liệu trong `docs/ocr/` đến nay là trên dữ liệu **tổng hợp**. Không
 tài liệu nghiệp vụ thật nào được tìm, đọc hay đo trong quá trình phát triển. Benchmark này do chủ dự án tự
@@ -14,6 +14,11 @@ chọn tài liệu và tự chạy trên máy chủ.
 - Công cụ `scripts/ocr/local_document_benchmark.py` chỉ ghi **số liệu tổng hợp**: tỉ lệ, số đếm, thời gian.
   Nó không lưu văn bản nhận dạng được, không lưu ground truth, không lưu giá trị trường khóa, và thay tên
   file bằng `doc-001`, `doc-002`… (unit test `tests/test_ocr_local_benchmark.py` giữ bảo đảm này).
+- Từ Phase 9B công cụ **tắt toàn bộ log** của ứng dụng và thư viện khi chạy (các dòng log này có ghi tên file
+  đang xử lý); màn hình chỉ còn `doc-NNN`, tên thư mục nhóm và con số. Vì tên thư mục nhóm xuất hiện trong báo
+  cáo, hãy đặt tên chung (`cong_van`, `bang_scan`…), không đặt theo tên khách hàng hay số hợp đồng.
+- Công cụ không gọi LLM, không gọi embedding, không gửi nội dung đi đâu. Docling có thể hỏi Hugging Face về
+  phiên bản model (không kèm dữ liệu tài liệu); đặt `HF_HUB_OFFLINE=1` như lệnh ở mục 4 để không có request nào.
 - Thư mục tài liệu và các file `.gt.txt` nằm ngoài repository, quyền chỉ người thực hiện đọc được, và được
   xóa hoặc lưu theo quy định của đơn vị sau khi đo.
 - Không commit tài liệu, ground truth hay kết quả chi tiết. Chỉ bảng tổng hợp mới được đưa vào biên bản.
@@ -51,16 +56,35 @@ có được đọc đúng không.
 
 ## 4. Chạy
 
-Trên máy chủ, trong môi trường đã cài engine cần đo (hoặc trong container ứng dụng):
+**Cách A — trước khi triển khai, trên máy chủ, bằng môi trường nghiệm thu** (đã có sẵn Docling, Tesseract Best
+và model; không đụng tới production). Mở một phiên SSH thường — không phải phiên trợ lý AI — rồi chạy:
 
 ```bash
-cd /app                                   # trong container; hoặc thư mục mã nguồn
-DOCS=/duong/dan/rieng/tai-lieu-benchmark   # thư mục ngoài repository
-OUT=/duong/dan/rieng/ket-qua; mkdir -p "$OUT"
-uv run --no-sync python scripts/ocr/local_document_benchmark.py --dir "$DOCS" \
+source /home/admin/cb5400-ocr-accept/env.sh
+cd /home/admin/cb5400-ocr-accept/src
+DOCS=/duong/dan/rieng/tai-lieu-benchmark   # thư mục ngoài repository, quyền 700
+OUT=/duong/dan/rieng/ket-qua; mkdir -p "$OUT"; chmod 700 "$OUT"
+HF_HUB_OFFLINE=1 uv run --no-sync python scripts/ocr/local_document_benchmark.py --dir "$DOCS" \
     --engines tesseract_best rapidocr \
     --out "$OUT/benchmark.json" --markdown "$OUT/benchmark.md"
+cat "$OUT/benchmark.md"
 ```
+
+**Cách B — sau khi triển khai, trong container ứng dụng** (engine đã cài và đã "Chuẩn bị"):
+
+```bash
+cd /home/admin/ChatBot5400-Version02
+docker compose cp /duong/dan/rieng/tai-lieu-benchmark open_notebook:/tmp/bench-docs
+docker compose exec -e HF_HUB_OFFLINE=1 open_notebook /app/.venv/bin/python \
+    scripts/ocr/local_document_benchmark.py --dir /tmp/bench-docs \
+    --engines tesseract_best rapidocr --out /tmp/bench.json --markdown /tmp/bench.md
+docker compose exec open_notebook cat /tmp/bench.md
+docker compose exec open_notebook rm -rf /tmp/bench-docs /tmp/bench.json /tmp/bench.md
+```
+
+Đã kiểm tra công cụ bằng tài liệu tổng hợp ở Phase 9B (3 tài liệu × 2 engine, `HF_HUB_OFFLINE=1`): chạy được,
+không tên file hay giá trị trường khóa nào xuất hiện trong màn hình, JSON hay Markdown; không sót thư mục tạm.
+Lượt chạy tổng hợp đó **không** thay cho benchmark thật.
 
 Thêm `tesseract_fast` vào `--engines` nếu muốn so tốc độ. Không cần đo EasyOCR (mức thử nghiệm).
 

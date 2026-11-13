@@ -147,3 +147,36 @@ Bộ gốc và bộ có điều kiện được báo **riêng**; bộ có điề
 | Benchmark tài liệu nghiệp vụ thật | **CHƯA THỰC HIỆN** — việc của chủ dự án | `OCR_REAL_DOCUMENT_BENCHMARK.md` |
 | Backup / restore / triển khai production | **CHƯA THỰC HIỆN** — chỉ có kế hoạch | `OCR_PRODUCTION_DEPLOYMENT_PLAN.md` |
 | Production không bị ảnh hưởng | PASS — container ID, image, thời điểm start, restart (0), mount giống hệt; `/health` 200 | `preflight/production-{before,after}.txt` |
+
+## Phase 9B — Nghiệm thu phát hành cuối (commit mã `6f6b424`)
+
+| Hạng mục | Kết quả | Bằng chứng (`evidence/phase9b/`) |
+|---|---|---|
+| Phase 9A được xác minh (RC trên GitHub, quan hệ nhánh, bundle) | PASS | `OCR_PHASE9B_REPORT.md` §A |
+| Review độc lập toàn bộ diff + rà lại phần sửa | PASS — sau khi sửa: 0 Cao; Trung bình còn mở: route podcast (quyết định sản phẩm) | `OCR_PHASE9B_REPORT.md` §B |
+| Phân quyền quản trị viên ở backend cho credential / model / transformation / embed / rebuild / xóa insight | PASS | `tests/test_admin_route_authorization.py` |
+| Nguồn từ file đã có trên máy chủ chỉ dành cho quản trị viên | PASS | như trên |
+| Giới hạn tổng thời gian dò hướng trang; tài liệu không lỗi khi chạm giới hạn; file gốc không đổi | PASS | `tests/test_ocr_quality_prep.py` |
+| Mọi lời gọi pdfium của `pdf_prep` giữ khóa của Docling | PASS | `test_every_pdfium_call_of_pdf_prep_holds_doclings_lock` |
+| Timeout Hugging Face không nhận `nan` / `inf` / giá trị quá lớn | PASS | `tests/test_ocr_hub_http.py` |
+| Chuyển đổi một phần của Docling được ghi log và metadata | PASS | `tests/test_ocr_phase9b_review.py` |
+| Công cụ benchmark cục bộ không in tên file, giá trị trường, dòng log | PASS (unit test + chạy thử tài liệu tổng hợp) | `tests/test_ocr_local_benchmark.py` |
+| Backend regression | PASS — 1435 / 10, cùng 10 lỗi có sẵn | `runs/pytest-full-9b.txt` |
+| Test bảo mật | PASS — 335 passed | `runs/pytest-security-9b.txt` |
+| Frontend lint / tsc / vitest / build | PASS — 0 error / 0 / 411 / OK | `runs/frontend-9b.txt` |
+| **A. Bộ gốc** 48 bài | 38 PASS / 10 FAIL / 0 NOT VERIFIED — đúng 10 bài cũ | `runs/ocr-acceptance-full-9b.json` |
+| A. Lộ trình nhanh `FAIL == 0` | **FAIL** — 6 PASS / 3 FAIL (không đổi) | `runs/ocr-acceptance-quick-9b.json` |
+| **B. Có điều kiện** — Tesseract Best | **PASS** — 7/7 (4 + 3 kèm KL-1), critical 7/7 | `runs/release-criteria-9b.json` |
+| Docker quick (Tesseract Best), nâng cấp từ `5e04227` | PASS — 42 / 0 / 0 | `runs/docker-quick-9b.log` |
+| Docker 4 lựa chọn | Hạ tầng PASS (74 PASS); **1 FAIL nội dung EasyOCR** | `runs/docker-full-9b.log` |
+| RapidOCR persistent, backend torch | PASS — 42 / 0 / 0 | `runs/docker-rapidocr-persistent-9b.log` |
+| Image không có Tesseract (RapidOCR, EasyOCR) | Runtime PASS (50 PASS); **1 FAIL nội dung EasyOCR** | `runs/docker-no-tesseract-9b.log` |
+| Trực tiếp trên stack cô lập: công tắc URL / bảo mật | PASS — 7/7 · 16/16 | `runs/url_switch_live-9b.json`, `runs/security_live-9b.json` |
+| Trực tiếp: đồng thời + dọn file tạm | Lượt 1: 3/6 (một upload HTTP 500 — xung đột ghi SurrealDB, có sẵn); chạy lại 6/6 | `runs/concurrency_live-9b*.json`, `runs/concurrency_live-9b.NOTE.txt` |
+| GitHub Actions không tự triển khai khi merge | PASS | `OCR_PHASE9B_REPORT.md` §F |
+| Không bí mật, dữ liệu thật, model, cache, backup trong branch | PASS | `OCR_PHASE9B_REPORT.md` §G |
+| RapidOCR lưu bền chạy offline sau recreate | **KHÔNG** — cần "Chuẩn bị" một lần khi có Internet (D-32); readiness báo đúng | `tests/test_ocr_phase9b_review.py` |
+| Benchmark tài liệu nghiệp vụ thật | **CHƯA THỰC HIỆN** — việc của người vận hành | `OCR_REAL_DOCUMENT_BENCHMARK.md` |
+| Backup / restore / triển khai production | **CHƯA THỰC HIỆN** — chờ phê duyệt (Phase 9C) | `OCR_PRODUCTION_DEPLOYMENT_PLAN.md` |
+| `offline_verified` trên production | NOT VERIFIED | — |
+| Production không bị ảnh hưởng | PASS — container ID, image, thời điểm start, restart (0) giống hệt; `/health` 200 | `preflight/` |

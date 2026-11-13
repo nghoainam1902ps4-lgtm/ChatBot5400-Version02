@@ -71,3 +71,11 @@
 | 9A | Kế hoạch triển khai, checklist, hướng dẫn + công cụ benchmark tài liệu thật | DONE (chỉ soạn, không thực hiện) |
 | 9A | Bundle `phase9a-backup.bundle`, branch `release/ocr-engine-manager-rc1` | xem `OCR_PHASE9A_REPORT.md` §J–K |
 | 9A | Benchmark tài liệu thật, backup/restore, triển khai production | **OPEN — việc của chủ dự án** |
+| 9B | Xác minh Phase 9A (Git, GitHub, bundle, tài liệu) | DONE |
+| 9B | Review độc lập toàn bộ `5e04227..76b63b5` (3 agent) + rà lại phần sửa (1 agent) | DONE — 2 Cao + 6 Trung bình (đa số có sẵn); xem `OCR_PHASE9B_REPORT.md` §B |
+| 9B | Sửa: phân quyền quản trị viên cho credential / model / bảo trì (D-31); ngân sách thời gian dò hướng (D-30); chuyển đổi một phần, từ điển RapidOCR, build arg (D-32) | DONE — `d4b5f81`, `d28300e`, `6f6b424` |
+| 9B | Nghiệm thu cuối trên `6f6b424`: backend, frontend, bộ gốc, có điều kiện, Docker quick / full / persistent / không Tesseract, bảo mật trực tiếp | DONE — không lỗi mới; bộ gốc vẫn 38/48; Docker full 74/1, không Tesseract 50/1 (EasyOCR) |
+| 9B | GitHub Actions: không có cơ chế tự triển khai | DONE |
+| 9B | Pull Request vào `claude/practical-wozniak-9s1t6z`, merge | xem `OCR_PHASE9B_REPORT.md` §G |
+| 9C | Kiểm tra chỉ đọc production; kế hoạch triển khai theo hiện trạng; công cụ đếm bản ghi và stack restore | DONE (chưa thay đổi production) |
+| 9C | Benchmark tài liệu thật; phê duyệt triển khai; sao lưu, restore, triển khai, smoke test | **OPEN — chờ chủ dự án** |

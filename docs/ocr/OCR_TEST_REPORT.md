@@ -381,3 +381,35 @@ Báo cáo đầy đủ: [OCR_PHASE9A_REPORT.md](OCR_PHASE9A_REPORT.md).
 - Sai sót thao tác đã hoàn tác: một lệnh `ruff format tests` định dạng lại 40 file test không liên quan; đã
   `git checkout` toàn bộ rồi chỉ áp lại thay đổi có chủ đích. `tests/test_ocr_integration.py` và fixture
   không đổi.
+
+## 13. Phase 9B — Nghiệm thu phát hành cuối (2026-11-13 → 14)
+
+Báo cáo đầy đủ: [OCR_PHASE9B_REPORT.md](OCR_PHASE9B_REPORT.md). Mã được kiểm thử: `6f6b424`.
+
+| Kiểm thử | Kết quả |
+|---|---|
+| `tests/test_admin_route_authorization.py` (mới) | 104 passed — 401 / 403 theo từng route và vai trò; ghim toàn bộ bề mặt route ghi |
+| `tests/test_ocr_phase9b_review.py` (mới) | 15 passed — timeout readiness, từ điển RapidOCR, chuyển đổi một phần, build arg compose |
+| `tests/test_ocr_quality_prep.py` | 78 passed (16 mới: ngân sách thời gian, giới hạn số trang, khóa pdfium từng lời gọi, trang lỗi) |
+| `tests/test_ocr_hub_http.py` | 14 passed (9 mới: `nan`, `inf`, giá trị lớn, giới hạn trên) |
+| `tests/test_ocr_local_benchmark.py` | 7 passed (3 mới — không lộ tên file; test đối chứng chứng minh kiểm tra không rỗng) |
+| `pytest tests/` | 1435 passed / 10 failed / 44 skipped — cùng 10 lỗi của nhánh chính thức |
+| Test bảo mật (`-k security/guard/commands/auth/url`) | 335 passed |
+| mypy / ruff | 33 lỗi có sẵn / lỗi có sẵn ở file ngoài đợt này — không lỗi mới |
+| Frontend | lint 0 error, tsc 0, vitest 411/411, build OK |
+| Bộ gốc 48 bài, strict | 38 PASS / 10 FAIL / 0 NOT VERIFIED — đúng 10 bài cũ |
+| `-k tesseract_best` | 6 PASS / 3 FAIL |
+| `scripts/ocr/release_criteria.py` | Best 7/7 (3 kèm KL-1) · Fast 5/7 · RapidOCR 7/7 · EasyOCR 2/7; critical 7/7 · 7/7 · 7/7 · 2/7 |
+| Docker quick (Tesseract Best) | 42 PASS / 0 FAIL |
+| Docker 4 lựa chọn | 74 PASS / 1 FAIL (nội dung EasyOCR) / 0 NOT VERIFIED |
+| Docker RapidOCR persistent (torch) | 42 PASS / 0 FAIL |
+| Docker image không có Tesseract | 50 PASS / 1 FAIL (nội dung EasyOCR) / 0 NOT VERIFIED |
+| Trực tiếp trên stack cô lập: công tắc URL / bảo mật / đồng thời | 7/7 · 16/16 · lượt 1: 3/6, chạy lại: 6/6 |
+
+- Bốn lượt Docker có danh sách kiểm tra và kết quả từng dòng trùng với baseline (9A cho quick, 8D cho ba lượt
+  còn lại), so bằng `diff` sau khi bỏ id.
+- **P9B-1 (không ổn định, có sẵn):** ba upload gửi cùng lúc ⇒ một request `POST /api/sources` nhận HTTP 500 vì
+  SurrealDB báo xung đột giao dịch khi tạo bản ghi nguồn. Chạy lại đạt. Không do RC gây ra; không sửa.
+- Một lượt nghiệm thu trước trên `d28300e` được chủ động dừng ở bước Docker đầu tiên để các bản sửa của review
+  lại nằm trong commit được nghiệm thu; phần đã chạy cho cùng kết quả OCR.
+- Không test nào bị xóa, skip hay nới lỏng. `tests/test_ocr_integration.py` và fixture không đổi.

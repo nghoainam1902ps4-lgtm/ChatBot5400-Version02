@@ -116,6 +116,16 @@ ngoài; đổi các tích hợp AI/embedding khác.
 - Không đổi ngưỡng, fixture, ground truth; không thêm engine; không sửa Docling/Content Core.
 - Báo cáo: [OCR_PHASE8C_REPORT.md](OCR_PHASE8C_REPORT.md).
 
+### Phase 8D, 9A, 9B, 9C — phát hành
+
+- 8D: phân loại chất lượng, tiêu chí phát hành có điều kiện (D-27) — [OCR_PHASE8D_REPORT.md](OCR_PHASE8D_REPORT.md).
+- 9A: công tắc tắt URL ingestion (D-29), Release Candidate — [OCR_PHASE9A_REPORT.md](OCR_PHASE9A_REPORT.md).
+- 9B: review độc lập cuối, sửa lỗi phân quyền có sẵn (D-31), giới hạn thời gian dò hướng (D-30), nghiệm thu
+  cuối, Pull Request và merge — [OCR_PHASE9B_REPORT.md](OCR_PHASE9B_REPORT.md).
+- 9C: triển khai production theo [OCR_PRODUCTION_DEPLOYMENT_PLAN.md](OCR_PRODUCTION_DEPLOYMENT_PLAN.md), chỉ sau
+  khi chủ dự án phê duyệt; vận hành theo [OCR_OPERATOR_GUIDE.md](OCR_OPERATOR_GUIDE.md).
+- Không nghiên cứu OCR thêm, không thêm engine, không đổi model sau Phase 8D.
+
 ## 5. Tiêu chí nghiệm thu
 
 Xem `ACCEPTANCE_CHECKLIST.md` — mỗi tiêu chí PASS / FAIL / NOT VERIFIED kèm bằng chứng.

@@ -31,15 +31,16 @@ cũ. Không ghi gì vào DB cho tới khi admin lưu.
 | `OCR_ALLOW_UNVERIFIED_DEPENDENCIES` | – | `true` = cho phép engine khác RapidOCR khi Content Core/Docling khác bộ đã kiểm chứng (chỉ sau khi tự kiểm chứng lại) |
 | `OCR_RAPIDOCR_FORCE_CPU` | – | `true` = RapidOCR chạy CPU kể cả khi có GPU (chỉ OCR; D-16). Mặc định giữ hành vi cũ |
 | `HF_HUB_OFFLINE` | – | `1` cho máy không Internet: Docling chỉ dùng model Heron/TableFormer đã có trong `HF_HOME` |
-| `OCR_HF_HUB_TIMEOUT` | `20` | Giây; timeout cho request Hugging Face Hub không tự đặt timeout (D-24) |
+| `OCR_HF_HUB_TIMEOUT` | `20` | Giây; timeout cho request Hugging Face Hub không tự đặt timeout (D-24). Giá trị sai, `nan`, `inf`, ≤ 0 ⇒ 20; tối đa 300 (D-30) |
 | `OCR_RAPIDOCR_PERSISTENT` | – | `true` = trọng số RapidOCR nằm trên data volume (D-08) |
 | `OCR_TESSERACT_OSD_GATE` | bật | `false` = không lọc kết quả dò hướng độ tin cậy thấp của Tesseract (D-25) |
 | `OCR_TESSERACT_OSD_MIN_CONFIDENCE` | `2.0` | Ngưỡng `Orientation confidence` trên từng vùng OCR (D-25) |
 | `OCR_PDF_PREP` | bật | `false` = không dò hướng trang scan, không chỉnh scale theo độ phân giải scan (D-25) |
 | `OCR_PAGE_OSD_MIN_CONFIDENCE` | `2.0` | Ngưỡng `Orientation confidence` trên cả trang (D-25) |
 | `OCR_PAGE_OSD_MAX_PAGES` | `200` | Số trang scan tối đa được dò hướng trong một tài liệu (D-25) |
+| `OCR_PAGE_OSD_BUDGET_SECONDS` | `600` | Tổng thời gian tối đa (giây) cho bước dò hướng của một tài liệu; hết thời gian thì các trang còn lại được chuyển đổi nguyên trạng, tài liệu không lỗi. Giá trị sai, `nan`, `inf`, ≤ 0 ⇒ 600; tối đa 6000 (D-30) |
 | `OCR_EASYOCR_CONFIDENCE` | `0.2` | Ngưỡng confidence dòng của EasyOCR, 0–1 (D-26) |
-| Build arg `OCR_INSTALL_TESSERACT` | `false` | Nướng Tesseract vào image |
+| Build arg `OCR_INSTALL_TESSERACT` | `false` | Nướng Tesseract vào image. Hai file compose đọc giá trị này từ `.env` (`OCR_INSTALL_TESSERACT=true`) nên mọi lần `up -d --build` về sau đều giữ Tesseract (D-32) |
 
 Các biến Phase 8C là cấu hình toàn deployment (đọc khi dựng OCR options), không đổi theo từng job.
 Cơ sở chọn mặc định: [OCR_QUALITY_OPTIMIZATION.md](OCR_QUALITY_OPTIMIZATION.md).

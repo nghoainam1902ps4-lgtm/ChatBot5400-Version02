@@ -134,3 +134,27 @@ Upgrade note: a deployment that used URL sources must set
 `OPEN_NOTEBOOK_ENABLE_URL_INGESTION=true` explicitly to keep the feature.
 
 Tests: `tests/test_url_ingestion_switch.py` (43), `frontend/src/components/sources/steps/SourceTypeStep.test.tsx` (3).
+
+## 7. Phase 9B review: role enforcement outside the job API (docs/ocr D-31)
+
+The Phase 9B independent review found authorization gaps that predate the OCR work
+(present at `5e04227`) and that undercut §6:
+
+| Finding | Before | After |
+|---|---|---|
+| `/api/credentials` writes, `test`, `discover`, `register-models`, `migrate-*`; `/api/models` create / delete / test / defaults / sync / auto-assign | any logged-in account. Repointing a credential's `base_url` sent the stored API key and later chat traffic to another host; "test connection" reached internal addresses **regardless of the URL-ingestion switch** | administrator only (`require_admin`) |
+| Transformation create / update / delete / execute / default prompt, `POST /api/embed`, `POST /api/embeddings/rebuild`, `DELETE /api/insights/{id}` | any logged-in account (the UI only showed them to administrators) | administrator only |
+| `POST /api/sources/json` with a caller-supplied `file_path` inside the uploads folder | any submitter: could read, and with `delete_source` remove, a file uploaded by someone else | administrator only; other roles must upload the file with the request |
+
+So the statement in §6 that provider / credential base URLs are "admin-configured" is
+now enforced by the backend, not only by the UI.
+
+Still open to every account, by product design or pending an owner decision: podcast
+generation / retry / deletion and episode / speaker profiles; `GET /api/podcasts/jobs/{id}`
+returns the status of any command id (ids are random; OCR job ids are only shown to
+administrators). `Source.delete()` unlinks the stored asset path without the containment
+re-check used by the worker (the path can now only come from a server-side upload or an
+administrator).
+
+Tests: `tests/test_admin_route_authorization.py` (role matrix per route, plus a test that
+pins every POST / PUT / DELETE route as either role-guarded or deliberately open).

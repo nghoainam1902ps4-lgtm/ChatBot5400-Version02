@@ -127,3 +127,16 @@ Quy tắc:
   mọi engine vẫn chạy theo khả năng gốc; hệ thống không tự tải hay cài Tesseract. Tắt hẳn bằng
   `OCR_PDF_PREP=false`.
 - Tiếng Anh: `docs/7-DEVELOPMENT/decisions/ADR-013-ocr-engine-manager.md` (Addendum) và giao diện en-US.
+
+## 9. Bổ sung Phase 9B
+
+- **Quyền:** ngoài các API OCR, từ Phase 9B backend cũng chỉ cho quản trị viên ghi / kiểm tra credential nhà
+  cung cấp và model, quản lý transformation, embed và dựng lại embedding, xóa insight (D-31).
+- **Giới hạn thời gian dò hướng trang:** tối đa 200 trang scan và 600 giây cho mỗi tài liệu
+  (`OCR_PAGE_OSD_MAX_PAGES`, `OCR_PAGE_OSD_BUDGET_SECONDS`). Chạm giới hạn thì các trang còn lại giữ nguyên
+  hướng, tài liệu vẫn được xử lý; log và metadata ghi `page_orientation_limit` (D-30).
+- **Chuyển đổi một phần:** log ghi `conversion_status` và `conversion_errors` cho từng tài liệu; khác `success`
+  nghĩa là Docling bỏ qua một trang hoặc một vùng (D-32).
+- **RapidOCR lưu bền:** sau khi tạo lại container vẫn cần "Chuẩn bị" một lần khi có Internet (file từ điển của
+  RapidOCR nằm trong container); trạng thái sẵn sàng tự chuyển về "chưa kiểm tra" (D-32).
+- Hướng dẫn vận hành theo tình huống: [OCR_OPERATOR_GUIDE.md](OCR_OPERATOR_GUIDE.md).

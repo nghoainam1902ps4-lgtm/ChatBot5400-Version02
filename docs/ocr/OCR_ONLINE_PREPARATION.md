@@ -142,7 +142,10 @@ backend torch.
   `RapidOcrOptions.rapidocr_params["Global.model_root_dir"]`.
   - Vẫn cùng model và cùng backend; trọng số đã có trong venv được sao chép sang, chỉ những file có
     SHA-256 khớp danh sách `default_models.yaml` của RapidOCR.
-  - Với cách này, RapidOCR vẫn chạy offline sau recreate.
+  - Trọng số `.pth` được giữ qua recreate. **Giới hạn (Phase 9B, D-32):** với backend torch, RapidOCR vẫn
+    giữ file từ điển nhận dạng `ppocrv6_dict.txt` trong thư mục gói của venv và tải lại khi thiếu. Vì vậy
+    sau khi recreate container cần chạy `prepare` **một lần khi có Internet**; readiness tự chuyển về "chưa
+    kiểm tra" sau recreate, không báo sai là sẵn sàng. Restart (không recreate) thì không cần.
   - Trạng thái kiểm chứng: đã kiểm chứng với backend onnxruntime; với backend torch (production) là
     **NOT VERIFIED** trong Cloud (xem `OCR_TEST_REPORT.md` §8).
 

@@ -47,3 +47,16 @@ An toàn vì:
 - Công tắc không tạo dữ liệu mới và không cần hoàn tác: nguồn URL cũ không bị sửa hay xóa.
 - Tắt riêng công tắc trên bản RC (bật lại URL ingestion): đặt `OPEN_NOTEBOOK_ENABLE_URL_INGESTION=true` và
   recreate container; cần phê duyệt vì rủi ro còn lại xuất hiện trở lại.
+
+## Ghi chú Phase 9B
+
+- Rollback mã về `5e04227` cũng làm mất các bản vá phân quyền của D-31: route credential / model lại chỉ yêu
+  cầu đăng nhập. Trong thời gian chạy bản cũ, chỉ để quản trị viên thao tác và triển khai lại bản RC sớm nhất
+  có thể.
+- Trên production, tạo lại container ứng dụng bằng `docker compose up -d --no-deps --no-build open_notebook`
+  (không `--build`, không bỏ `--no-deps`): lệnh ở mục 2 phía trên là lệnh chung cho bản `deploy/`; quy trình
+  cụ thể cho máy chủ hiện tại ở `OCR_PRODUCTION_DEPLOYMENT_PLAN.md` mục 10.
+- Image trước khi triển khai được giữ dưới một tag riêng `chatbot5400:rollback-pre-ocr-<thời điểm>`; không dựa
+  vào tag `chatbot5400:local` (bị ghi đè khi triển khai).
+- Ngân sách thời gian dò hướng và cảnh báo chuyển đổi một phần (D-30, D-32) không tạo dữ liệu mới; không cần
+  hoàn tác.

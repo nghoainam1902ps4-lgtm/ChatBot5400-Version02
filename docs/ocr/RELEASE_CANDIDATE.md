@@ -1,10 +1,18 @@
-# Release Candidate — OCR Engine Manager (Phase 0 → 9A)
+# Release Candidate — OCR Engine Manager (Phase 0 → 9B)
 
-- **Branch:** `claude/friendly-mendel-a2b6m5`.
+- **Branch phát hành:** `release/ocr-engine-manager-rc1` (branch phát triển ban đầu: `claude/friendly-mendel-a2b6m5`).
 - **Gốc so sánh:** `5e04227` (trước tính năng) và `e32eae8` (Phase 7).
 - **Không merge main, không triển khai production** trong phiên phát triển.
 
-Trạng thái (sau Phase 9A, 2026-11-13) — chi tiết ở §9:
+Trạng thái (sau Phase 9B, 2026-11-14) — chi tiết ở §10:
+
+- **Đủ điều kiện merge** theo cổng merge của Phase 9B: review độc lập đã xử lý mọi phát hiện mức Cao; không lỗi
+  mới; Tesseract Best đạt tiêu chí có điều kiện 7/7; Docker không có lỗi mới. Trạng thái PR và merge:
+  `OCR_PHASE9B_REPORT.md` §G.
+- **NOT DEPLOYED.** Triển khai production chờ phê duyệt, benchmark tài liệu thật, sao lưu và kiểm tra restore.
+- Bộ nghiệm thu gốc không đổi: 38 PASS / 10 FAIL.
+
+Trạng thái sau Phase 9A (2026-11-13, giữ để đối chiếu) — chi tiết ở §9:
 
 - **READY FOR MERGE** — theo tiêu chí phát hành có điều kiện (D-27) đã được chủ dự án chấp nhận; review cuối
   0 High / 0 Medium.
@@ -272,3 +280,37 @@ Báo cáo: [OCR_PHASE9A_REPORT.md](OCR_PHASE9A_REPORT.md). Quyết định: D-29
 
 `OCR_PRODUCTION_DEPLOYMENT_PLAN.md`, `OCR_PRODUCTION_CHECKLIST.md`, `OCR_REAL_DOCUMENT_BENCHMARK.md`,
 `OCR_ONLINE_PREPARATION.md`, `OCR_ROLLBACK.md`, `CHANGELOG.md`.
+
+## 10. Phase 9B — nghiệm thu phát hành cuối
+
+Báo cáo: [OCR_PHASE9B_REPORT.md](OCR_PHASE9B_REPORT.md). Quyết định: D-30, D-31, D-32. Mã được nghiệm thu: `6f6b424`.
+
+### 10.1 Đối chiếu cổng merge
+
+| # | Điều kiện | Kết quả |
+|---|---|---|
+| 1 | Đã review toàn bộ diff | **ĐẠT** — 3 agent độc lập trên `5e04227..76b63b5`, 1 agent rà lại phần sửa |
+| 2 | Không còn lỗi Cao / Trung bình chưa xử lý | **ĐẠT với một điểm cần chủ dự án quyết định**: mọi lỗi Cao đã sửa; Trung bình đã sửa hoặc giảm thiểu; còn các route podcast mở cho mọi tài khoản (có sẵn, có thể là chủ ý sản phẩm) |
+| 3 | Không có regression mới | **ĐẠT** — backend cùng 10 lỗi có sẵn; frontend 411/411 |
+| 4 | Tesseract Best đạt tiêu chí có điều kiện | **ĐẠT** — 7/7, critical 7/7 (bộ gốc vẫn 6/9) |
+| 5 | Docker acceptance không có lỗi mới | **ĐẠT** — quick 42/0; full 74/1 và không-Tesseract 50/1 (FAIL đã biết của EasyOCR) |
+| 6 | RapidOCR persistent đạt | **ĐẠT** — 42/0 (giới hạn recreate offline: D-32) |
+| 7 | Image không Tesseract đạt về runtime | **ĐẠT** |
+| 8 | URL ingestion tắt được nghiệm thu | **ĐẠT** — 43 test + 7/7 trực tiếp + review săn bypass |
+| 9 | GitHub Actions không gây triển khai ngoài ý muốn | **ĐẠT** — không workflow triển khai; merge không kích hoạt build / publish |
+| 10 | Required checks và branch protection | **ĐẠT** — không có quy tắc nào được cấu hình; `docs-links.yml` chạy trên PR |
+| 11 | Không conflict | **ĐẠT** — RC đi trước nhánh chính thức, không đi sau |
+| 12 | Branch RC kế thừa nhánh chính thức | **ĐẠT** — merge-base `5e04227` |
+| 13 | Không có dữ liệu nhạy cảm trong commit | **ĐẠT** — quét mẫu bí mật và file lớn trên toàn diff |
+
+### 10.2 Thay đổi hành vi bổ sung so với §9.3
+
+4. Chỉ quản trị viên được ghi / kiểm tra credential và model, quản lý transformation, embed / dựng lại embedding,
+   xóa insight; người không phải quản trị viên không tạo được nguồn từ file đã có trên máy chủ (D-31).
+5. Lần khởi động đầu của image mới cần Internet để cài Docling đúng phiên bản đã khóa.
+
+### 10.3 Trước production
+
+Benchmark tài liệu thật (hoặc phạm vi thí điểm phi nghiệp vụ được phê duyệt), phê duyệt kế hoạch
+[OCR_PRODUCTION_DEPLOYMENT_PLAN.md](OCR_PRODUCTION_DEPLOYMENT_PLAN.md), sao lưu lạnh và kiểm tra restore, biện pháp
+kiểm soát khi rollback. Hiện trạng production đáng chú ý: container đang chạy không có Docling (kế hoạch §1.1).

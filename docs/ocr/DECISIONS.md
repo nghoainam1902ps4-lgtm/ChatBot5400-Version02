@@ -268,7 +268,8 @@ Mỗi quyết định: bối cảnh → quyết định → phương án bị lo
 - Ranh giới: phần 1 là một file thực thi đứng giữa Docling và Tesseract. Nó không phải OCR adapter
   (không subclass, không xử lý ảnh/tọa độ/văn bản) và không sửa Docling, nhưng **cần chủ dự án xác
   nhận** là nằm trong giới hạn "chỉ dùng API chính thức". Tắt: `OCR_TESSERACT_OSD_GATE=false`.
-- Giới hạn chi phí: dò hướng tối đa 200 trang đầu (`OCR_PAGE_OSD_MAX_PAGES`), 30 giây mỗi trang; lỗi ở
+- Giới hạn chi phí: dò hướng tối đa 200 trang đầu (`OCR_PAGE_OSD_MAX_PAGES`), 30 giây mỗi trang, và từ Phase 9B
+  tối đa 600 giây cho cả bước (`OCR_PAGE_OSD_BUDGET_SECONDS`, D-30); lỗi ở
   một trang không ảnh hưởng trang khác. Gate chỉ được dùng khi `gate --version` chạy được (cần bit thực
   thi và `python3` trên PATH); không thì gọi thẳng Tesseract và ghi cảnh báo.
 - Tắt phần 2–3: `OCR_PDF_PREP=false`. Biến môi trường là cấu hình toàn deployment, không đổi theo job.
@@ -350,3 +351,74 @@ Quyết định của chủ dự án, thực hiện trong Phase 8D:
 - **Không tuyên bố đã sửa SSRF.** Khi tắt: rủi ro được giảm thiểu vì chức năng không còn. Khi bật: hành vi
   và chính sách như cũ, rủi ro còn lại xuất hiện trở lại.
 - Test: `tests/test_url_ingestion_switch.py` (43 test, có fixture chặn mọi truy vấn DNS/kết nối).
+
+## D-30. Giới hạn tổng thời gian bước dò hướng trang (Phase 9B)
+
+- Bối cảnh: bước dò hướng (`pdf_prep.py`) chạy trước Docling, trên vòng lặp sự kiện của worker; worker
+  (surreal-commands) không có timeout cho job và production chạy `OPEN_NOTEBOOK_WORKER_MAX_TASKS=1`. Giới hạn
+  cũ là 200 trang × 30 giây mỗi trang ⇒ trường hợp xấu nhất khoảng 100 phút trước khi Docling bắt đầu, và mọi
+  job nền khác phải chờ. Nếu job thất bại rồi được thử lại, bước này lặp lại.
+- Số đo trên máy nghiệm thu (8 CPU, fixture scan 150 DPI): 0,55–0,65 giây mỗi lần gọi OSD, khoảng 0,7 giây mỗi
+  trang kể cả render ⇒ 200 trang cần khoảng 2,5 phút trong điều kiện bình thường.
+- Quyết định: thêm ngân sách thời gian cho **cả bước** của một tài liệu, `OCR_PAGE_OSD_BUDGET_SECONDS`, mặc định
+  **600 giây** (gấp khoảng 4 lần nhu cầu bình thường của 200 trang, để máy đang bận vẫn kiểm đủ). Giá trị sai,
+  `nan`, `inf`, 0 hoặc âm ⇒ mặc định; tối đa 6000 giây (bằng trường hợp xấu nhất cũ). Timeout mỗi trang giữ 30
+  giây. Trang đang kiểm được chạy nốt, nên giới hạn cứng là ngân sách + 30 giây (10,5 phút thay cho 100 phút).
+- Khi hết ngân sách hoặc chạm giới hạn số trang: các trang còn lại **được chuyển đổi nguyên trạng** (không dò
+  hướng); trang đã sửa trước đó được giữ; tài liệu **không** thất bại; file gốc không bị sửa. Metadata và log
+  ghi `page_orientation_limit` = `time_budget` / `max_pages` và `orientation_checked_pages`.
+- Không đổi chất lượng OCR trong điều kiện bình thường: ngân sách chỉ có tác dụng khi bước này chậm bất thường.
+  Fingerprint readiness **không** gồm ngân sách (nó giới hạn thời gian, không đổi kết quả).
+- Cùng đợt: `page.get_size()` được đưa vào trong khóa pdfium của Docling (mọi lời gọi pdfium của `pdf_prep`
+  giờ đều giữ khóa; có test dò từng lời gọi); tài liệu luôn được đóng trong khóa; một trang pdfium không nạp
+  được chỉ bị bỏ qua, không làm mất kết quả các trang khác.
+- `OCR_HF_HUB_TIMEOUT` (D-24): từ chối `inf` và giá trị quá lớn (`inf` làm mọi request Hub lỗi ở tầng socket;
+  giá trị lớn đưa hiện tượng treo 15 phút trở lại), tối đa 300 giây.
+- Test: `tests/test_ocr_quality_prep.py` (ngân sách, giới hạn số trang, khóa pdfium, trang lỗi),
+  `tests/test_ocr_hub_http.py`.
+
+## D-31. Thực thi vai trò ở backend cho credential, model và các chức năng bảo trì (Phase 9B)
+
+- Bối cảnh: review độc lập Phase 9B phát hiện lỗi **có sẵn từ trước tính năng OCR** (có ở `5e04227`): các
+  route `/api/credentials/*` và `/api/models/*` chỉ yêu cầu đăng nhập. Tài khoản bất kỳ (kể cả vai trò chỉ xem)
+  có thể tạo / sửa / xóa / kiểm tra credential nhà cung cấp. Hệ quả: (1) đổi `base_url` của một credential rồi
+  bấm kiểm tra ⇒ khóa API đang lưu và toàn bộ lưu lượng chat về sau được gửi tới máy chủ khác; (2) "kiểm tra
+  kết nối" tới địa chỉ nội bộ ⇒ dò mạng nội bộ **bất kể** `OPEN_NOTEBOOK_ENABLE_URL_INGESTION`. Điều này mâu
+  thuẫn với mô tả "URL do quản trị viên cấu hình" của D-29. Giao diện vốn đã ẩn các trang này với người không
+  phải quản trị viên; tài liệu `docs/7-DEVELOPMENT/authentication.md` nêu backend mới là nơi quyết định.
+- Quyết định (sửa tối thiểu, không đổi mô hình vai trò): thêm `require_admin` cho
+  - credential: tạo, sửa, xóa, test, discover, register-models, hai route migrate;
+  - model: tạo, xóa, test, đổi mặc định, sync (2), auto-assign;
+  - các route mà giao diện chỉ hiện cho quản trị viên: transformation tạo / sửa / xóa / execute /
+    default-prompt, `POST /api/embed`, `POST /api/embeddings/rebuild`, `DELETE /api/insights/{id}`.
+  Route chỉ đọc mà mọi tài khoản cần (danh sách model, mặc định, trạng thái credential, danh sách
+  transformation) không đổi.
+- `POST /api/sources/json` nhận `file_path` do người gọi đưa vào, miễn nằm trong thư mục uploads ⇒ một cộng
+  tác viên có thể đọc (và với `delete_source` thì xóa) file do người khác tải lên, kể cả bài đang chờ duyệt.
+  Từ nay người không phải quản trị viên phải tải file kèm request; quản trị viên giữ hành vi cũ.
+- **Giữ nguyên, cần chủ dự án quyết định:** các route podcast (tạo, thử lại, xóa tập, hồ sơ tập / người nói)
+  vẫn mở cho mọi tài khoản vì trang Podcast nằm ở mục "Tạo" hiển thị cho mọi người dùng; `GET
+  /api/podcasts/jobs/{id}` trả trạng thái job cho mọi tài khoản. Xem `OCR_PHASE9B_REPORT.md`.
+- Test: `tests/test_admin_route_authorization.py` — 401 / 403 cho từng route, quản trị viên vẫn dùng được, và
+  một test ghim toàn bộ bề mặt: mọi route POST / PUT / DELETE hoặc có kiểm tra vai trò, hoặc nằm trong danh
+  sách "cố ý mở".
+- Thay đổi hành vi: script hoặc tài khoản không phải quản trị viên đang gọi các route trên sẽ nhận 403.
+
+## D-32. Kết quả chuyển đổi một phần, từ điển RapidOCR, build arg Tesseract (Phase 9B)
+
+- **Chuyển đổi một phần:** Docling không ném lỗi khi một trang hoặc một vùng OCR hỏng; nó trả kết quả với
+  `PARTIAL_SUCCESS` và danh sách lỗi. Trước đây nguồn vẫn được lưu "hoàn tất" mà không có dấu vết. Từ nay
+  `convert_file` ghi cảnh báo vào log và thêm `conversion_status`, `conversion_errors` vào metadata. Kết quả
+  **không đổi** (không làm thất bại tài liệu — đó sẽ là thay đổi hành vi so với đường Content Core).
+- **RapidOCR lưu bền (`OCR_RAPIDOCR_PERSISTENT=true`), backend torch:** trọng số `.pth` nằm trên data volume,
+  nhưng RapidOCR 3.9 luôn giữ **file từ điển nhận dạng** (`ppocrv6_dict.txt`) trong thư mục gói ở layer
+  container và tự tải lại khi thiếu. Sau khi recreate container **lúc không có Internet**, tài liệu đầu tiên
+  sẽ lỗi tải từ điển. Phase 9B không đổi cách gọi RapidOCR (không đổi tham số model sát ngày phát hành); thay
+  vào đó file từ điển được đưa vào fingerprint readiness, nên sau recreate trạng thái trở về "chưa kiểm tra"
+  thay vì báo sai `offline_ready`. Cách vận hành: sau mỗi lần recreate, chạy "Chuẩn bị" một lần khi có
+  Internet (kể cả ở chế độ lưu bền). Giới hạn này được ghi nhận, chưa khắc phục triệt để.
+- **Build arg:** `OCR_INSTALL_TESSERACT` được nối vào khối `build.args` của cả hai file compose (mặc định
+  `false`, đọc từ `.env`). Trước đây chỉ truyền được bằng `--build-arg`, nên một lần `up -d --build` sau này
+  sẽ dựng lại image không có Tesseract trong khi engine đang chọn vẫn là Tesseract.
+- `OCR_READINESS_TIMEOUT` sai định dạng không còn làm lỗi lúc import (trước đây làm API và worker không xử lý
+  được nguồn); giá trị sai ⇒ 1800 giây.

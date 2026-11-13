@@ -97,8 +97,10 @@ lần trên cả trang. Nếu Tesseract báo trang nằm ngang/ngược với co
   file gốc như trước. Bản sao tạm bị xóa ngay sau khi chuyển đổi, kể cả khi lỗi.
 - Ngưỡng 2,0: ở scale 3, câu sai có confidence ≤ 0,66, câu đúng ≥ 4,77 (384 phép đo trang). Đổi bằng
   `OCR_PAGE_OSD_MIN_CONFIDENCE`.
-- Giới hạn: tối đa 200 trang đầu của mỗi tài liệu (`OCR_PAGE_OSD_MAX_PAGES`), 30 giây mỗi trang; một
-  trang lỗi hoặc quá thời gian được bỏ qua, các trang khác không bị ảnh hưởng.
+- Giới hạn: tối đa 200 trang đầu của mỗi tài liệu (`OCR_PAGE_OSD_MAX_PAGES`), 30 giây mỗi trang, và tối đa
+  600 giây cho cả bước (`OCR_PAGE_OSD_BUDGET_SECONDS`, D-30); một trang lỗi hoặc quá thời gian được bỏ qua,
+  các trang khác không bị ảnh hưởng. Khi chạm giới hạn, các trang còn lại được chuyển đổi nguyên trạng và
+  metadata ghi `page_orientation_limit`.
 - Cần binary Tesseract và `osd.traineddata` (được cài cùng Tesseract Fast hoặc Best). Thiếu thì bỏ
   qua bước này, không gọi tiến trình nào.
 
@@ -127,8 +129,9 @@ nhau; điều quan trọng là có một độ phân giải hợp lệ thay cho 
 - Trang vừa có text layer vừa có ảnh scan lớn **và** ảnh đó nằm ngang so với text: `/Rotate` xoay cả
   trang, nên không được sửa (OSD cả trang không đạt ngưỡng). Chưa có fixture cho trường hợp này.
 - Chi phí: mỗi trang scan tốn thêm khoảng 1 giây (render + OSD); số đo ở OCR_QUALITY_BENCHMARK §4.
-- Trường hợp xấu nhất của bước dò hướng: 200 trang × 30 giây timeout ≈ 100 phút trước khi Docling bắt đầu
-  (thực tế ~1 giây/trang). Với tài liệu scan rất dài, giảm `OCR_PAGE_OSD_MAX_PAGES`.
+- Trường hợp xấu nhất của bước dò hướng (từ Phase 9B): 600 giây ngân sách + 30 giây của trang đang kiểm ≈
+  10,5 phút trước khi Docling bắt đầu (trước đó: 200 trang × 30 giây ≈ 100 phút). Thực tế đo được 0,55–0,65
+  giây mỗi trang. Chỉnh bằng `OCR_PAGE_OSD_BUDGET_SECONDS` hoặc `OCR_PAGE_OSD_MAX_PAGES`.
 - Trang được coi là "scan" khi có một ảnh phủ ≥ 50 % trang. Một PDF sinh từ phần mềm có ảnh nền độ phân giải
   thấp phủ cả trang sẽ khiến scale OCR của Tesseract hạ theo ảnh nền đó (tối thiểu 2,0). Tắt bằng
   `OCR_PDF_PREP=false` nếu gặp loại tài liệu này.
@@ -200,6 +203,7 @@ giới hạn model; không thay model.
 | `OCR_PDF_PREP` | bật | `false` = không dò hướng trang, không chỉnh scale |
 | `OCR_PAGE_OSD_MIN_CONFIDENCE` | `2.0` | ngưỡng confidence OSD trên cả trang |
 | `OCR_PAGE_OSD_MAX_PAGES` | `200` | số trang scan tối đa được dò hướng trong một tài liệu |
+| `OCR_PAGE_OSD_BUDGET_SECONDS` | `600` | tổng thời gian tối đa của bước dò hướng cho một tài liệu (giây) |
 | `OCR_EASYOCR_CONFIDENCE` | `0.2` | ngưỡng confidence dòng của EasyOCR, 0–1 |
 
 Giá trị không hợp lệ (`nan`, số âm, ngoài phạm vi) bị bỏ qua và dùng mặc định.
