@@ -98,6 +98,42 @@ class TestReadinessStates:
         r = self.s()
         assert r["stale"] and r["state"] == readiness.PIPELINE_NOT_VERIFIED
 
+    def test_cleared_docling_cache_makes_verdict_stale(
+        self, ocr_dir, monkeypatch, tmp_path
+    ):
+        from huggingface_hub import constants
+
+        cache = tmp_path / "hub"
+        snap = cache / "models--docling-project--docling-layout-heron" / "snapshots"
+        (snap / "abc123").mkdir(parents=True)
+        (snap / "abc123" / "model.safetensors").write_bytes(b"w")
+        monkeypatch.setattr(constants, "HF_HUB_CACHE", str(cache))
+        readiness.record("tesseract_best", _check("tesseract_best", "local_only", True))
+        assert self.s()["state"] == readiness.OFFLINE_READY
+        (snap / "abc123" / "model.safetensors").unlink()  # cache cleared
+        r = self.s()
+        assert r["stale"] and r["state"] == readiness.PIPELINE_NOT_VERIFIED
+
+    def test_lost_rapidocr_weights_make_verdict_stale(
+        self, ocr_dir, monkeypatch, tmp_path
+    ):
+        """Default RapidOCR weights live in the container layer: a recreate loses them."""
+        pkg = tmp_path / "rapidocr_pkg" / "models"
+        pkg.mkdir(parents=True)
+        (pkg / "PP-OCRv6_det_small.pth").write_bytes(b"w")
+        monkeypatch.setattr(installer, "rapidocr_package_model_dir", lambda: pkg)
+        monkeypatch.setattr(
+            installer,
+            "rapidocr_known_checksums",
+            lambda: {"PP-OCRv6_det_small.pth": "x"},
+        )
+        monkeypatch.setattr(runtime, "rapidocr_backend", lambda: "torch")
+        readiness.record("rapidocr", _check("rapidocr", "local_only", True))
+        assert self.s("rapidocr")["state"] == readiness.OFFLINE_READY
+        (pkg / "PP-OCRv6_det_small.pth").unlink()  # container recreated
+        r = self.s("rapidocr")
+        assert r["stale"] and r["state"] == readiness.PIPELINE_NOT_VERIFIED
+
     def test_engine_status_exposes_readiness(self, ocr_dir, monkeypatch):
         from open_notebook.ocr import status
 

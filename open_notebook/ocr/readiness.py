@@ -65,6 +65,63 @@ def internet_reachable(timeout: float = 5.0) -> bool:
     return False
 
 
+# Hugging Face repos the production pipeline loads (Layout Heron, TableFormer).
+DOCLING_HF_REPOS = (
+    "docling-project/docling-layout-heron",
+    "docling-project/docling-models",
+)
+
+
+def _docling_cache_signature() -> dict[str, list[str]]:
+    """Snapshots of the Docling repos present in the HF cache (cheap listing).
+
+    Part of the fingerprint so that a verdict goes stale when the cache is
+    cleared or replaced — presence alone never makes an engine ready.
+    """
+    try:
+        from huggingface_hub import constants
+
+        cache = Path(constants.HF_HUB_CACHE)
+    except Exception:
+        return {}
+    out: dict[str, list[str]] = {}
+    for repo in DOCLING_HF_REPOS:
+        snaps = cache / f"models--{repo.replace('/', '--')}" / "snapshots"
+        try:
+            out[repo] = sorted(
+                p.name for p in snaps.iterdir() if p.is_dir() and any(p.iterdir())
+            )
+        except OSError:
+            out[repo] = []
+    return out
+
+
+def _rapidocr_weights_signature(persistent: bool) -> list[list[Any]]:
+    """RapidOCR weight files present where RapidOCR will look for them.
+
+    Default mode keeps them inside the package (container layer: lost on
+    recreate); persistent mode keeps them under the OCR data volume.
+    """
+    from open_notebook.ocr import installer, paths
+
+    try:
+        known = installer.rapidocr_known_checksums()
+        where = (
+            paths.rapidocr_dir()
+            if persistent
+            else installer.rapidocr_package_model_dir()
+        )
+        if where is None or not where.is_dir():
+            return []
+        return sorted(
+            [f.name, f.stat().st_size]
+            for f in where.iterdir()
+            if f.is_file() and f.name in known
+        )
+    except Exception:
+        return []
+
+
 def fingerprint(engine_id: str) -> dict[str, Any]:
     """Everything a readiness verdict depends on; a change makes it stale."""
     from open_notebook.ocr.options import rapidocr_force_cpu, rapidocr_persistent
@@ -74,13 +131,16 @@ def fingerprint(engine_id: str) -> dict[str, Any]:
         "docling": runtime._version("docling"),
         "content_core": runtime._version("content-core"),
         "models": {f.rel_path: f.sha256 for f in spec.files},
+        "docling_cache": _docling_cache_signature(),
     }
     if spec.runtime == "builtin":
+        persistent = rapidocr_persistent()
         fp.update(
             rapidocr=runtime._version("rapidocr"),
             backend=runtime.rapidocr_backend(),
-            persistent=rapidocr_persistent(),
+            persistent=persistent,
             force_cpu=rapidocr_force_cpu(),
+            rapidocr_weights=_rapidocr_weights_signature(persistent),
         )
     elif spec.runtime == "tesseract":
         fp["tesseract"] = runtime.probe_tesseract().version
