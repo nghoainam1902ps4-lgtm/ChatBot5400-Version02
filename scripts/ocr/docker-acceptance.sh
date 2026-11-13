@@ -96,6 +96,10 @@ services:
 EOF
 mkdir -p "$WORK/data" "$WORK/surreal_data"
 
+# APP_IMAGE must stay exported for EVERY compose call (ps/restart/down parse the file
+# too; Compose v2.30+/v5 rejects a service with an empty image), so it is set with
+# `export`, never as a one-shot `APP_IMAGE=... dc up` prefix.
+export APP_IMAGE="$IMAGE"
 dc() { docker compose -p "$PROJECT" -f "$WORK/compose.yml" "$@"; }
 app_id() { dc ps -q app; }
 EGRESS="${PROJECT}_egress"
@@ -150,7 +154,8 @@ fi
 # --- 0. previous version ----------------------------------------------------------------
 if [ -n "$OLD_REF" ]; then
   log "0. Previous version $OLD_REF"
-  APP_IMAGE="$OLD_IMAGE" dc up -d >/dev/null
+  export APP_IMAGE="$OLD_IMAGE"
+  dc up -d >/dev/null
   if wait_ready 3600 --no-ocr && api settings-set >/dev/null && api seed-data >/dev/null; then
     pass "old version running; settings marker + marker notebook stored"
   else
@@ -160,7 +165,8 @@ fi
 
 # --- 1. online update -----------------------------------------------------------------------
 log "1. ONLINE: start the image under test (first boot installs Docling with lock constraints)"
-APP_IMAGE="$IMAGE" dc up -d --force-recreate >/dev/null
+export APP_IMAGE="$IMAGE"
+dc up -d --force-recreate >/dev/null
 if wait_ready 3600; then pass "DB + API + worker ready, admin login, OCR API"; else fail "stack not ready"; exit 1; fi
 grep -q '"docling_available": true' "$WORK/ready.json" && pass "Docling runtime enabled" || fail "Docling runtime missing"
 grep -q '"dependency_problems": \[\]' "$WORK/ready.json" && pass "content-core/Docling = verified versions" || fail "dependency problems: $(cat "$WORK/ready.json")"
@@ -230,7 +236,8 @@ OLD_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
 docker build --target runtime --build-arg OCR_INSTALL_TESSERACT=true --no-cache-filter runtime-base,runtime -t "$IMAGE" "$REPO" >/dev/null || fail "rebuild"
 NEW_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
 [ "$OLD_ID" != "$NEW_ID" ] && pass "rebuild produced a new image" || fail "rebuild reused the same image id"
-APP_IMAGE="$IMAGE" dc up -d --force-recreate app >/dev/null
+export APP_IMAGE="$IMAGE"
+dc up -d --force-recreate app >/dev/null
 [ "$(docker inspect -f '{{.Image}}' "$(app_id)")" = "$NEW_ID" ] && pass "container recreated from the rebuilt image" || fail "container not on rebuilt image"
 if wait_ready 3600; then
   api settings-check --with-ocr --engine "$LAST" >/dev/null && pass "update: settings + active engine kept" || fail "update: settings lost"

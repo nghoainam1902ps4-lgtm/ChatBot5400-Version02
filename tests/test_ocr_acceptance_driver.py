@@ -270,6 +270,20 @@ def test_shell_scripts_parse(script):
     )
 
 
+def test_acceptance_script_keeps_app_image_exported():
+    """Regression (Phase 8B, Compose v5.6): a one-shot ``APP_IMAGE=x dc up`` prefix
+    leaves APP_IMAGE unset for the later ``dc ps`` / ``dc restart`` / ``dc down``
+    calls; Compose then rejects the file ("service app has neither an image nor a
+    build context"), app_id() is empty and cleanup leaves containers running."""
+    import re
+
+    text = (ROOT / "scripts" / "ocr" / "docker-acceptance.sh").read_text()
+    assert not re.search(r'^\s*APP_IMAGE="[^"]*"\s+dc\b', text, re.M)
+    assert re.search(r'^export APP_IMAGE="\$IMAGE"$', text, re.M)
+    first_dc_call = re.search(r"^\s*dc up", text, re.M).start()
+    assert text.index('export APP_IMAGE="$IMAGE"') < first_dc_call
+
+
 def test_prepare_requires_offline_ready():
     state = _State()
     code, out = _run(state, "prepare", "--engine", "tesseract_best")
