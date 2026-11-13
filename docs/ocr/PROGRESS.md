@@ -76,6 +76,7 @@
 | 9B | Sửa: phân quyền quản trị viên cho credential / model / bảo trì (D-31); ngân sách thời gian dò hướng (D-30); chuyển đổi một phần, từ điển RapidOCR, build arg (D-32) | DONE — `d4b5f81`, `d28300e`, `6f6b424` |
 | 9B | Nghiệm thu cuối trên `6f6b424`: backend, frontend, bộ gốc, có điều kiện, Docker quick / full / persistent / không Tesseract, bảo mật trực tiếp | DONE — không lỗi mới; bộ gốc vẫn 38/48; Docker full 74/1, không Tesseract 50/1 (EasyOCR) |
 | 9B | GitHub Actions: không có cơ chế tự triển khai | DONE |
-| 9B | Pull Request vào `claude/practical-wozniak-9s1t6z`, merge | xem `OCR_PHASE9B_REPORT.md` §G |
+| 9B | Pull Request #42 vào `claude/practical-wozniak-9s1t6z`, merge commit `3819c2a` | DONE — không workflow build / deploy nào chạy |
+| 9C | Image triển khai dựng trước (`chatbot5400:rc1-20261114`) và xác minh trên stack cô lập | DONE — 42 PASS / 0 FAIL |
 | 9C | Kiểm tra chỉ đọc production; kế hoạch triển khai theo hiện trạng; công cụ đếm bản ghi và stack restore | DONE (chưa thay đổi production) |
 | 9C | Benchmark tài liệu thật; phê duyệt triển khai; sao lưu, restore, triển khai, smoke test | **OPEN — chờ chủ dự án** |

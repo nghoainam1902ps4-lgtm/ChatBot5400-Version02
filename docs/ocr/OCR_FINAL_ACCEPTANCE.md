@@ -1,6 +1,6 @@
 # Nghiệm thu cuối — OCR Engine Manager
 
-Cập nhật: 2026-11-14 · Trạng thái tại thời điểm mở Pull Request #42 (trước khi triển khai production).
+Cập nhật: 2026-11-14 · Trạng thái sau khi merge Pull Request #42, **trước** khi triển khai production.
 
 File này là bảng trạng thái tổng hợp của toàn dự án. Nó được cập nhật sau mỗi mốc (merge, triển khai, bàn
 giao) qua một Pull Request tài liệu; mỗi dòng chỉ được ghi PASS khi đã có bằng chứng chạy thật. Chi tiết:
@@ -13,11 +13,11 @@ Quy ước: **PASS** · **FAIL** · **NOT VERIFIED** (chưa chạy thật) · **
 | Mốc | Trạng thái |
 |---|---|
 | Phase 9A — cổng bảo mật, Release Candidate | **COMPLETED AND VERIFIED** |
-| Phase 9B — review cuối, nghiệm thu cuối, Pull Request | Nghiệm thu **PASS**; PR #42 mở; merge: **PENDING** tại thời điểm viết (commit merge được ghi ở mục 4 khi cập nhật) |
-| Phase 9C — triển khai production | **NOT DEPLOYED** — chờ phê duyệt của chủ dự án và benchmark tài liệu thật |
+| Phase 9B — review cuối, nghiệm thu cuối, Pull Request | **COMPLETED** — nghiệm thu PASS; PR #42 **MERGED** bằng merge commit `3819c2a` |
+| Phase 9C — triển khai production | **NOT DEPLOYED** — đã chuẩn bị xong phần không gián đoạn; dừng ở cổng phê duyệt (**READY FOR DEPLOYMENT APPROVAL**), còn thiếu benchmark tài liệu thật hoặc phê duyệt phạm vi thí điểm |
 | Production được xác minh | **NOT VERIFIED** |
 | Sẵn sàng offline (stack nghiệm thu cô lập) | **PASS** — cả 4 lựa chọn đạt `offline_ready` → `offline_verified` trong Docker acceptance |
-| Offline đã xác minh — stack cô lập | **PASS** (image nghiệm thu, commit `6f6b424`); lặp lại với image triển khai: **PENDING** |
+| Offline đã xác minh — stack cô lập | **PASS** — image nghiệm thu (`6f6b424`) và **chính image triển khai** (mục 5): nâng cấp từ `5e04227`, chuẩn bị Tesseract Best, xử lý PDF khi offline, restart offline, sau cập nhật — 42 PASS / 0 FAIL |
 | Offline đã xác minh — production | **NOT VERIFIED** — cần quy trình ngắt mạng được phê duyệt |
 | Bàn giao | **PENDING** |
 
@@ -57,5 +57,21 @@ Quy ước: **PASS** · **FAIL** · **NOT VERIFIED** (chưa chạy thật) · **
 | Production trước tính năng | `5e042279439302d3ccf39bef4d1d8d402314d194` |
 | Mã được nghiệm thu | `6f6b42429da3b0a48eee6044a2cc7d12cadecdfc` |
 | Pull Request | [#42](https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02/pull/42) |
-| Commit merge trên nhánh chính thức | ghi sau khi merge |
-| Commit và image triển khai | ghi sau khi triển khai |
+| Commit merge trên nhánh chính thức | `3819c2a7068916bf7cd2d5bc9c71cfe73b76dfbc` (2026-11-13 18:57 UTC; cha: `5e04227` + `8ba2483`; cây mã giống hệt `8ba2483`) |
+| Image triển khai đã dựng (chưa triển khai) | `chatbot5400:rc1-20261114` = `sha256:240bb692922101385c8a4fcb0aaf15451f4ba345ae027e232265e37005d58f56`, dựng từ commit merge ở thư mục riêng, có Tesseract 5.5.0 |
+| Commit và image đang chạy trên production | chưa đổi: `5e04227`, image cũ |
+
+## 5. Chuẩn bị Phase 9C đã hoàn tất (không gián đoạn, không thay đổi production)
+
+| Việc | Kết quả |
+|---|---|
+| Kiểm tra chỉ đọc production | Xong — `OCR_PRODUCTION_DEPLOYMENT_PLAN.md` §1.1 |
+| Số bản ghi gốc (chỉ số đếm) và trạng thái job | Đã ghi; 0 job đang chạy |
+| Image triển khai dựng trước, tag riêng | `chatbot5400:rc1-20261114`; `chatbot5400:local` của production không bị ghi đè |
+| Xác minh image triển khai trên stack cô lập (online → chuẩn bị → offline → restart offline → cập nhật) | 42 PASS / 0 FAIL / 0 NOT VERIFIED |
+| Bản vá cục bộ của `docker-compose.yml` production áp lên bản đã merge | Áp sạch (thử trên bản sao) |
+| Công cụ: đếm bản ghi, sinh compose cho stack restore cô lập, script kiểm tra sức khỏe, script triển khai từng bước | Sẵn sàng; chưa chạy bước nào làm thay đổi production |
+| Công cụ benchmark tài liệu thật | Đã kiểm bằng tài liệu tổng hợp; hướng dẫn copy-paste ở `OCR_REAL_DOCUMENT_BENCHMARK.md` §4 |
+
+Chưa làm và **không** được coi là đạt: benchmark tài liệu thật, sao lưu, kiểm tra restore, triển khai, cài và
+chuẩn bị Tesseract Best trên production, smoke test production, offline trên production, theo dõi 24 giờ.
