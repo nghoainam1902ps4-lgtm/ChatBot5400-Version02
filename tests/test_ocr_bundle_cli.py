@@ -168,7 +168,7 @@ def test_runtime_ensure_noop_without_flags(env, monkeypatch):
     assert cli.runtime_ensure(offline=False) == 0
     assert (
         paths.tessdata_dir() / "configs" / "tsv"
-    ).read_text() == "tessedit_create_tsv 1\n"
+    ).read_text() == "tessedit_create_tsv 1\nuser_defined_dpi 216\n"  # D-25
 
 
 def test_runtime_ensure_offline_uses_uv_cache_only_and_degrades(
