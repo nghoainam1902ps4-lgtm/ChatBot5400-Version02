@@ -280,7 +280,9 @@ def test_acceptance_script_keeps_app_image_exported():
     text = (ROOT / "scripts" / "ocr" / "docker-acceptance.sh").read_text()
     assert not re.search(r'^\s*APP_IMAGE="[^"]*"\s+dc\b', text, re.M)
     assert re.search(r'^export APP_IMAGE="\$IMAGE"$', text, re.M)
-    first_dc_call = re.search(r"^\s*dc up", text, re.M).start()
+    first_up = re.search(r"^\s*dc up", text, re.M)
+    assert first_up is not None
+    first_dc_call = first_up.start()
     assert text.index('export APP_IMAGE="$IMAGE"') < first_dc_call
 
 
