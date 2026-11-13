@@ -275,6 +275,98 @@ def cmd_ocr_e2e(a) -> int:
     return out(report, PASS)
 
 
+def _queue_and_wait(
+    api: Api, path: str, timeout: float
+) -> tuple[dict[str, Any] | None, int]:
+    status, job = api.call("POST", path)
+    if status != 202:
+        return {"http": status, "body": job}, status
+    return wait_job(api, job["job_id"], timeout), status
+
+
+def cmd_prepare(a) -> int:
+    """Online preparation via the API/worker; PASS only when offline_ready."""
+    api = Api(a.api, timeout=120)
+    api.login(a.user, a.password)
+    report: dict[str, Any] = {"engine": a.engine}
+    e = engine(api, a.engine)
+    if e["runtime"]["status"] != "ready":
+        report["error"] = (
+            f"runtime {e['runtime']['status']}: {e['runtime'].get('detail')}"
+        )
+        return out(report, NOT_VERIFIED)
+    if not e["builtin"] and not e["ready"]:
+        done, status = _queue_and_wait(
+            api, f"/api/ocr/engines/{a.engine}/install", a.timeout
+        )
+        report["install"] = (done or {}).get("status")
+    done, status = _queue_and_wait(
+        api, f"/api/ocr/engines/{a.engine}/prepare", a.timeout
+    )
+    report["prepare_job"] = (done or {}).get("status")
+    result = ((done or {}).get("result") or {}).get("result") or {}
+    report["steps"] = result.get("steps")
+    readiness = engine(api, a.engine).get("readiness") or {}
+    report["readiness"] = {
+        k: readiness.get(k)
+        for k in ("state", "pipeline_ok", "local_only_verified", "offline_verified")
+    }
+    if readiness.get("state") != "offline_ready":
+        report["error"] = result.get("error") or (
+            readiness.get("last_check") or {}
+        ).get("error")
+        return out(report, FAIL)
+    return out(report, PASS)
+
+
+def cmd_readiness_check(a) -> int:
+    api = Api(a.api, timeout=120)
+    api.login(a.user, a.password)
+    done, status = _queue_and_wait(
+        api, f"/api/ocr/engines/{a.engine}/readiness-check", a.timeout
+    )
+    readiness = engine(api, a.engine).get("readiness") or {}
+    last = readiness.get("last_check") or {}
+    report = {
+        "engine": a.engine,
+        "job": (done or {}).get("status"),
+        "state": readiness.get("state"),
+        "mode": last.get("mode"),
+        "offline_verified": readiness.get("offline_verified"),
+        "layout_model": last.get("layout_model"),
+        "table": f"{last.get('table_model')} ({last.get('table_mode')})",
+        "error": last.get("error"),
+    }
+    ok = readiness.get("state") == "offline_ready"
+    if a.require_offline:
+        ok = ok and bool(readiness.get("offline_verified"))
+    return out(report, PASS if ok else FAIL)
+
+
+MARKER_NOTEBOOK = "OCR acceptance marker notebook"
+
+
+def cmd_seed_data(a) -> int:
+    api = Api(a.api)
+    api.login(a.user, a.password)
+    s, nb = api.call(
+        "POST",
+        "/api/notebooks",
+        {"name": MARKER_NOTEBOOK, "description": "kept across upgrades"},
+    )
+    return out({"step": "seed_data", "http": s}, PASS if s in (200, 201) else FAIL)
+
+
+def cmd_check_data(a) -> int:
+    api = Api(a.api)
+    api.login(a.user, a.password)
+    s, nbs = api.call("GET", "/api/notebooks")
+    found = s == 200 and any(n.get("name") == MARKER_NOTEBOOK for n in (nbs or []))
+    return out(
+        {"step": "check_data", "marker_notebook": found}, PASS if found else FAIL
+    )
+
+
 MARKER_THREADS = 3
 
 
@@ -329,9 +421,20 @@ def main() -> int:
     c = sub.add_parser("settings-check")
     c.add_argument("--with-ocr", action="store_true")
     c.add_argument("--engine")
+    p = sub.add_parser("prepare")
+    p.add_argument("--engine", required=True)
+    r = sub.add_parser("readiness-check")
+    r.add_argument("--engine", required=True)
+    r.add_argument("--require-offline", action="store_true")
+    sub.add_parser("seed-data")
+    sub.add_parser("check-data")
     a = ap.parse_args()
     try:
         return {
+            "prepare": cmd_prepare,
+            "readiness-check": cmd_readiness_check,
+            "seed-data": cmd_seed_data,
+            "check-data": cmd_check_data,
             "wait-ready": cmd_wait_ready,
             "ocr-e2e": cmd_ocr_e2e,
             "settings-set": cmd_settings_set,

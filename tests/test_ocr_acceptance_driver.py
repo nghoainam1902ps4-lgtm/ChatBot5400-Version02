@@ -25,6 +25,9 @@ class _State:
         self.calls: list[str] = []
         self.engine_ready = False
         self.active = "rapidocr"
+        self.readiness = {"state": "pipeline_not_verified"}
+        self.prepare_makes_ready = True
+        self.notebooks: list[dict] = []
 
 
 def _server(state: _State):
@@ -67,6 +70,8 @@ def _server(state: _State):
                         "engines": [],
                     },
                 )
+            if self.path == "/api/notebooks":
+                return self._send(200, state.notebooks)
             if self.path.startswith("/api/ocr/engines/"):
                 return self._send(
                     200,
@@ -81,6 +86,7 @@ def _server(state: _State):
                             else "not_installed"
                         },
                         "active": state.active == "tesseract_best",
+                        "readiness": state.readiness,
                     },
                 )
             if self.path.startswith("/api/ocr/jobs/"):
@@ -127,6 +133,24 @@ def _server(state: _State):
             if self.path.endswith("/activate"):
                 state.active = "tesseract_best"
                 return self._send(200, {"active": True})
+            if self.path.endswith("/prepare") or self.path.endswith("/readiness-check"):
+                if state.prepare_makes_ready:
+                    state.readiness = {
+                        "state": "offline_ready",
+                        "offline_verified": self.path.endswith("/readiness-check"),
+                        "last_check": {
+                            "mode": "offline",
+                            "layout_model": "layout_heron",
+                        },
+                    }
+                return self._send(
+                    202,
+                    {
+                        "job_id": "prep1",
+                        "engine_id": "tesseract_best",
+                        "state": "pending",
+                    },
+                )
             if self.path.endswith("/test"):
                 return self._send(
                     202,
@@ -137,6 +161,7 @@ def _server(state: _State):
                     },
                 )
             if self.path == "/api/notebooks":
+                state.notebooks.append(json.loads(body or b"{}"))
                 return self._send(200, {"id": "notebook:1"})
             if self.path == "/api/sources":
                 state.uploaded = body
@@ -243,3 +268,37 @@ def test_shell_scripts_parse(script):
         ).returncode
         == 0
     )
+
+
+def test_prepare_requires_offline_ready():
+    state = _State()
+    code, out = _run(state, "prepare", "--engine", "tesseract_best")
+    assert code == 0 and out["readiness"]["state"] == "offline_ready"
+    assert "POST /api/ocr/engines/tesseract_best/install" in state.calls
+    assert "POST /api/ocr/engines/tesseract_best/prepare" in state.calls
+
+
+def test_readiness_check_reports_offline_verification():
+    code, out = _run(
+        _State(), "readiness-check", "--engine", "tesseract_best", "--require-offline"
+    )
+    assert code == 0 and out["offline_verified"] is True and out["mode"] == "offline"
+
+
+def test_prepare_fails_when_never_offline_ready():
+    state = _State()
+    state.prepare_makes_ready = False
+    state.readiness = {
+        "state": "not_offline_ready",
+        "last_check": {"error": "Heron missing"},
+    }
+    code, out = _run(state, "prepare", "--engine", "tesseract_best")
+    assert code == 1 and out["result"] == "FAIL" and out["error"] == "Heron missing"
+
+
+def test_seed_and_check_data():
+    state = _State()
+    assert _run(state, "seed-data")[0] == 0
+    assert _run(state, "check-data")[0] == 0
+    empty = _State()
+    assert _run(empty, "check-data")[0] == 1

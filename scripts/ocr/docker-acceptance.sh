@@ -1,34 +1,36 @@
 #!/usr/bin/env bash
-# Docker end-to-end acceptance for the OCR Engine Manager (docs/ocr/OCR_LOCAL_ACCEPTANCE.md).
+# Docker acceptance for the OCR Engine Manager — ONLINE PREPARATION / OFFLINE
+# OPERATION model (docs/ocr/OCR_ONLINE_PREPARATION.md, OCR_LOCAL_ACCEPTANCE.md).
 #
 # SAFE BY DESIGN
-#   * Own compose project + own temporary directory (bind mounts) — never touches
-#     an existing deployment, its volumes or its database.
-#   * Never runs `docker compose down -v`; only removes the containers it created.
+#   * Own compose project + own temporary directory (bind mounts): never touches an
+#     existing deployment, its volumes or its database. Never `down -v`.
+#   * "Offline" = the RUNNING app container is disconnected from the egress network
+#     (no recreate). App and SurrealDB share an `internal: true` network, so the DB
+#     stays reachable while the Internet is not (both are verified).
 #
-# WHAT IT VERIFIES (each step prints PASS / FAIL / NOT VERIFIED, summary at the end)
-#   0. [OLD_REF set] the currently deployed version runs and stores a settings marker
-#   1. fresh/upgraded start: DB, API, worker ready; Docling runtime on; no OCR model
-#      downloaded at startup; settings from the old version preserved
-#   2. per engine in $SCENARIOS, through the REAL API + worker: install model ->
-#      job status -> activate -> test -> upload PDF -> source processed -> expected
-#      Vietnamese text present -> worker log shows the selected Docling OCR model;
-#      installing one engine does not download the others
-#   3. restart: models untouched (checksums), settings + active engine preserved
-#   4. offline: app on an `internal: true` network (DB reachable, Internet blocked,
-#      verified), recreated with OCR_OFFLINE/HF_HUB_OFFLINE: runtimes restored from
-#      cache, documents processed, no model / HF cache change, no download in logs
-#   5. real image rebuild (new image ID): recreate -> runtimes restored, model
-#      checksums unchanged, settings preserved, engine still processes documents
+# FLOW (each step prints PASS / FAIL / NOT VERIFIED; summary + exit code at the end)
+#   0. [OLD_REF] previous version: start, store settings marker + marker notebook
+#   1. ONLINE UPDATE to the image under test: DB/API/worker ready, Docling on,
+#      locked dependency versions, no OCR model downloaded at startup, old data kept
+#   2. ONLINE PREPARATION per engine in $SCENARIOS (rapidocr tesseract_fast
+#      tesseract_best easyocr): install model -> prepare (Docling Heron/TableFormer +
+#      RapidOCR weights) -> readiness offline_ready -> E2E through API + worker
+#      (activate, test, upload PDF, source processed, expected text, engine in log);
+#      a second prepare re-uses models (checksums unchanged)
+#   3. OFFLINE OPERATION (same container): Internet blocked, DB reachable; for EVERY
+#      prepared engine: readiness check with offline_verified, E2E processing;
+#      model + HF cache unchanged, no download attempt in logs
+#   4. RESTART while offline (same container, still offline): runtimes/models
+#      present, every prepared engine processes documents again
+#   5. ONLINE UPDATE: reconnect, rebuild the image for real (new image id), recreate,
+#      data + settings kept, models reused (checksums), prepare again (downloads only
+#      what is missing), readiness offline_ready; then OFFLINE again and process
 #
-# USAGE
-#   scripts/ocr/docker-acceptance.sh
-# ENV
-#   SCENARIOS="tesseract_best easyocr"   engines to test end-to-end
-#   OLD_REF=<git ref>                    version currently deployed (upgrade test); empty = skip
-#   SKIP_BUILD=1                         reuse already-built $IMAGE (step 5 still rebuilds)
-#   KEEP_WORK=1                          keep the temp directory for inspection
-#   UV_TORCH_BACKEND=cpu                 (default) CPU-only torch for the Docling install
+# USAGE   bash scripts/ocr/docker-acceptance.sh
+# ENV     SCENARIOS="tesseract_best easyocr"   (any of rapidocr tesseract_fast tesseract_best easyocr)
+#         OLD_REF=<git ref of the deployed version>   (empty = skip step 0)
+#         SKIP_BUILD=1  KEEP_WORK=1  UV_TORCH_BACKEND=cpu (default)
 set -uo pipefail
 
 REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
@@ -39,11 +41,10 @@ OLD_IMAGE="${IMAGE}-old"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ocr-accept.XXXXXX")"
 PROJECT="ocraccept$$"
 FIXTURE="$REPO/tests/fixtures/ocr/vb_scan.pdf"
-EXPECT1="1234/2024/QĐ-MẪU"
-EXPECT2="Hạn mức thử nghiệm là 1.250.000.000 đồng"
 DB_PASS="accept-$(date +%s)-$$"
 RESULTS="$WORK/results.txt"
 : > "$RESULTS"
+PREPARED=""
 
 log() { printf '\n=== %s\n' "$*"; }
 record() { printf '%-14s %s\n' "$1" "$2" | tee -a "$RESULTS"; }
@@ -51,12 +52,22 @@ pass() { record "PASS" "$*"; }
 fail() { record "FAIL" "$*"; }
 nv() { record "NOT VERIFIED" "$*"; }
 
-# --- compose files -------------------------------------------------------------
+expects_for() {  # expected text per engine (RapidOCR's default model has no Vietnamese diacritics)
+  if [ "$1" = rapidocr ]; then
+    printf '%s\n' "1234/2024" "1.250.000.000"
+  else
+    printf '%s\n' "1234/2024/QĐ-MẪU" "Hạn mức thử nghiệm là 1.250.000.000 đồng"
+  fi
+}
+class_for() {
+  case "$1" in easyocr) echo EasyOcrModel ;; rapidocr) echo RapidOcrModel ;; *) echo TesseractOcrCliModel ;; esac
+}
+
 cat > "$WORK/compose.yml" <<EOF
 networks:
   backend:
     internal: true        # DB traffic only, no route to the Internet
-  egress: {}
+  egress: {}              # Internet; disconnected from the running app for offline steps
 services:
   surrealdb:
     image: surrealdb/surrealdb:v2
@@ -77,160 +88,163 @@ services:
       - UV_TORCH_BACKEND=\${UV_TORCH_BACKEND:-cpu}
       - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true
       - OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true
+      - OCR_RAPIDOCR_PERSISTENT=\${OCR_RAPIDOCR_PERSISTENT:-false}
       - OPEN_NOTEBOOK_WORKER_MAX_TASKS=1
-      - OCR_OFFLINE=\${OCR_OFFLINE:-false}
-      - HF_HUB_OFFLINE=\${HF_HUB_OFFLINE:-0}
     volumes: ["./data:/app/data"]
-    networks: [backend]
-    depends_on: [surrealdb]
-EOF
-cat > "$WORK/online.yml" <<'EOF'
-services:
-  app:
     networks: [backend, egress]
+    depends_on: [surrealdb]
 EOF
 mkdir -p "$WORK/data" "$WORK/surreal_data"
 
-dc_online() { docker compose -p "$PROJECT" -f "$WORK/compose.yml" -f "$WORK/online.yml" "$@"; }
-dc_offline() { docker compose -p "$PROJECT" -f "$WORK/compose.yml" "$@"; }
-app_id() { docker compose -p "$PROJECT" -f "$WORK/compose.yml" ps -q app; }
+dc() { docker compose -p "$PROJECT" -f "$WORK/compose.yml" "$@"; }
+app_id() { dc ps -q app; }
+EGRESS="${PROJECT}_egress"
+go_offline() { docker network disconnect "$EGRESS" "$(app_id)" >/dev/null 2>&1; }
+go_online() { docker network connect "$EGRESS" "$(app_id)" >/dev/null 2>&1; }
 api() {
   local id; id="$(app_id)"
   docker cp "$REPO/scripts/ocr/acceptance_api.py" "$id:/tmp/acceptance_api.py" >/dev/null
   docker cp "$FIXTURE" "$id:/tmp/vb_scan.pdf" >/dev/null
   docker exec "$id" /app/.venv/bin/python /tmp/acceptance_api.py "$@"
 }
-model_sums() { (cd "$WORK/data/ocr/models" 2>/dev/null && find . -type f \( -name '*.traineddata' -o -name '*.pth' \) -exec sha256sum {} + | sort) || true; }
+e2e() {  # $1 engine
+  local args=() line
+  while IFS= read -r line; do args+=(--expect "$line"); done < <(expects_for "$1")
+  api ocr-e2e --engine "$1" --pdf /tmp/vb_scan.pdf "${args[@]}"
+}
+internet_blocked() {
+  ! docker exec "$(app_id)" /app/.venv/bin/python -c "import urllib.request;urllib.request.urlopen('https://pypi.org/simple/',timeout=10)" >/dev/null 2>&1
+}
+model_sums() { (cd "$WORK/data/ocr/models" 2>/dev/null && find . -type f \( -name '*.traineddata' -o -name '*.pth' -o -name '*.onnx' \) -exec sha256sum {} + | sort) || true; }
 hf_state() { find "$WORK/data/.cache/huggingface" -type f -printf '%s %P\n' 2>/dev/null | sort | sha256sum | cut -c1-16; }
+wait_ready() {  # $1 timeout, $2 optional --no-ocr
+  if api --timeout "$1" wait-ready ${2:-} >"$WORK/ready.json"; then return 0; fi
+  cat "$WORK/ready.json"; return 1
+}
 cleanup() {
-  docker compose -p "$PROJECT" -f "$WORK/compose.yml" down --remove-orphans >/dev/null 2>&1 || true
-  echo
-  echo "================ SUMMARY ================"
-  cat "$RESULTS"
+  dc down --remove-orphans >/dev/null 2>&1 || true
+  echo; echo "================ SUMMARY ================"; cat "$RESULTS"
   if [ "${KEEP_WORK:-0}" = "1" ]; then
     echo "work dir kept: $WORK"
   else
-    # Files written by the (root) containers: remove them with the image itself.
     docker run --rm -v "$WORK:/w" --entrypoint sh "$IMAGE" -c 'rm -rf /w/data /w/surreal_data' >/dev/null 2>&1 || true
     rm -rf "$WORK" 2>/dev/null || echo "work dir left at: $WORK"
   fi
 }
 trap cleanup EXIT
 
-wait_ready() {  # $1 = timeout seconds, $2 = extra flag (e.g. --no-ocr)
-  if api --timeout "$1" wait-ready ${2:-} >"$WORK/ready.json"; then return 0; fi
-  cat "$WORK/ready.json"; return 1
-}
-
 # --- build ---------------------------------------------------------------------------
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
-  log "Build image under test ($IMAGE) with the Tesseract build profile"
+  log "Build image under test ($IMAGE), Tesseract build profile"
   docker build --target runtime --build-arg OCR_INSTALL_TESSERACT=true -t "$IMAGE" "$REPO" || { fail "docker build"; exit 1; }
 fi
 if [ -n "$OLD_REF" ]; then
-  log "Build the currently deployed version ($OLD_REF) for the upgrade test"
+  log "Build the deployed version ($OLD_REF)"
+  OLD_OK=0
   git -C "$REPO" worktree add --detach "$WORK/old-src" "$OLD_REF" >/dev/null &&
-    docker build --target runtime -t "$OLD_IMAGE" "$WORK/old-src" && OLD_OK=1 || OLD_OK=0
+    docker build --target runtime -t "$OLD_IMAGE" "$WORK/old-src" && OLD_OK=1
   git -C "$REPO" worktree remove --force "$WORK/old-src" >/dev/null 2>&1 || true
   [ "$OLD_OK" = 1 ] || { fail "build of OLD_REF=$OLD_REF"; OLD_REF=""; }
 fi
 
-# --- 0. previous version -----------------------------------------------------------------
+# --- 0. previous version ----------------------------------------------------------------
 if [ -n "$OLD_REF" ]; then
-  log "0. Previous version $OLD_REF: start and store a settings marker"
-  APP_IMAGE="$OLD_IMAGE" dc_online up -d >/dev/null
-  if wait_ready 3600 --no-ocr && api settings-set >/dev/null; then pass "old version running, settings marker stored"; else fail "old version start/settings"; fi
+  log "0. Previous version $OLD_REF"
+  APP_IMAGE="$OLD_IMAGE" dc up -d >/dev/null
+  if wait_ready 3600 --no-ocr && api settings-set >/dev/null && api seed-data >/dev/null; then
+    pass "old version running; settings marker + marker notebook stored"
+  else
+    fail "old version start/seed"
+  fi
 fi
 
-# --- 1. fresh / upgraded start -------------------------------------------------------------
-log "1. Start the image under test (first boot installs Docling with lock constraints)"
-APP_IMAGE="$IMAGE" dc_online up -d --force-recreate >/dev/null
-if wait_ready 3600; then pass "DB + API + worker ready, admin login, OCR API reachable"; else fail "stack not ready"; exit 1; fi
-grep -q '"docling_available": true' "$WORK/ready.json" && pass "Docling runtime enabled" || fail "Docling runtime missing: $(cat "$WORK/ready.json")"
+# --- 1. online update -----------------------------------------------------------------------
+log "1. ONLINE: start the image under test (first boot installs Docling with lock constraints)"
+APP_IMAGE="$IMAGE" dc up -d --force-recreate >/dev/null
+if wait_ready 3600; then pass "DB + API + worker ready, admin login, OCR API"; else fail "stack not ready"; exit 1; fi
+grep -q '"docling_available": true' "$WORK/ready.json" && pass "Docling runtime enabled" || fail "Docling runtime missing"
 grep -q '"dependency_problems": \[\]' "$WORK/ready.json" && pass "content-core/Docling = verified versions" || fail "dependency problems: $(cat "$WORK/ready.json")"
 [ -z "$(model_sums)" ] && pass "no OCR model downloaded at startup" || fail "OCR models present after startup"
-if [ -n "$OLD_REF" ]; then api settings-check >/dev/null && pass "settings from $OLD_REF preserved after upgrade" || fail "settings lost after upgrade"; fi
+if [ -n "$OLD_REF" ]; then
+  api settings-check >/dev/null && pass "settings from $OLD_REF kept" || fail "settings lost"
+  api check-data >/dev/null && pass "data (marker notebook) from $OLD_REF kept" || fail "data lost"
+fi
 
-# --- 2. engines end-to-end through API + worker ---------------------------------------------
-LAST=""
-FIRST=1
+# --- 2. online preparation ------------------------------------------------------------------
 for E in $SCENARIOS; do
-  log "2. $E end-to-end (install -> activate -> test -> upload -> processed)"
-  out="$(api ocr-e2e --engine "$E" --pdf /tmp/vb_scan.pdf --expect "$EXPECT1" --expect "$EXPECT2")"; rc=$?
-  echo "$out"
+  log "2. ONLINE PREPARATION: $E"
+  out="$(api prepare --engine "$E")"; rc=$?; echo "$out"
   case $rc in
-    0) pass "$E: install/activate/test/upload/process via API+worker";;
-    2) nv "$E: $out";;
-    *) fail "$E: $out";;
+    0) pass "$E: prepared, readiness offline_ready (network-blocked pipeline check)";;
+    2) nv "$E: $out"; continue;;
+    *) fail "$E: prepare: $out"; continue;;
   esac
-  CLASS=TesseractOcrCliModel; [ "$E" = easyocr ] && CLASS=EasyOcrModel; [ "$E" = rapidocr ] && CLASS=RapidOcrModel
-  if docker logs "$(app_id)" 2>&1 | grep -q "Docling OCR finished: engine=$E actual_models=\['$CLASS'\]"; then
-    pass "$E: worker log shows Docling used $CLASS"
-  else
-    [ $rc -eq 0 ] && fail "$E: worker log lacks 'actual_models=['$CLASS']'"
-  fi
-  if [ $FIRST = 1 ] && [ $rc -eq 0 ]; then
-    others="$(model_sums | grep -v -e "/${E#tesseract_}/" -e 'osd.traineddata' | grep -c . || true)"
-    case "$E" in tesseract_*) [ "$others" = 0 ] && pass "installing $E downloaded no other engine" || fail "other engines downloaded";; esac
-  fi
-  [ $rc -eq 0 ] && LAST="$E"
-  FIRST=0
+  out="$(e2e "$E")"; rc=$?; echo "$out"
+  if [ $rc -eq 0 ]; then pass "$E: online E2E (activate/test/upload/process)"; else fail "$E: online E2E: $out"; continue; fi
+  docker logs "$(app_id)" 2>&1 | grep -q "Docling OCR finished: engine=$E actual_models=\['$(class_for "$E")'\]" &&
+    pass "$E: worker log shows $(class_for "$E")" || fail "$E: engine not confirmed in worker log"
+  before="$(model_sums)"
+  api prepare --engine "$E" >/dev/null && [ "$(model_sums)" = "$before" ] &&
+    pass "$E: second prepare re-used models (checksums unchanged)" || fail "$E: models changed on re-prepare"
+  PREPARED="$PREPARED $E"
 done
-[ -n "$LAST" ] || { fail "no engine passed end-to-end; remaining steps skipped"; exit 1; }
-
+[ -n "$PREPARED" ] || { fail "no engine prepared; offline steps skipped"; exit 1; }
 api settings-set --with-ocr >/dev/null && pass "settings marker incl. OCR config stored" || fail "settings-set"
-SUMS_BEFORE="$(model_sums)"
+LAST="${PREPARED##* }"
+SUMS="$(model_sums)"; HF="$(hf_state)"
 
-# --- 3. restart --------------------------------------------------------------------------------
-log "3. Restart"
-dc_online restart app >/dev/null
-wait_ready 1800 || fail "not ready after restart"
-[ "$(model_sums)" = "$SUMS_BEFORE" ] && pass "restart: model checksums unchanged" || fail "restart: models changed"
-api settings-check --with-ocr --engine "$LAST" >/dev/null && pass "restart: settings + active engine ($LAST) preserved" || fail "restart: settings lost"
-
-# --- 4. offline ---------------------------------------------------------------------------------
-log "4. Offline: internal network only, recreated with OCR_OFFLINE=true HF_HUB_OFFLINE=1"
-HF_BEFORE="$(hf_state)"
-SINCE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-APP_IMAGE="$IMAGE" OCR_OFFLINE=true HF_HUB_OFFLINE=1 dc_offline up -d --force-recreate app >/dev/null
-if docker exec "$(app_id)" /app/.venv/bin/python -c "import urllib.request;urllib.request.urlopen('https://pypi.org/simple/',timeout=10)" >/dev/null 2>&1; then
-  fail "offline: container can still reach the Internet (test invalid)"
-else
-  pass "offline: Internet unreachable from the app container"
-fi
-if wait_ready 1800; then
-  pass "offline: DB + API + worker up (runtimes restored from cache)"
-  out="$(api ocr-e2e --engine "$LAST" --pdf /tmp/vb_scan.pdf --expect "$EXPECT1")"; rc=$?
-  [ $rc -eq 0 ] && pass "offline: document processed with $LAST" || fail "offline processing: $out"
-  [ "$(model_sums)" = "$SUMS_BEFORE" ] && pass "offline: model checksums unchanged" || fail "offline: models changed"
-  [ "$(hf_state)" = "$HF_BEFORE" ] && pass "offline: Hugging Face cache unchanged (no download)" || fail "offline: HF cache changed"
-  if docker logs --since "$SINCE" "$(app_id)" 2>&1 | grep -E -i "Initiating download|Downloading https|huggingface.co/api" >/dev/null; then
-    fail "offline: download attempt found in logs"
+# --- 3. offline operation ---------------------------------------------------------------------
+offline_round() {  # $1 label
+  local E out rc since
+  since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  internet_blocked && pass "$1: Internet unreachable from the app" || fail "$1: Internet still reachable (test invalid)"
+  wait_ready 900 && pass "$1: DB + API + worker reachable" || { fail "$1: stack not reachable"; return; }
+  for E in $PREPARED; do
+    out="$(api readiness-check --engine "$E" --require-offline)"; rc=$?
+    [ $rc -eq 0 ] && pass "$1: $E readiness offline_verified" || fail "$1: $E readiness: $out"
+    out="$(e2e "$E")"; rc=$?
+    [ $rc -eq 0 ] && pass "$1: $E processed a PDF (Heron/TableFormer + OCR)" || fail "$1: $E processing: $out"
+  done
+  [ "$(model_sums)" = "$SUMS" ] && pass "$1: OCR model checksums unchanged" || fail "$1: OCR models changed"
+  [ "$(hf_state)" = "$HF" ] && pass "$1: Hugging Face cache unchanged" || fail "$1: HF cache changed"
+  if docker logs --since "$since" "$(app_id)" 2>&1 | grep -E -i "Initiating download|Downloading https|huggingface.co/api|modelscope.cn" >/dev/null; then
+    fail "$1: download attempt found in logs"
   else
-    pass "offline: no download attempt in logs"
+    pass "$1: no download attempt in logs"
   fi
-else
-  fail "offline: stack did not come up (see: docker logs $(app_id))"
-fi
+}
+log "3. OFFLINE OPERATION (same container)"
+go_offline
+offline_round "offline"
 
-# --- 5. real image rebuild ------------------------------------------------------------------------
-log "5. Rebuild the image for real and recreate"
+# --- 4. restart while offline -------------------------------------------------------------------
+log "4. RESTART while offline (same container, no recreate)"
+dc restart app >/dev/null
+offline_round "offline-restart"
+api settings-check --with-ocr --engine "$LAST" >/dev/null && pass "offline-restart: settings + active engine kept" || fail "offline-restart: settings lost"
+
+# --- 5. online update, then offline again ---------------------------------------------------------
+log "5. ONLINE UPDATE: reconnect, rebuild for real, recreate, re-prepare"
+go_online
 OLD_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
-docker build --target runtime --build-arg OCR_INSTALL_TESSERACT=true \
-  --no-cache-filter runtime-base,runtime -t "$IMAGE" "$REPO" >/dev/null || fail "rebuild"
+docker build --target runtime --build-arg OCR_INSTALL_TESSERACT=true --no-cache-filter runtime-base,runtime -t "$IMAGE" "$REPO" >/dev/null || fail "rebuild"
 NEW_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
-[ "$OLD_ID" != "$NEW_ID" ] && pass "rebuild produced a new image ($NEW_ID)" || fail "rebuild reused the same image id"
-APP_IMAGE="$IMAGE" dc_online up -d --force-recreate app >/dev/null
-CID_NEW_IMAGE="$(docker inspect -f '{{.Image}}' "$(app_id)")"
-[ "$CID_NEW_IMAGE" = "$NEW_ID" ] && pass "container recreated from the rebuilt image" || fail "container not on the rebuilt image"
+[ "$OLD_ID" != "$NEW_ID" ] && pass "rebuild produced a new image" || fail "rebuild reused the same image id"
+APP_IMAGE="$IMAGE" dc up -d --force-recreate app >/dev/null
+[ "$(docker inspect -f '{{.Image}}' "$(app_id)")" = "$NEW_ID" ] && pass "container recreated from the rebuilt image" || fail "container not on rebuilt image"
 if wait_ready 3600; then
-  docker exec "$(app_id)" /app/.venv/bin/python -m open_notebook.ocr.cli status --no-db | tee "$WORK/status.txt"
-  grep -E "^$LAST +state=ready" "$WORK/status.txt" >/dev/null && pass "rebuild: runtime restored, $LAST ready" || fail "rebuild: $LAST not ready"
-  [ "$(model_sums)" = "$SUMS_BEFORE" ] && pass "rebuild: model checksums unchanged (no re-download)" || fail "rebuild: models changed"
-  api settings-check --with-ocr --engine "$LAST" >/dev/null && pass "rebuild: settings + active engine preserved" || fail "rebuild: settings lost"
-  out="$(api ocr-e2e --engine "$LAST" --pdf /tmp/vb_scan.pdf --expect "$EXPECT1")" && pass "rebuild: $LAST still processes documents" || fail "rebuild processing: $out"
+  api settings-check --with-ocr --engine "$LAST" >/dev/null && pass "update: settings + active engine kept" || fail "update: settings lost"
+  [ -z "$OLD_REF" ] || { api check-data >/dev/null && pass "update: data kept" || fail "update: data lost"; }
+  [ "$(model_sums)" = "$SUMS" ] && pass "update: OCR models reused (checksums unchanged)" || fail "update: OCR models changed"
+  for E in $PREPARED; do
+    out="$(api prepare --engine "$E")" && pass "update: $E re-prepared (offline_ready)" || fail "update: $E prepare: $out"
+  done
+  SUMS="$(model_sums)"; HF="$(hf_state)"
+  log "5b. OFFLINE again after the update"
+  go_offline
+  offline_round "after-update-offline"
 else
-  fail "rebuild: stack not ready"
+  fail "update: stack not ready"
 fi
 
 grep -q '^FAIL' "$RESULTS" && exit 1
