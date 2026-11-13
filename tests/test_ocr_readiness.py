@@ -128,10 +128,13 @@ class TestChecks:
         ):
             assert env[var] == readiness.DEAD_PROXY
         assert "HF_HUB_OFFLINE" not in env  # behaves like an unplugged server
-        assert (
-            readiness._child_env(local_only=False).get("HTTPS_PROXY")
-            != readiness.DEAD_PROXY
-        )
+        # The online child keeps the operator's proxy untouched (independent of
+        # whatever proxy the test harness itself exports).
+        monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:3128")
+        monkeypatch.setenv("https_proxy", "http://proxy.example:3128")
+        online_env = readiness._child_env(local_only=False)
+        assert online_env["HTTPS_PROXY"] == "http://proxy.example:3128"
+        assert online_env["https_proxy"] == "http://proxy.example:3128"
 
     def test_pipeline_ok_requires_heron_and_tableformer_accurate(
         self, monkeypatch, ocr_dir
