@@ -222,3 +222,18 @@ Mỗi quyết định: bối cảnh → quyết định → phương án bị lo
   Internet bị chặn, DB vẫn tới được.
 - Restart khi offline cũng thực hiện trên cùng container. Recreate/cập nhật thực hiện khi online, rồi
   chạy thêm một vòng offline.
+
+## D-24. Timeout có giới hạn cho mọi request Hugging Face Hub (Phase 8B)
+
+- Bối cảnh (nghiệm thu thật, Docker bước 3): sau khi server mất Internet, job OCR đầu tiên của worker
+  treo ~16 phút. `snapshot_download` (huggingface_hub 0.36) gọi `repo_info()` **không có timeout**
+  trên kết nối keep-alive còn sót từ pha online; request chờ tới khi TCP bỏ cuộc (`tcp_retries2`).
+- Quyết định: `open_notebook/ocr/hub_http.py` cài một backend session cho Hub, gán timeout mặc định
+  (`OCR_HF_HUB_TIMEOUT`, mặc định 20 s) cho request **không** tự chọn timeout. Hub coi
+  `requests.Timeout` là "offline" và dùng cache. Request có timeout riêng (tải file khi chuẩn bị
+  online) giữ nguyên. Cài ở `content_process` (mọi đường xử lý, kể cả RapidOCR mặc định qua
+  content-core) và `build_converter` (test engine, readiness, test tích hợp).
+- Không chọn `HF_HUB_OFFLINE=1` cho worker: biến này được đọc lúc import, buộc phải recreate container
+  để đổi, trái với mô hình "cùng container, online rồi offline" (D-20, D-23).
+- Test: `tests/test_ocr_hub_http.py` dùng socket thật nhận kết nối nhưng không trả lời; không có bản
+  sửa thì test treo (FAIL sau 30 s).

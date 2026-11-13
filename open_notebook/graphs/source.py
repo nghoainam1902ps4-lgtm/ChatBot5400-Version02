@@ -175,6 +175,12 @@ async def content_process(state: SourceState) -> dict:
         f"ocr_engine={ocr_settings.engine})"
     )
 
+    # Every extraction path (incl. content-core's default RapidOCR path) may
+    # resolve Docling models through the HF Hub: bound its timeouts (D-24).
+    from open_notebook.ocr.hub_http import bound_hub_timeouts
+
+    bound_hub_timeouts()
+
     file_path_only = (
         content_state.get("file_path")
         and not content_state.get("url")

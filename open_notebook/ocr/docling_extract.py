@@ -177,6 +177,10 @@ def build_pipeline_options(
 
 def build_converter(cc_config: Any, ocr: OcrSettings) -> Any:
     from docling.datamodel.base_models import InputFormat
+
+    from open_notebook.ocr.hub_http import bound_hub_timeouts
+
+    bound_hub_timeouts()  # no 15-minute hang on a dead keep-alive link (D-24)
     from docling.document_converter import (
         DocumentConverter,
         ImageFormatOption,
