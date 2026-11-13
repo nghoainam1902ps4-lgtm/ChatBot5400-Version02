@@ -62,3 +62,26 @@ chạy thật.
 | Regression so với `e32eae8` | PASS | 1053 passed / 10 failed vs 951 / 10, cùng 10 lỗi có sẵn |
 | Review độc lập diff 8A | PASS | 8 phát hiện: 7 đã sửa kèm test, 1 giữ nguyên có lý do (`OCR_TEST_REPORT.md` §8.4) |
 | Tài liệu `OCR_ONLINE_PREPARATION.md` (15 chủ đề), lệnh qua `bash -n` | PASS | `check_doc_commands.py` |
+
+## Phase 8C — Chất lượng OCR và nghiệm thu cuối
+
+| Hạng mục | Kết quả | Bằng chứng |
+|---|---|---|
+| Bảo toàn commit Phase 8B, bundle đã verify | PASS | `phase8b-backup.bundle` |
+| Nguyên nhân gốc 15 bài, phân nhóm A–J | PASS | `OCR_FAILURE_ANALYSIS.md` |
+| Không đổi ngưỡng / fixture / ground truth; không `xfail` / `skip` | PASS | diff `tests/test_ocr_integration.py`, `tests/fixtures/ocr` không đổi |
+| Tesseract: bảng scan không còn bị lật; trang xoay 90/180/270° | PASS | `OCR_QUALITY_BENCHMARK.md` §2, §5 |
+| Tesseract Best: trường khóa 1,00 trên fixture và holdout | PASS | như trên |
+| Full pipeline lộ trình nhanh `FAIL == 0` | **FAIL** — 6 PASS / 3 FAIL (tiêu đề in đậm, giới hạn model) | `runs/ocr-acceptance-quick-8c.json` |
+| Full pipeline 48 bài | 38 PASS / 10 FAIL / 0 NOT VERIFIED | `runs/ocr-acceptance-full-8c.json` |
+| EasyOCR đạt ngưỡng trên scan 150 DPI | **FAIL** — giới hạn model | `OCR_FAILURE_ANALYSIS.md` §5.5 |
+| RapidOCR trang xoay | PASS (8/8) | như trên |
+| Holdout độc lập, chạy một lần, không regression | PASS | `holdout-baseline/`, `holdout-after/` |
+| Docker: online → chuẩn bị → offline → restart offline → cập nhật → offline, 4 engine | PASS hạ tầng (72 PASS); 1 FAIL nội dung EasyOCR | `runs/docker-acceptance-full-8c.log` |
+| Không tải lại model hợp lệ (checksum, cache HF không đổi) | PASS | như trên |
+| Backend regression: không lỗi mới | PASS — 1211 / 10, cùng 10 lỗi của `main` | `runs/pytest-full-8c.txt` |
+| Frontend lint / tsc / vitest / build | PASS — 0 error / 0 / 404 / OK | `runs/frontend-8c.txt` |
+| Bảo mật trực tiếp | PASS — 16/16 | `runs/security-live-8c.json` |
+| Review độc lập | PASS — 0 High; 3 Medium đã sửa | `OCR_PHASE8C_REPORT.md` §8 |
+| Production không bị ảnh hưởng; không xóa volume | PASS | `preflight/production-{before,after}.txt` |
+

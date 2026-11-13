@@ -209,3 +209,11 @@ tiến trình).
 - Chưa nên dùng cho tài liệu có trang xoay hoặc nhiều bảng scan cho tới khi xử lý OSD
   (`OCR_TEST_REPORT.md` §9.3).
 - Không đổi engine mặc định.
+
+### 6.1 Cập nhật Phase 8C
+
+Hai khuyến nghị cuối ở trên đã được xử lý trong Phase 8C: bảng scan và trang xoay giờ đọc được với
+Tesseract (dòng bảng đúng 8/16 → 16/16 trên fixture, 3/42 → 38/42 trên holdout; trang xoay 90/180/270°
+đạt CER ≤ 0,01). Số đo trước/sau, holdout, ma trận DPI × scale và chi phí hiệu năng:
+[OCR_QUALITY_BENCHMARK.md](OCR_QUALITY_BENCHMARK.md). Số liệu ở mục 6 giữ nguyên làm baseline Phase 8B.
+

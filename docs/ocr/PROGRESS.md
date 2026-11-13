@@ -45,3 +45,13 @@
 | 8B | Regression / frontend / lint / bảo mật trực tiếp / review độc lập | DONE (0 lỗi mới; 16/16; 0 High/Medium) |
 | 8B | Benchmark full pipeline (`OCR_BENCHMARK.md` §6) | DONE |
 | 8B | P8B-4 (OSD Tesseract), P8B-5 (ngưỡng EasyOCR) | **OPEN — cần quyết định** (`RELEASE_CANDIDATE.md` §6) |
+| 8C | Preflight, bundle, bảo toàn commit 8B; lưu phần làm dở của phiên trước | DONE |
+| 8C | Phân tích nguyên nhân gốc 15 bài (`OCR_FAILURE_ANALYSIS.md`) | DONE |
+| 8C | Tesseract: gate OSD, chuẩn hóa hướng trang, scale theo DPI scan (D-25) | DONE — cần xác nhận ranh giới gate |
+| 8C | EasyOCR ngưỡng 0,2 (D-26); RapidOCR tái dùng chuẩn hóa hướng trang | DONE |
+| 8C | Holdout 13 tài liệu, so sánh trước/sau (`OCR_QUALITY_BENCHMARK.md`) | DONE, không regression |
+| 8C | Full pipeline 48 bài | 38 PASS / 10 FAIL (8B: 33/15); còn lại là giới hạn model |
+| 8C | Docker 4 engine online → offline → restart → update | 72 PASS / 1 FAIL (nội dung EasyOCR) |
+| 8C | Regression / frontend / bảo mật trực tiếp / review độc lập | DONE (cùng 10 lỗi của `main`; 404/404; 16/16; 0 High, 3 Medium đã sửa) |
+| 8C | Điều kiện merge §3.1 (`FAIL == 0` lộ trình nhanh) | **OPEN — 3 FAIL do giới hạn model; cần quyết định** (`OCR_PHASE8C_REPORT.md` §9) |
+

@@ -155,6 +155,11 @@ SCENARIOS="rapidocr tesseract_fast tesseract_best easyocr" OLD_REF=e32eae8304405
 `OLD_REF` là phiên bản đang chạy cần nâng cấp từ đó (ví dụ trên: bản Phase 7; dùng commit production
 thật của bạn, hoặc `5e042279439302d3ccf39bef4d1d8d402314d194` cho bản trước tính năng OCR).
 
+Từ Phase 8C: nếu một engine chạy được pipeline nhưng **văn bản nhận dạng** không đạt, script ghi một
+dòng `FAIL … online E2E content` rồi vẫn đưa engine đó qua các bước offline; ở đó kết quả phải trùng
+với lúc online (so cả hash của toàn bộ văn bản). Nhờ vậy vận hành offline được nghiệm thu độc lập với
+chất lượng OCR, và lỗi chất lượng vẫn được tính đúng một lần.
+
 Script tự build image test (`chatbot5400:ocr-accept`, build arg `OCR_INSTALL_TESSERACT=true`) và image
 của `OLD_REF`, tạo compose project + thư mục dữ liệu tạm riêng, rồi kiểm tra qua **API thật + worker
 thật**. "Offline" = container app **đang chạy** bị ngắt khỏi mạng egress (`docker network disconnect`,
@@ -233,6 +238,23 @@ uv run python scripts/ocr/benchmark.py --samples "$ACCEPT_DIR/samples" --mode pi
 
 Chỉ dùng tài liệu tổng hợp ở đây. Đánh giá trên tài liệu thật của ngân hàng **làm cục bộ**, không
 đưa file hay kết quả có nội dung nhạy cảm lên GitHub.
+
+### 8.1 Chất lượng trước/sau và holdout (Phase 8C)
+
+Đo chất lượng full pipeline qua đúng điểm vào production, trên 7 fixture và trên tập holdout độc lập:
+
+```bash
+source "$ACCEPT_DIR/env.sh"; cd "$ACCEPT_DIR/src"
+E="$ACCEPT_DIR/evidence/phase8c"; mkdir -p "$E/after" "$E/holdout-after"
+uv run python scripts/ocr/generate_holdout_fixtures.py --out "$E/holdout"
+for eng in tesseract_best tesseract_fast rapidocr easyocr; do
+  uv run python scripts/ocr/quality_eval.py --engine "$eng" --dir tests/fixtures/ocr --out "$E/after/fixtures-$eng.json"
+  uv run python scripts/ocr/quality_eval.py --engine "$eng" --dir "$E/holdout" --out "$E/holdout-after/$eng.json"
+done
+```
+
+Holdout chỉ dùng để **đánh giá** cấu hình đã chọn. Không tinh chỉnh tham số theo kết quả holdout.
+Cách so sánh với một commit cũ: `OCR_QUALITY_BENCHMARK.md` §6.
 
 ## 9. Thu thập log và kết quả
 

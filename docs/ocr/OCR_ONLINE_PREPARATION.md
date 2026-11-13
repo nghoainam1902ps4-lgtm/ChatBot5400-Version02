@@ -273,3 +273,13 @@ Xem `OCR_ROLLBACK.md`. Tóm tắt: checkout commit trước, `docker compose -f 
 
 Nghiệm thu toàn bộ quy trình trên máy nội bộ (online → chuẩn bị → offline → restart → cập nhật):
 `OCR_LOCAL_ACCEPTANCE.md` §5.
+
+### Ghi chú Phase 8C
+
+- Các cải tiến chất lượng (lọc OSD, chuẩn hóa hướng trang, scale theo độ phân giải scan, ngưỡng
+  EasyOCR) **không tải thêm gì**: chúng dùng binary Tesseract và `osd.traineddata` đã có sau bước
+  chuẩn bị của Tesseract Fast/Best. Trạng thái `offline_ready` / `offline_verified` không đổi ý nghĩa.
+- Kiểm tra readiness và nút "Test" chạy qua cùng điểm vào production nên đã bao gồm các bước này.
+- RapidOCR và EasyOCR chỉ được tự sửa hướng trang khi `osd.traineddata` có trên máy (cài một lựa chọn
+  Tesseract). Không có thì vẫn chạy như trước, không lỗi.
+

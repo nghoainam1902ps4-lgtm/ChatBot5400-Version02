@@ -306,3 +306,27 @@ Agent riêng, chỉ đọc mã và chạy test.
 - Low (đã xử lý ở `2128587`):
   - test Hub timeout phụ thuộc biến proxy / `HF_HUB_OFFLINE` của môi trường ⇒ test tự đặt môi trường;
   - D-24 cần nói rõ phạm vi toàn tiến trình ⇒ đã bổ sung.
+
+## 10. Phase 8C — Chất lượng OCR (2026-11-13)
+
+Báo cáo đầy đủ: [OCR_PHASE8C_REPORT.md](OCR_PHASE8C_REPORT.md). Tóm tắt kết quả kiểm thử:
+
+| Kiểm thử | Kết quả |
+|---|---|
+| `tests/test_ocr_quality_prep.py` (mới, không cần engine) | 45 passed |
+| `tests/test_ocr_integration.py`, strict, 4 engine | 38 PASS / 10 FAIL / 0 NOT VERIFIED (8B: 33 / 15) |
+| `tests/test_ocr_integration.py -k tesseract_best` | 6 PASS / 3 FAIL (8B: 5 / 4) |
+| `scripts/ocr/docker-acceptance.sh`, 4 engine, `OLD_REF=5e04227` | 72 PASS / 1 FAIL / 0 NOT VERIFIED |
+| `pytest tests/` | 1211 passed / 10 failed / 44 skipped — cùng 10 lỗi của `main` |
+| Frontend | lint 0 error (7 warning có sẵn), tsc 0, vitest 404/404, build OK |
+| Bảo mật trực tiếp (stack nghiệm thu cô lập) | 16/16 |
+| mypy / ruff | 33 / 1 — đều có sẵn |
+
+- 10 bài FAIL còn lại và nguyên nhân: `OCR_PHASE8C_REPORT.md` §2. Bài #8 của Phase 8B
+  (tesseract_best – hon_hop, recall) không tái hiện được khi đo lại baseline (`OCR_FAILURE_ANALYSIS.md` §5.4).
+- Bài full pipeline giờ gọi `convert_document` (điểm vào mà worker chạy) thay cho `converter.convert`,
+  để các bước của D-25 nằm trong phạm vi nghiệm thu. Ngưỡng, fixture, ground truth không đổi.
+- Một unit test ghim nội dung config `tsv` được cập nhật theo D-25 (`tests/test_ocr_bundle_cli.py`).
+- Script Docker: engine chỉ FAIL về nội dung vẫn đi tiếp các bước offline; ở đó văn bản phải trùng lúc
+  online (so SHA-256). Lỗi nội dung vẫn được ghi FAIL một lần.
+

@@ -1,10 +1,14 @@
-# Release Candidate — OCR Engine Manager (Phase 0 → 8B)
+# Release Candidate — OCR Engine Manager (Phase 0 → 8C)
 
 - **Branch:** `claude/friendly-mendel-a2b6m5`.
 - **Gốc so sánh:** `5e04227` (trước tính năng) và `e32eae8` (Phase 7).
 - **Không merge main, không triển khai production** trong phiên phát triển.
 
-Trạng thái (sau Phase 8B, 2026-11-13): **CHƯA ĐỦ ĐIỀU KIỆN MERGE `main`, CHƯA ĐỦ ĐIỀU KIỆN PRODUCTION.**
+Trạng thái (sau Phase 8C, 2026-11-13): **CHỜ QUYẾT ĐỊNH CỦA CHỦ DỰ ÁN — xem §7.** Lỗi chất lượng chính
+(P8B-4, P8B-5, P8B-6) đã xử lý; điều kiện §3.1 còn 3 FAIL do giới hạn model. Chưa merge, chưa push, chưa
+triển khai.
+
+Trạng thái sau Phase 8B (giữ để đối chiếu): **CHƯA ĐỦ ĐIỀU KIỆN MERGE `main`, CHƯA ĐỦ ĐIỀU KIỆN PRODUCTION.**
 
 - Nghiệm thu runtime trên máy thật đã chạy (`OCR_TEST_REPORT.md` §9).
 - Hạ tầng online → offline đã PASS sau ba bản sửa. Hai trong số đó là lỗi chặn: P8B-2 và P8B-3.
@@ -125,3 +129,41 @@ Trạng thái (sau Phase 8B, 2026-11-13): **CHƯA ĐỦ ĐIỀU KIỆN MERGE `ma
 3. **P8B-6 / P8B-7:** chấp nhận là giới hạn đã biết (RapidOCR không xử lý trang xoay; Tesseract Fast ở
    150 DPI), **hoặc** đổi ngưỡng test sau khi ghi số đo. Không tự hạ ngưỡng trong 8B.
 4. Chạy lại `OCR_LOCAL_ACCEPTANCE.md` lộ trình đầy đủ sau khi sửa.
+
+## 7. Phase 8C — đối chiếu điều kiện và quyết định còn lại
+
+Branch cục bộ `local/ocr-phase8c`. Báo cáo: [OCR_PHASE8C_REPORT.md](OCR_PHASE8C_REPORT.md).
+
+**§3 Điều kiện merge `main`:**
+
+| Điều kiện | Kết quả |
+|---|---|
+| 3.1 §4.3 lộ trình nhanh: `FAIL == 0` | **KHÔNG ĐẠT theo đúng chữ** — 6 PASS / 3 FAIL (8B: 5 / 4). Cả 3 do model Tesseract Best đọc mất dấu ở một tiêu đề in đậm; trường khóa 1,00, bảng 4/4 dòng |
+| 3.1 §5: không có `FAIL` (Tesseract Best) | **ĐẠT** — mọi dòng của Tesseract Best PASS trong lượt Docker 4 engine |
+| 3.2 Đọc lại commands / job guard | **ĐẠT** (Phase 8B); Phase 8C không đụng tới; bảo mật trực tiếp 16/16 |
+| 3.3 10 lỗi test có sẵn cũng có trên `main` | **ĐẠT** — cùng đúng 10 lỗi |
+
+**§4 Điều kiện production:**
+
+| Điều kiện | Kết quả |
+|---|---|
+| 4.1 Docker đủ 4 engine, `OLD_REF` = production thật, mọi bước PASS | Hạ tầng **ĐẠT** cho cả 4 engine (72 PASS, 0 NOT VERIFIED). 1 FAIL: nội dung EasyOCR |
+| 4.1 Full pipeline đủ 4 engine | **KHÔNG ĐẠT** — 38 PASS / 10 FAIL (giới hạn model: tiêu đề Tesseract ×5, EasyOCR ×5) |
+| 4.2 Benchmark trên tài liệu thật | **CHƯA LÀM** — việc của người vận hành, làm cục bộ |
+| 4.3–4.7 Backup, quy trình vận hành, rollback | Chưa tới bước này |
+
+**Việc của Phase 8B đã đóng:** P8B-4 (OSD Tesseract) — D-25; P8B-5 (ngưỡng EasyOCR) — D-26; P8B-6
+(RapidOCR trang xoay) — chuẩn hóa hướng trang; P8B-7 (Tesseract Fast 150 DPI) — scale theo độ phân giải
+scan, trường khóa đạt 1,00.
+
+**Cần quyết định trước khi merge** (chi tiết và khuyến nghị: `OCR_PHASE8C_REPORT.md` §9):
+
+1. Tiêu chí §3.1 với 3 FAIL do giới hạn model: điều chỉnh tiêu chí cho cụm tiêu đề in đậm, hay giữ và
+   coi là chưa đạt.
+2. `tesseract_gate.py` có nằm trong giới hạn "chỉ dùng API chính thức" hay không.
+3. Tự xoay trang cho RapidOCR / EasyOCR khi có `osd.traineddata`.
+4. Vị trí của EasyOCR (ghi chú giới hạn, hay không khuyến nghị cho tiếng Việt).
+
+**Khuyến nghị sử dụng sau Phase 8C:** Tesseract Vietnamese Best cho văn bản và bảng scan tiếng Việt;
+RapidOCR giữ làm mặc định để tương thích ngược; EasyOCR không khuyến nghị cho scan dưới 200 DPI.
+

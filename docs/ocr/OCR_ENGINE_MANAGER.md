@@ -81,3 +81,19 @@ docker compose exec open_notebook uv run --no-sync python -m open_notebook.ocr.c
 docker compose exec open_notebook uv run --no-sync python -m open_notebook.ocr.cli runtime install easyocr
 docker compose exec open_notebook uv run --no-sync python -m open_notebook.ocr.cli remove-model easyocr
 ```
+
+## 7. Chất lượng OCR theo lựa chọn (Phase 8C)
+
+Số đo trên dữ liệu tổng hợp, CPU; chi tiết: [OCR_QUALITY_BENCHMARK.md](OCR_QUALITY_BENCHMARK.md).
+
+| Lựa chọn | Phù hợp | Không phù hợp |
+|---|---|---|
+| Tesseract Vietnamese Best | Văn bản và bảng scan tiếng Việt từ 150 DPI; trang xoay 90/180/270°; số tiền, ngày, số hiệu | Tiêu đề in đậm chữ hoa có dấu chồng có thể mất dấu |
+| Tesseract Vietnamese Fast | Như Best, nhanh hơn một chút; số liệu trong bảng | Nhãn chữ trong bảng kém Best |
+| RapidOCR (mặc định) | Chữ số, ngày, số tiền; PDF có text layer | Dấu tiếng Việt trên trang scan (model không có bảng ký tự tiếng Việt) |
+| EasyOCR Vietnamese | Ảnh scan từ 200 DPI, văn bản thường | Scan 150 DPI: sai chữ số và dấu; bảng |
+
+- Trang scan nằm ngang/ngược được tự sửa hướng cho **mọi** lựa chọn khi đã cài Tesseract Fast hoặc
+  Best (cần `osd.traineddata`). Chưa cài thì hành vi như trước.
+- Metadata của source ghi `ocr_scale`, `scan_dpi`, `rotated_pages`.
+- Cấu hình và cách tắt từng phần: [OCR_QUALITY_OPTIMIZATION.md](OCR_QUALITY_OPTIMIZATION.md) §6.

@@ -242,3 +242,47 @@ Mỗi quyết định: bối cảnh → quyết định → phương án bị lo
   để đổi, trái với mô hình "cùng container, online rồi offline" (D-20, D-23).
 - Test: `tests/test_ocr_hub_http.py` dùng socket thật nhận kết nối nhưng không trả lời; không có bản
   sửa thì test treo (FAIL sau 30 s).
+
+## D-25. Tesseract: lọc OSD độ tin cậy thấp, chuẩn hóa hướng trang, scale theo độ phân giải scan (Phase 8C)
+
+- Bối cảnh: Docling 2.129 dò hướng (`tesseract --psm 0`) trên **từng vùng OCR** và xoay vùng theo kết
+  quả bất kể `Orientation confidence`; không có tùy chọn chính thức để tắt hay đặt ngưỡng. Bảng scan
+  đứng thẳng bị lật 180° (confidence 0,16), trang xoay bị đoán sai (0,02). Ảnh scan 150 DPI bị phóng
+  lên 216 DPI và crop PNG không có DPI. Chi tiết: [OCR_FAILURE_ANALYSIS.md](OCR_FAILURE_ANALYSIS.md).
+- Quyết định, bốn phần độc lập (chi tiết và số đo: [OCR_QUALITY_OPTIMIZATION.md](OCR_QUALITY_OPTIMIZATION.md)):
+  1. `open_notebook/ocr/tesseract_gate.py` đặt qua tùy chọn chính thức `tesseract_cmd`: kết quả OSD có
+     hướng ≠ 0 và confidence < 2,0 được trả về là 0°; mọi lệnh khác chuyển nguyên vẹn cho Tesseract.
+  2. `open_notebook/ocr/pdf_prep.py`: dò hướng **cả trang** scan, sửa `/Rotate` trong bản sao tạm khi
+     confidence ≥ 2,0. Áp cho mọi engine khi có `osd.traineddata`. File gốc không bị sửa; không render
+     lại; lỗi bất kỳ → chuyển đổi file gốc như trước.
+  3. `OcrOptions.scale = max(2,0; DPI_scan/72)`, không vượt mặc định 3; chỉ Tesseract. `DPI_scan` là độ
+     phân giải **cao nhất** trong các trang scan của tài liệu, để không trang nào bị render thấp hơn trước.
+  4. `user_defined_dpi 216` trong file config `tsv` của thư mục tessdata riêng.
+- Vì sao không chọn phương án khác:
+  - Thêm lề cho crop: 1 340 phép đo cho thấy lề không cải thiện OSD; và chỉ làm được bằng adapter.
+  - `OcrMode.FULL_PAGE` toàn hệ thống: không tốt hơn, và OCR đè lên text layer của PDF sinh từ phần mềm.
+  - PSM khác mặc định: 6/11/12 phá bảng; 1/4 không khác.
+  - Rasterize lại PDF đã xoay: làm mất text layer và đổi tọa độ; `/Rotate` thì không.
+- Ngưỡng 2,0 lấy từ số đo: OSD trên vùng sai có confidence ≤ 1,44; OSD trên trang sai ≤ 0,66 và đúng
+  ≥ 4,77 (scale 3).
+- Ranh giới: phần 1 là một file thực thi đứng giữa Docling và Tesseract. Nó không phải OCR adapter
+  (không subclass, không xử lý ảnh/tọa độ/văn bản) và không sửa Docling, nhưng **cần chủ dự án xác
+  nhận** là nằm trong giới hạn "chỉ dùng API chính thức". Tắt: `OCR_TESSERACT_OSD_GATE=false`.
+- Giới hạn chi phí: dò hướng tối đa 200 trang đầu (`OCR_PAGE_OSD_MAX_PAGES`), 30 giây mỗi trang; lỗi ở
+  một trang không ảnh hưởng trang khác. Gate chỉ được dùng khi `gate --version` chạy được (cần bit thực
+  thi và `python3` trên PATH); không thì gọi thẳng Tesseract và ghi cảnh báo.
+- Tắt phần 2–3: `OCR_PDF_PREP=false`. Biến môi trường là cấu hình toàn deployment, không đổi theo job.
+- Test: `tests/test_ocr_quality_prep.py` (45 test, không cần engine thật) + 48 bài full pipeline chạy
+  qua `convert_document` (điểm vào production).
+
+## D-26. EasyOCR: `confidence_threshold` 0,2 (Phase 8C)
+
+- Bối cảnh: mặc định 0,5 của Docling loại 10/15 dòng của một công văn scan 150 DPI, không dòng nào
+  là rác (CER 0,85). Decoder / beam / contrast không chỉnh được qua API chính thức vì Docling gọi
+  `readtext(im)` không tham số.
+- Quyết định: `EasyOcrOptions.confidence_threshold = 0,2`; đổi bằng `OCR_EASYOCR_CONFIDENCE` (0–1,
+  sai định dạng → 0,2). Không thêm trường Settings/UI.
+- Vì sao 0,2 mà không phải 0: dưới 0,2 chỉ quan sát thấy dòng rác; 0,0 / 0,1 / 0,2 cho cùng kết quả
+  trên trang đứng thẳng, nên 0,2 không mất gì mà vẫn lọc rác trên trang nhiễu.
+- Giới hạn không sửa được: ở 150 DPI model Latin Gen2 đọc sai chữ số và dấu kể cả khi giữ mọi dòng.
+  5 bài nghiệm thu của EasyOCR vẫn FAIL; không hạ ngưỡng, không thay model.

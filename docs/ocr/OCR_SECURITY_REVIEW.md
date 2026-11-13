@@ -76,3 +76,21 @@ Rủi ro còn lại (ghi trong `docs/security/BACKGROUND_JOB_SECURITY.md` §5):
   từ trước ở API).
 - **Host nội bộ:** vẫn tới được, theo thiết kế (Ollama nội bộ).
 - **Image chạy root:** có sẵn, không đổi.
+
+## Phase 8C — Chất lượng OCR
+
+Bề mặt mới: hai module (`pdf_prep.py`, `tesseract_gate.py`), không endpoint, không job, không quyền mới.
+
+| Điểm | Đánh giá |
+|---|---|
+| Tiến trình con | `subprocess.run` dạng danh sách tham số, không `shell=True`. Tham số cố định; đường dẫn ảnh là file tạm do ứng dụng tạo. Tên file người dùng tải lên chỉ đi qua `Path(path).name` bên trong thư mục `mkdtemp` riêng. |
+| Binary được chạy | Gate chạy `OCR_TESSERACT_REAL`, biến do ứng dụng đặt từ `OCR_TESSERACT_CMD`/PATH (cấu hình của người vận hành, như trước). Người dùng không tác động được. |
+| File tải lên | Không bao giờ bị sửa (test so SHA-256). Bản sao đã xoay nằm trong thư mục tạm quyền riêng, xóa ở mọi đường thoát của `convert_document`. Nếu worker bị kill giữa chừng, thư mục `ocr-prep-*` có thể sót lại trong thư mục tạm — rủi ro thấp, cùng mức với file tạm của Docling. |
+| PDF độc hại / hỏng / có mật khẩu | pypdfium2 (đã là dependency của Docling) mở file; mọi lỗi → bỏ qua bước chuẩn bị, chuyển đổi như trước. Không thêm parser mới. |
+| Từ chối dịch vụ | Dò hướng giới hạn 200 trang/tài liệu, 30 giây/trang, ảnh render tối đa 4000 px mỗi cạnh. Giới hạn kích thước upload hiện có vẫn áp dụng. |
+| Log / metadata | Chỉ ghi số trang đã xoay, scale, DPI. Không ghi nội dung OCR. |
+| Biến môi trường | Giá trị không hợp lệ (`nan`, âm, ngoài 0–1) → dùng mặc định. |
+| Mạng | Không có request mạng mới; không tải gì thêm (dùng `osd.traineddata` đã cài). |
+
+Review độc lập diff Phase 8C: 0 High; 3 Medium và các điểm Low đã xử lý ở `755b637`
+(`OCR_PHASE8C_REPORT.md` §8). Kiểm tra bảo mật trực tiếp lặp lại trên stack nghiệm thu: xem báo cáo.

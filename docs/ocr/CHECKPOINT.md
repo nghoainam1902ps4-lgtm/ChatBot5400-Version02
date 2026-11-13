@@ -92,3 +92,18 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
 - Vấn đề còn mở: P8B-4 (OSD Tesseract trên crop), P8B-5 (ngưỡng confidence EasyOCR), P8B-6/7 (giới
   hạn đã biết, cần quyết định về ngưỡng test).
 - Trạng thái: chưa đủ điều kiện merge `main` hay production.
+
+## Phase 8C
+
+- Branch `local/ocr-phase8c` (từ `local/ocr-phase8b` @ `f172645`); backup `phase8b-backup.bundle` đã verify.
+- Commit: `e6f2bbb` (chất lượng OCR), `755b637` (sửa theo review), `6f1c811` (test), + tài liệu.
+- File mới: `open_notebook/ocr/pdf_prep.py`, `open_notebook/ocr/tesseract_gate.py`,
+  `scripts/ocr/quality_eval.py`, `scripts/ocr/generate_holdout_fixtures.py`, `tests/test_ocr_quality_prep.py`.
+- Quyết định: D-25 (Tesseract), D-26 (EasyOCR).
+- Kết quả: full pipeline 38/48 (8B: 33/48); Docker 4 engine 72 PASS / 1 FAIL; holdout Tesseract Best
+  CER 0,394 → 0,023; regression không lỗi mới.
+- Còn mở (cần chủ dự án): tiêu chí §3.1 với 3 FAIL do giới hạn model; ranh giới `tesseract_gate.py`;
+  tự xoay trang cho RapidOCR/EasyOCR; vị trí của EasyOCR. Xem `OCR_PHASE8C_REPORT.md` §9.
+- Bằng chứng: `/home/admin/cb5400-ocr-accept/evidence/phase8c/`.
+- Trạng thái: chưa merge, chưa push, chưa triển khai.
+

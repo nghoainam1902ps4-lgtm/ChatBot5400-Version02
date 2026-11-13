@@ -107,6 +107,15 @@ ngoài; đổi các tích hợp AI/embedding khác.
     online (D-23); regression so với `e32eae8`.
   - **G–H — Tài liệu:** `OCR_ONLINE_PREPARATION.md` và `RELEASE_CANDIDATE.md`.
 
+### Phase 8C — Sửa chất lượng OCR và nghiệm thu cuối
+
+- Phân tích nguyên nhân gốc 15 bài full pipeline thất bại ([OCR_FAILURE_ANALYSIS.md](OCR_FAILURE_ANALYSIS.md)).
+- Tesseract: lọc OSD độ tin cậy thấp, chuẩn hóa hướng trang, scale theo độ phân giải scan (D-25).
+- EasyOCR: ngưỡng confidence 0,2 (D-26). RapidOCR: tái dùng chuẩn hóa hướng trang.
+- Tập holdout độc lập chống overfitting ([OCR_QUALITY_BENCHMARK.md](OCR_QUALITY_BENCHMARK.md)).
+- Không đổi ngưỡng, fixture, ground truth; không thêm engine; không sửa Docling/Content Core.
+- Báo cáo: [OCR_PHASE8C_REPORT.md](OCR_PHASE8C_REPORT.md).
+
 ## 5. Tiêu chí nghiệm thu
 
 Xem `ACCEPTANCE_CHECKLIST.md` — mỗi tiêu chí PASS / FAIL / NOT VERIFIED kèm bằng chứng.
