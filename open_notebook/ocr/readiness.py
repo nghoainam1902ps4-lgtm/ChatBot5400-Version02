@@ -39,6 +39,15 @@ PROBE_URLS = (
     "https://www.modelscope.cn",
 )
 DEAD_PROXY = "http://127.0.0.1:9"
+# huggingface_hub re-raises ProxyError / SSLError instead of falling back to the
+# local cache (``_snapshot_download.py``: "Actually raise for those subclasses of
+# ConnectionError"), so a dead proxy alone makes Heron/TableFormer fail even
+# when they are fully cached. An unplugged server gets a plain ConnectionError
+# (DNS / connect failure) and DOES fall back to the cache. Pointing the Hub
+# endpoint at the same closed local port (exempt from the proxy via NO_PROXY)
+# reproduces exactly that: connection refused -> cache, or LocalEntryNotFound
+# when the model is not cached (Phase 8B, found on a real host).
+DEAD_ENDPOINT = DEAD_PROXY
 CHECK_TIMEOUT = int(os.environ.get("OCR_READINESS_TIMEOUT", "1800"))
 
 # States (MASTER_PLAN Phase 8A B4)
@@ -170,6 +179,7 @@ def _child_env(local_only: bool) -> dict[str, str]:
         ):
             env[var] = DEAD_PROXY
         env["NO_PROXY"] = env["no_proxy"] = "localhost,127.0.0.1,::1"
+        env["HF_ENDPOINT"] = DEAD_ENDPOINT  # refused, not ProxyError (see above)
         env.pop("HF_HUB_OFFLINE", None)  # behave like an unplugged server
     return env
 

@@ -192,11 +192,18 @@ class TestChecks:
         ):
             assert env[var] == readiness.DEAD_PROXY
         assert "HF_HUB_OFFLINE" not in env  # behaves like an unplugged server
+        # The Hub is reached directly (NO_PROXY) on a closed port: connection
+        # refused -> cache fallback, like an unplugged server (not ProxyError).
+        assert env["HF_ENDPOINT"] == readiness.DEAD_ENDPOINT
+        host = env["HF_ENDPOINT"].split("//", 1)[1].split(":", 1)[0]
+        assert host in env["NO_PROXY"].split(",")
         # The online child keeps the operator's proxy untouched (independent of
         # whatever proxy the test harness itself exports).
         monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:3128")
         monkeypatch.setenv("https_proxy", "http://proxy.example:3128")
+        monkeypatch.delenv("HF_ENDPOINT", raising=False)
         online_env = readiness._child_env(local_only=False)
+        assert "HF_ENDPOINT" not in online_env
         assert online_env["HTTPS_PROXY"] == "http://proxy.example:3128"
         assert online_env["https_proxy"] == "http://proxy.example:3128"
 
@@ -222,6 +229,19 @@ class TestChecks:
         )
         readiness.run_pipeline_check("tesseract_best", mode)
         assert (seen["proxy"] == readiness.DEAD_PROXY) is blocked
+
+    def test_hub_falls_back_to_cache_on_refused_but_not_on_proxy_error(self):
+        """Pins the huggingface_hub behaviour the local-only check relies on:
+        ConnectionError -> cache fallback, ProxyError -> raised. If a future
+        hub version changes this, the dead-endpoint trick must be revisited."""
+        import inspect
+
+        from huggingface_hub import _snapshot_download
+
+        src = inspect.getsource(_snapshot_download.snapshot_download)
+        assert "requests.exceptions.ProxyError" in src
+        assert "requests.exceptions.ConnectionError" in src
+        assert src.index("ProxyError") < src.index("exceptions.ConnectionError")
 
     def test_pipeline_ok_requires_heron_and_tableformer_accurate(
         self, monkeypatch, ocr_dir
