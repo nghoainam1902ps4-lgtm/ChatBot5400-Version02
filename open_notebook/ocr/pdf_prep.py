@@ -20,9 +20,9 @@ and the document is converted exactly as before.
 
 from __future__ import annotations
 
+import math
 import os
 import shutil
-import statistics
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -41,7 +41,11 @@ MIN_SCALE = 2.0
 SCAN_AREA_SHARE = 0.5
 OSD_RENDER_SCALE = 3.0
 OSD_MAX_SIDE_PX = 4000
-OSD_TIMEOUT_SECONDS = 120
+OSD_TIMEOUT_SECONDS = 30
+# Orientation costs about one second per scanned page and runs before Docling:
+# keep it bounded on very long scans (the remaining pages are left as they are).
+DEFAULT_OSD_MAX_PAGES = 200
+OSD_MAX_PAGES_ENV = "OCR_PAGE_OSD_MAX_PAGES"
 DEFAULT_PAGE_MIN_CONFIDENCE = 2.0
 PAGE_MIN_CONFIDENCE_ENV = "OCR_PAGE_OSD_MIN_CONFIDENCE"
 DISABLE_ENV = "OCR_PDF_PREP"
@@ -59,11 +63,21 @@ def enabled() -> bool:
 
 def page_min_confidence() -> float:
     try:
-        return float(
+        value = float(
             os.environ.get(PAGE_MIN_CONFIDENCE_ENV, "") or DEFAULT_PAGE_MIN_CONFIDENCE
         )
     except ValueError:
         return DEFAULT_PAGE_MIN_CONFIDENCE
+    # nan / inf / negative would silently switch the check off or on
+    return value if math.isfinite(value) and value >= 0 else DEFAULT_PAGE_MIN_CONFIDENCE
+
+
+def osd_max_pages() -> int:
+    try:
+        value = int(os.environ.get(OSD_MAX_PAGES_ENV, "") or DEFAULT_OSD_MAX_PAGES)
+    except ValueError:
+        return DEFAULT_OSD_MAX_PAGES
+    return value if value >= 0 else DEFAULT_OSD_MAX_PAGES
 
 
 @dataclass
@@ -168,6 +182,20 @@ def detect_page_rotation(
     return (360 - orientation) % 360, confidence
 
 
+def _page_rotation(
+    page: Any, index: int, workdir: str, tesseract_cmd: str, tessdata: str
+) -> tuple[int, float] | None:
+    width, height = page.get_size()
+    render_scale = min(OSD_RENDER_SCALE, OSD_MAX_SIDE_PX / max(width, height, 1.0))
+    image_path = os.path.join(workdir, f"page-{index}.png")
+    try:
+        page.render(scale=render_scale, grayscale=True).to_pil().save(image_path)
+        return detect_page_rotation(image_path, tesseract_cmd, tessdata)
+    finally:
+        if os.path.exists(image_path):
+            os.remove(image_path)
+
+
 def prepare(path: str, tesseract_cmd: str | None) -> PdfPrep:
     """Inspect ``path``; never raises (a failure means "convert it as it is")."""
     prep = PdfPrep()
@@ -195,6 +223,7 @@ def _prepare(path: str, tesseract_cmd: str | None, prep: PdfPrep) -> None:
     prep._tmpdir = workdir
     try:
         dpis: list[float] = []
+        checked, max_pages = 0, osd_max_pages()
         for index in range(len(pdf)):
             page = pdf[index]
             try:
@@ -202,25 +231,29 @@ def _prepare(path: str, tesseract_cmd: str | None, prep: PdfPrep) -> None:
                 if dpi is None:
                     continue  # born-digital page: nothing to do
                 dpis.append(dpi)
-                if not can_detect or not tesseract_cmd:
+                if not can_detect or not tesseract_cmd or checked >= max_pages:
                     continue
-                width, height = page.get_size()
-                render_scale = min(
-                    OSD_RENDER_SCALE, OSD_MAX_SIDE_PX / max(width, height, 1.0)
-                )
-                image_path = os.path.join(workdir, f"page-{index}.png")
-                page.render(scale=render_scale, grayscale=True).to_pil().save(
-                    image_path
-                )
-                found = detect_page_rotation(image_path, tesseract_cmd, tessdata)
-                os.remove(image_path)
+                checked += 1
+                try:
+                    found = _page_rotation(
+                        page, index, workdir, tesseract_cmd, tessdata
+                    )
+                except Exception as e:  # one bad page must not undo the others
+                    logger.warning(
+                        f"OCR page orientation skipped for page {index + 1} of "
+                        f"{os.path.basename(path)}: {type(e).__name__}"
+                    )
+                    continue
                 if found and found[0] != 0 and found[1] >= threshold:
                     page.set_rotation((page.get_rotation() + found[0]) % 360)
                     prep.rotated_pages[index] = found[0]
             finally:
                 page.close()
         if dpis:
-            prep.scan_dpi = round(statistics.median(dpis), 1)
+            # One scale per document (Docling has one OcrOptions): the HIGHEST scan
+            # resolution, so no page is ever rendered below its own resolution or
+            # below what it got before this module existed.
+            prep.scan_dpi = round(max(dpis), 1)
             prep.scale = scale_for_dpi(prep.scan_dpi)
         if prep.rotated_pages:
             # Same file name in a private directory: Docling names the document

@@ -39,9 +39,15 @@ _CONFIDENCE = re.compile(r"^Orientation confidence:\s*([0-9.]+)\s*$", re.MULTILI
 
 def min_confidence() -> float:
     try:
-        return float(os.environ.get(MIN_CONFIDENCE_ENV, "") or DEFAULT_MIN_CONFIDENCE)
+        value = float(os.environ.get(MIN_CONFIDENCE_ENV, "") or DEFAULT_MIN_CONFIDENCE)
     except ValueError:
         return DEFAULT_MIN_CONFIDENCE
+    # nan / inf / negative would silently gate everything or nothing
+    return (
+        value
+        if value == value and 0 <= value < float("inf")
+        else DEFAULT_MIN_CONFIDENCE
+    )
 
 
 def is_osd_call(args: list[str]) -> bool:
@@ -68,6 +74,10 @@ def gate_osd(output: str, threshold: float) -> str:
     """Report "upright" when the detected rotation is below ``threshold``."""
     parsed = parse_osd(output)
     if parsed is None:
+        if _ORIENTATION.search(output) and not _CONFIDENCE.search(output):
+            # A rotation without a readable confidence is not trustworthy either.
+            output = _ORIENTATION.sub(lambda m: f"{m.group(1)}0", output)
+            return _ROTATE.sub(lambda m: f"{m.group(1)}0", output)
         return output
     degrees, confidence = parsed
     if degrees == 0 or confidence >= threshold:

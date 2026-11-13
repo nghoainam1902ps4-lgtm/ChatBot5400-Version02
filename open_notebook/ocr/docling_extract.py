@@ -230,11 +230,11 @@ def convert_document(
     from open_notebook.ocr import pdf_prep, runtime
 
     prep = pdf_prep.PdfPrep()
-    if ocr.enabled:
-        prep = pdf_prep.prepare(path, runtime.tesseract_cmd())
-        if catalog.get_engine(ocr.engine).docling_kind != "tesseract":
-            prep.scale = None  # measured for Tesseract only
     try:
+        if ocr.enabled:
+            prep = pdf_prep.prepare(path, runtime.tesseract_cmd())
+            if catalog.get_engine(ocr.engine).docling_kind != "tesseract":
+                prep.scale = None  # measured for Tesseract only
         converter = build_converter(cc_config, ocr, scale=prep.scale)
         result = converter.convert(prep.path or path)
     finally:

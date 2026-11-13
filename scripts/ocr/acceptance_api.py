@@ -18,6 +18,7 @@ Sub-commands (all print one JSON line and exit 0 = PASS, 1 = FAIL, 2 = NOT VERIF
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import mimetypes
 import sys
@@ -268,6 +269,8 @@ def cmd_ocr_e2e(a) -> int:
     text = norm(full.get("full_text") or "")
     missing = [p for p in a.expect if norm(p) not in text]
     steps["expected_missing"] = missing
+    # Lets a caller compare two runs (online vs offline) without printing the text.
+    steps["text_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
     steps["source_id"] = source_id
     if missing:
         report["error"] = "expected text missing from the processed source"

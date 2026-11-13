@@ -117,24 +117,61 @@ def test_gate_process_passes_other_calls_through(tmp_path):
     assert proc.returncode == 3 and "boom" in proc.stderr
 
 
-def test_tesseract_command_gate_on_and_off(monkeypatch):
+@pytest.fixture
+def clean_gate_env(monkeypatch):
+    """tesseract_command() writes os.environ directly: make sure it is undone."""
+    monkeypatch.setenv(tesseract_gate.REAL_ENV, "placeholder")
     monkeypatch.delenv(options.TESSERACT_GATE_ENV, raising=False)
-    monkeypatch.delenv(tesseract_gate.REAL_ENV, raising=False)
-    cmd = options.tesseract_command("/usr/bin/tesseract")
+    monkeypatch.setattr(options, "_GATE_OK", {})
+
+
+def test_tesseract_command_gate_on_and_off(tmp_path, monkeypatch, clean_gate_env):
+    fake = str(_fake_tesseract(tmp_path))
+    cmd = options.tesseract_command(fake)
     assert Path(cmd).name == "tesseract_gate.py" and os.access(cmd, os.X_OK)
-    assert os.environ[tesseract_gate.REAL_ENV] == "/usr/bin/tesseract"
+    assert os.environ[tesseract_gate.REAL_ENV] == fake
     monkeypatch.setenv(options.TESSERACT_GATE_ENV, "false")
-    assert options.tesseract_command("/usr/bin/tesseract") == "/usr/bin/tesseract"
+    assert options.tesseract_command(fake) == fake
 
 
-def test_gate_is_a_valid_docling_tesseract_cmd(monkeypatch):
+def test_gate_is_a_valid_docling_tesseract_cmd(tmp_path, clean_gate_env):
     """Docling validates tesseract_cmd; the gate path must be accepted as is."""
     pytest.importorskip("docling")
     from docling.datamodel.pipeline_options import TesseractCliOcrOptions
 
-    monkeypatch.delenv(options.TESSERACT_GATE_ENV, raising=False)
-    cmd = options.tesseract_command("tesseract")
+    cmd = options.tesseract_command(str(_fake_tesseract(tmp_path)))
+    assert Path(cmd).name == "tesseract_gate.py"
     assert TesseractCliOcrOptions(lang=["vie"], tesseract_cmd=cmd).tesseract_cmd == cmd
+
+
+def test_tesseract_command_falls_back_when_gate_cannot_run(
+    tmp_path, monkeypatch, clean_gate_env
+):
+    """No python3 on PATH / no exec bit: OCR must keep working without the gate."""
+    fake = str(_fake_tesseract(tmp_path))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))  # shebang cannot find python3
+    assert options.tesseract_command(fake) == fake
+    # A real binary that does not exist is not hidden behind the gate either.
+    monkeypatch.undo()
+    monkeypatch.setattr(options, "_GATE_OK", {})
+    monkeypatch.setenv(tesseract_gate.REAL_ENV, "placeholder")
+    missing = str(tmp_path / "no-such-tesseract")
+    assert options.tesseract_command(missing) == missing
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf", "-1", "x"])
+def test_confidence_envs_reject_nonsense(monkeypatch, raw):
+    monkeypatch.setenv(tesseract_gate.MIN_CONFIDENCE_ENV, raw)
+    monkeypatch.setenv(pdf_prep.PAGE_MIN_CONFIDENCE_ENV, raw)
+    assert tesseract_gate.min_confidence() == tesseract_gate.DEFAULT_MIN_CONFIDENCE
+    assert pdf_prep.page_min_confidence() == pdf_prep.DEFAULT_PAGE_MIN_CONFIDENCE
+
+
+def test_gate_rotation_without_confidence_becomes_upright():
+    out = tesseract_gate.gate_osd(
+        "Orientation in degrees: 180\nRotate: 180\nOrientation confidence: nan\n", 2.0
+    )
+    assert "Orientation in degrees: 0" in out and "Rotate: 0" in out
 
 
 # --- EasyOCR threshold -------------------------------------------------------
@@ -260,9 +297,9 @@ def test_prepare_ignores_text_pdfs_other_files_and_failures(
         raise RuntimeError("tesseract exploded")
 
     monkeypatch.setattr(pdf_prep, "detect_page_rotation", boom)
-    # A failure means "convert the document as it is", never an exception.
+    # A failing page is left as it is; never an exception, never a rotation.
     prep = pdf_prep.prepare(str(scan_pdf), "tesseract")
-    assert prep.path is None and prep.scale is None and prep.rotated_pages == {}
+    assert prep.path is None and prep.rotated_pages == {} and prep.scale == 2.0
     # Not a PDF / unreadable / disabled: nothing happens.
     txt = tmp_path / "a.txt"
     txt.write_text("hello")
@@ -339,10 +376,94 @@ def test_convert_document_scale_only_for_tesseract(monkeypatch):
     assert seen["scale"] is None
 
 
-def test_tesseract_command_falls_back_when_gate_is_not_executable(monkeypatch):
-    monkeypatch.delenv(options.TESSERACT_GATE_ENV, raising=False)
-    import os as real_os
+def test_one_bad_page_does_not_undo_the_others(scan_pdf, osd_available, monkeypatch):
+    calls = []
 
-    monkeypatch.setattr(real_os, "access", lambda *a: False)
-    monkeypatch.setattr(Path, "chmod", lambda self, mode: None)
-    assert options.tesseract_command("/usr/bin/tesseract") == "/usr/bin/tesseract"
+    def flaky(image, cmd, tessdata):
+        calls.append(image)
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired("tesseract", 30)
+        return (180, 9.0)
+
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", flaky)
+    prep = pdf_prep.prepare(str(scan_pdf), "tesseract")
+    try:
+        assert prep.rotated_pages == {1: 180} and prep.scale == 2.0
+    finally:
+        prep.cleanup()
+
+
+def test_orientation_page_budget(scan_pdf, osd_available, monkeypatch):
+    calls = []
+
+    def upright(*a):
+        calls.append(1)
+        return (0, 9.0)
+
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", upright)
+    monkeypatch.setenv(pdf_prep.OSD_MAX_PAGES_ENV, "1")
+    prep = pdf_prep.prepare(str(scan_pdf), "tesseract")
+    assert len(calls) == 1 and prep.scan_dpi == 75.0  # resolution still measured
+
+
+def test_document_scale_uses_the_highest_scan_resolution(
+    tmp_path, osd_available, monkeypatch
+):
+    Image = pytest.importorskip("PIL.Image")
+    pytest.importorskip("pypdfium2")
+    import pypdfium2 as pdfium
+
+    lo, hi = tmp_path / "lo.pdf", tmp_path / "hi.pdf"
+    Image.new("RGB", (1240, 1754), "white").save(lo, resolution=150)
+    Image.new("RGB", (2480, 3508), "white").save(hi, resolution=300)
+    merged = pdfium.PdfDocument.new()
+    for src in (lo, lo, hi):
+        doc = pdfium.PdfDocument(str(src))
+        merged.import_pages(doc)
+        doc.close()
+    mixed = tmp_path / "mixed.pdf"
+    merged.save(str(mixed))
+    merged.close()
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", lambda *a: (0, 9.0))
+    prep = pdf_prep.prepare(str(mixed), "tesseract")
+    assert prep.scan_dpi == 300.0 and prep.scale is None  # 300 DPI pages keep scale 3
+
+
+def test_convert_document_uses_and_removes_the_temporary_copy(
+    scan_pdf, osd_available, monkeypatch
+):
+    from open_notebook.ocr import docling_extract
+
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", lambda *a: (90, 9.0))
+    monkeypatch.setattr(
+        docling_extract.runtime, "tesseract_cmd", lambda: "tesseract", raising=False
+    )
+    seen = {}
+
+    class Conv:
+        def __init__(self, fail):
+            self.fail = fail
+
+        def convert(self, path):
+            seen["path"], seen["existed"] = path, Path(path).is_file()
+            if self.fail:
+                raise RuntimeError("docling failed")
+            return "result"
+
+    for fail in (False, True):
+        monkeypatch.setattr(
+            docling_extract,
+            "build_converter",
+            lambda cc, ocr, scale=None, f=fail: Conv(f),
+        )
+        settings = options.OcrSettings(engine="rapidocr")
+        if fail:
+            with pytest.raises(RuntimeError):
+                docling_extract.convert_document(str(scan_pdf), object(), settings)
+        else:
+            _res, _conv, prep = docling_extract.convert_document(
+                str(scan_pdf), object(), settings
+            )
+            assert prep.as_meta()["rotated_pages"] == {"1": 90, "2": 90}
+        assert seen["path"] != str(scan_pdf) and seen["existed"]
+        assert not Path(seen["path"]).parent.exists()  # removed, also on failure

@@ -186,18 +186,47 @@ def tesseract_command(real_cmd: str) -> str:
             gate.chmod(gate.stat().st_mode | 0o111)
         except OSError:
             pass
-    if not os.access(gate, os.X_OK):
+    os.environ[tesseract_gate.REAL_ENV] = real_cmd
+    if not _gate_runs(str(gate), real_cmd):
         # Never break OCR over this: Tesseract still works, only the
         # protection against wrongly rotated crops is missing.
         from loguru import logger
 
         logger.warning(
-            f"{gate} is not executable; Tesseract runs without orientation "
-            f"gating (run 'chmod +x {gate}' to restore it)."
+            f"{gate} cannot be executed (needs the executable bit and python3 on "
+            f"PATH); Tesseract runs without orientation gating."
         )
         return real_cmd
-    os.environ[tesseract_gate.REAL_ENV] = real_cmd
     return str(gate)
+
+
+_GATE_OK: dict[tuple[str, str], bool] = {}
+
+
+def _gate_runs(gate: str, real_cmd: str) -> bool:
+    """True when ``gate --version`` works exactly like the real binary (cached)."""
+    import os
+    import subprocess
+
+    key = (gate, real_cmd)
+    if key not in _GATE_OK:
+        ok = os.access(gate, os.X_OK)
+        if ok:
+            try:
+                ok = (
+                    subprocess.run(  # noqa: S603 - our own file, fixed argument
+                        [gate, "--version"],
+                        capture_output=True,
+                        stdin=subprocess.DEVNULL,
+                        timeout=30,
+                        check=False,
+                    ).returncode
+                    == 0
+                )
+            except (OSError, subprocess.SubprocessError):
+                ok = False
+        _GATE_OK[key] = ok
+    return _GATE_OK[key]
 
 
 def build_ocr_options(

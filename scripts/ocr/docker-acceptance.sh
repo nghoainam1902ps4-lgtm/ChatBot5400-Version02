@@ -120,7 +120,9 @@ e2e() {  # $1 engine
 # including source processing succeeded).
 declare -A CONTENT_FAIL=()
 content_only_failure() { printf '%s' "$1" | grep -q '"error": "expected text missing from the processed source"'; }
-missing_of() { printf '%s' "$1" | grep -o '"expected_missing": \[[^]]*\]' | tail -1; }
+# What was (not) recognised: the missing expected strings AND a hash of the whole text,
+# so "same result as online" really means the same text, not just the same gaps.
+missing_of() { printf '%s' "$1" | grep -o -e '"expected_missing": \[[^]]*\]' -e '"text_sha256": "[0-9a-f]*"' | tr '\n' ' '; }
 internet_blocked() {
   ! docker exec "$(app_id)" /app/.venv/bin/python -c "import urllib.request;urllib.request.urlopen('https://pypi.org/simple/',timeout=10)" >/dev/null 2>&1
 }
