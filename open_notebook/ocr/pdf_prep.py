@@ -88,6 +88,8 @@ class PdfPrep:
     scale: float | None = None
     scan_dpi: float | None = None
     rotated_pages: dict[int, int] = field(default_factory=dict)
+    # ok | disabled | tesseract_missing | osd_data_missing | not_a_pdf | skipped
+    orientation: str = "skipped"
     _tmpdir: str | None = None
 
     def cleanup(self) -> None:
@@ -102,7 +104,36 @@ class PdfPrep:
             "scan_dpi": self.scan_dpi,
             # 1-based page number -> clockwise degrees added to /Rotate
             "rotated_pages": {str(p + 1): r for p, r in self.rotated_pages.items()},
+            # Whether orientation correction was able to run for this document.
+            "page_orientation": self.orientation,
         }
+
+
+def orientation_status(tesseract_cmd: str | None) -> dict[str, Any]:
+    """Whether page-orientation correction will really run (UI, logs, readiness).
+
+    ``available`` is only true when everything it needs is present: it is never
+    reported as working because of configuration alone, and nothing is ever
+    downloaded or installed to make it work.
+    """
+    is_enabled = enabled()
+    has_cmd = bool(tesseract_cmd)
+    has_osd = (paths.tessdata_dir() / "osd.traineddata").is_file()
+    if not is_enabled:
+        reason = "disabled"
+    elif not has_cmd:
+        reason = "tesseract_missing"
+    elif not has_osd:
+        reason = "osd_data_missing"
+    else:
+        reason = "ok"
+    return {
+        "enabled": is_enabled,
+        "available": is_enabled and has_cmd and has_osd,
+        "reason": reason,
+        "min_confidence": page_min_confidence(),
+        "max_pages": osd_max_pages(),
+    }
 
 
 def is_pdf(path: str) -> bool:
@@ -199,14 +230,19 @@ def _page_rotation(
 def prepare(path: str, tesseract_cmd: str | None) -> PdfPrep:
     """Inspect ``path``; never raises (a failure means "convert it as it is")."""
     prep = PdfPrep()
-    if not enabled() or not is_pdf(path):
+    if not enabled():
+        prep.orientation = "disabled"
         return prep
+    if not is_pdf(path):
+        prep.orientation = "not_a_pdf"
+        return prep
+    prep.orientation = orientation_status(tesseract_cmd)["reason"]
     try:
         _prepare(path, tesseract_cmd, prep)
     except Exception as e:  # corrupt / encrypted PDF, pdfium missing, …
         logger.warning(f"OCR PDF preparation skipped for {os.path.basename(path)}: {e}")
         prep.cleanup()
-        return PdfPrep()
+        return PdfPrep(orientation="skipped")
     return prep
 
 

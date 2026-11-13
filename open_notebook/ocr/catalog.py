@@ -87,6 +87,10 @@ class EngineSpec:
     license: str
     source_url: str
     files: tuple[ModelFile, ...] = field(default_factory=tuple)
+    # Quality qualification (D-27): a statement about measured OCR quality for
+    # Vietnamese business documents. Independent of "installed / ready" and of
+    # "offline verified" — an engine can run offline and still not qualify.
+    quality: str = "compatibility"
 
     @property
     def total_size(self) -> int:
@@ -104,6 +108,12 @@ _OSD = ModelFile(
     size=10562727,
     shared=True,
 )
+
+# recommended   - measured best overall for Vietnamese text and tables
+# speed         - faster Tesseract model; table labels weaker than "recommended"
+# compatibility - the project's original engine, model and defaults unchanged
+# experimental  - works, but did not meet the acceptance thresholds
+QUALITY_TIERS = ("recommended", "speed", "compatibility", "experimental")
 
 ENGINES: dict[str, EngineSpec] = {
     "rapidocr": EngineSpec(
@@ -130,6 +140,7 @@ ENGINES: dict[str, EngineSpec] = {
         model_name="tessdata_fast",
         model_version=TESSDATA_TAG,
         runtime="tesseract",
+        quality="speed",
         license="Apache-2.0",
         source_url="https://github.com/tesseract-ocr/tessdata_fast",
         files=(
@@ -157,6 +168,7 @@ ENGINES: dict[str, EngineSpec] = {
         model_name="tessdata_best",
         model_version=TESSDATA_TAG,
         runtime="tesseract",
+        quality="recommended",
         license="Apache-2.0",
         source_url="https://github.com/tesseract-ocr/tessdata_best",
         files=(
@@ -184,6 +196,7 @@ ENGINES: dict[str, EngineSpec] = {
         model_name="craft_mlt_25k + latin_g2",
         model_version=f"easyocr {EASYOCR_VERSION}",
         runtime="easyocr",
+        quality="experimental",
         license="Apache-2.0",
         source_url="https://github.com/JaidedAI/EasyOCR",
         files=(

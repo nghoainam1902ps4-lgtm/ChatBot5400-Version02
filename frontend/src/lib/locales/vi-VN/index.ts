@@ -1039,6 +1039,30 @@ export const viVN = {
         offline: "ngắt Internet",
       },
     },
+    quality: {
+      label: "Chất lượng",
+      legend: "Ba trạng thái độc lập: (1) Sẵn sàng = runtime và model đã cài; (2) Đã xác minh offline = toàn bộ pipeline chạy được khi không có Internet; (3) Chất lượng = mức đã đo trên văn bản tiếng Việt. Một engine có thể chạy offline nhưng chưa đạt chất lượng nghiệp vụ.",
+      tier: {
+        recommended: "Khuyến nghị cho tiếng Việt",
+        speed: "Ưu tiên tốc độ",
+        compatibility: "Tương thích ngược",
+        experimental: "Thử nghiệm",
+      },
+      note: {
+        rapidocr: "Giữ nguyên model và cấu hình mặc định. Đọc tốt chữ số, ngày, số tiền; mất dấu tiếng Việt trên trang scan và không khớp được nhãn chữ trong bảng tiếng Việt.",
+        tesseractFast: "Kết quả tốt với bảng biểu trên tập kiểm tra độc lập. Giới hạn đã đo: một số nhãn chữ trong bảng và tiêu đề in đậm có thể mất dấu.",
+        tesseractBest: "Chất lượng tổng thể tốt nhất đã đo cho văn bản và bảng scan tiếng Việt. Giới hạn đã biết: một số tiêu đề in đậm chữ hoa có thể mất dấu.",
+        easyocr: "Chưa đạt tiêu chuẩn nghiệm thu. Không khuyến nghị cho văn bản tài chính hoặc tài liệu cần chính xác số tiền: đã đo thấy sai chữ số và dấu. Tăng độ phân giải scan giúp cải thiện nhưng không giải quyết được mọi lỗi.",
+      },
+      experimentalConfirm: "EasyOCR Vietnamese đang ở mức Thử nghiệm: chưa đạt tiêu chuẩn chất lượng, đã đo thấy sai chữ số và dấu tiếng Việt. Không khuyến nghị cho văn bản tài chính. Bạn vẫn muốn dùng engine này cho tài liệu mới?",
+    },
+    pageOrientation: {
+      label: "Tự sửa hướng trang scan",
+      ok: "Khả dụng (áp dụng cho mọi engine)",
+      disabled: "Đã tắt (OCR_PDF_PREP=false)",
+      tesseract_missing: "Không khả dụng: chưa có Tesseract. Các engine vẫn chạy như bình thường; trang scan nằm ngang không được tự xoay.",
+      osd_data_missing: "Không khả dụng: chưa có dữ liệu dò hướng (cài Tesseract Vietnamese Fast hoặc Best). Các engine vẫn chạy như bình thường.",
+    },
     engineDesc: {
       rapidocr: "Engine OCR gốc của dự án (Docling Auto → RapidOCR, model PP-OCR mặc định). Giữ nguyên hành vi.",
       tesseractFast: "Tesseract LSTM với tessdata_fast tiếng Việt + tiếng Anh. Nhanh nhất trên CPU.",

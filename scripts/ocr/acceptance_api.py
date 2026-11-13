@@ -349,6 +349,25 @@ def cmd_readiness_check(a) -> int:
 MARKER_NOTEBOOK = "OCR acceptance marker notebook"
 
 
+def cmd_page_orientation(a) -> int:
+    """What the API reports about page-orientation correction (D-25 / D-27)."""
+    api = Api(a.api)
+    api.login(a.user, a.password)
+    status, body = api.call("GET", "/api/ocr/engines")
+    if status != 200:
+        return out({"step": "ocr_api", "http": status}, FAIL)
+    po = (body.get("general") or {}).get("page_orientation") or {}
+    report = {
+        "page_orientation": po,
+        "quality": {e["id"]: e.get("quality") for e in body.get("engines", [])},
+    }
+    if a.expect == "available" and not po.get("available"):
+        return out(report, FAIL)
+    if a.expect == "unavailable" and (po.get("available") or po.get("reason") == "ok"):
+        return out(report, FAIL)
+    return out(report, PASS)
+
+
 def cmd_seed_data(a) -> int:
     api = Api(a.api)
     api.login(a.user, a.password)
@@ -429,6 +448,8 @@ def main() -> int:
     r = sub.add_parser("readiness-check")
     r.add_argument("--engine", required=True)
     r.add_argument("--require-offline", action="store_true")
+    o = sub.add_parser("page-orientation")
+    o.add_argument("--expect", choices=["available", "unavailable", ""], default="")
     sub.add_parser("seed-data")
     sub.add_parser("check-data")
     a = ap.parse_args()
@@ -437,6 +458,7 @@ def main() -> int:
             "prepare": cmd_prepare,
             "readiness-check": cmd_readiness_check,
             "seed-data": cmd_seed_data,
+            "page-orientation": cmd_page_orientation,
             "check-data": cmd_check_data,
             "wait-ready": cmd_wait_ready,
             "ocr-e2e": cmd_ocr_e2e,

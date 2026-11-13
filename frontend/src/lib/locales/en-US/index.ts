@@ -1036,6 +1036,30 @@ export const enUS = {
         offline: "offline",
       },
     },
+    quality: {
+      label: "Quality",
+      legend: "Three independent states: (1) Ready = runtime and model installed; (2) Offline verified = the whole pipeline runs without Internet; (3) Quality = what was measured on Vietnamese documents. An engine can run offline and still not meet business quality.",
+      tier: {
+        recommended: "Recommended for Vietnamese",
+        speed: "Speed first",
+        compatibility: "Backward compatible",
+        experimental: "Experimental",
+      },
+      note: {
+        rapidocr: "Model and defaults unchanged. Reads digits, dates and amounts well; loses Vietnamese diacritics on scanned pages and cannot match Vietnamese row labels in tables.",
+        tesseractFast: "Good results on tables in the independent holdout set. Measured limits: some table labels and bold headings may lose diacritics.",
+        tesseractBest: "Best measured overall quality for scanned Vietnamese text and tables. Known limit: some bold upper-case headings may lose diacritics.",
+        easyocr: "Did not meet the acceptance thresholds. Not recommended for financial documents or anything that needs exact amounts: wrong digits and diacritics were measured. A higher scan resolution helps but does not fix every error.",
+      },
+      experimentalConfirm: "EasyOCR Vietnamese is Experimental: it did not meet the quality thresholds, and wrong digits and Vietnamese diacritics were measured. Not recommended for financial documents. Use this engine for new documents anyway?",
+    },
+    pageOrientation: {
+      label: "Auto-correct scanned page orientation",
+      ok: "Available (applies to every engine)",
+      disabled: "Switched off (OCR_PDF_PREP=false)",
+      tesseract_missing: "Not available: Tesseract is not installed. Engines keep working as usual; sideways scanned pages are not rotated.",
+      osd_data_missing: "Not available: orientation data is missing (install Tesseract Vietnamese Fast or Best). Engines keep working as usual.",
+    },
     engineDesc: {
       rapidocr: "The project's original OCR engine (Docling Auto → RapidOCR, default PP-OCR model). Behaviour unchanged.",
       tesseractFast: "Tesseract LSTM with tessdata_fast Vietnamese + English. Fastest on CPU.",

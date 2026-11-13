@@ -312,6 +312,7 @@ async def extract_with_selected_ocr(
         f"Docling OCR finished: engine={ocr.engine} actual_models={meta.get('ocr_models')} "
         f"in {meta.get('ocr_seconds')}s (ocr_scale={meta.get('ocr_scale')}, "
         f"scan_dpi={meta.get('scan_dpi')}, "
+        f"page_orientation={meta.get('page_orientation')}, "
         f"orientation_corrected_pages={sorted(meta.get('rotated_pages') or {})})"
     )
     expected = {

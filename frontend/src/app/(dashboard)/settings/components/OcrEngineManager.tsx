@@ -75,6 +75,24 @@ const DESC_KEYS: Record<OcrEngineId, string> = {
   tesseract_best: 'ocr.engineDesc.tesseractBest',
   easyocr: 'ocr.engineDesc.easyocr',
 }
+const QUALITY_NOTE_KEYS: Record<OcrEngineId, string> = {
+  rapidocr: 'ocr.quality.note.rapidocr',
+  tesseract_fast: 'ocr.quality.note.tesseractFast',
+  tesseract_best: 'ocr.quality.note.tesseractBest',
+  easyocr: 'ocr.quality.note.easyocr',
+}
+const QUALITY_TIER_KEYS: Record<string, string> = {
+  recommended: 'ocr.quality.tier.recommended',
+  speed: 'ocr.quality.tier.speed',
+  compatibility: 'ocr.quality.tier.compatibility',
+  experimental: 'ocr.quality.tier.experimental',
+}
+const PAGE_ORIENTATION_KEYS: Record<string, string> = {
+  ok: 'ocr.pageOrientation.ok',
+  disabled: 'ocr.pageOrientation.disabled',
+  tesseract_missing: 'ocr.pageOrientation.tesseract_missing',
+  osd_data_missing: 'ocr.pageOrientation.osd_data_missing',
+}
 const BUSY = new Set(['pending', 'downloading', 'installing'])
 const READINESS_KEYS: Record<string, string> = {
   runtime_missing: 'ocr.readiness.state.runtimeMissing',
@@ -330,6 +348,14 @@ function EngineRow({
             <Badge variant={stateVariant(engine.state)}>{t(STATE_KEYS[engine.state] ?? 'ocr.state.notInstalled')}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">{t(DESC_KEYS[engine.id])}</p>
+          {engine.quality && (
+            <p className="text-sm" data-quality={engine.quality}>
+              <Badge variant={engine.quality === 'experimental' ? 'destructive' : engine.quality === 'recommended' ? 'default' : 'secondary'}>
+                {t('ocr.quality.label')}: {t(QUALITY_TIER_KEYS[engine.quality] ?? 'ocr.quality.tier.compatibility')}
+              </Badge>{' '}
+              <span className="text-muted-foreground">{t(QUALITY_NOTE_KEYS[engine.id])}</span>
+            </p>
+          )}
         </div>
       </div>
 
@@ -409,7 +435,11 @@ function EngineRow({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => activate.mutate(engine.id)}
+            onClick={() => {
+              // An experimental engine is never activated without an explicit, informed choice.
+              if (engine.quality === 'experimental' && !window.confirm(t('ocr.quality.experimentalConfirm'))) return
+              activate.mutate(engine.id)
+            }}
             disabled={activate.isPending}
           >
             <PlayCircle className="h-4 w-4" aria-hidden />
@@ -526,7 +556,14 @@ export function OcrEngineManager() {
               <dd className="break-all">{general.models_dir}{general.offline_mode ? ` · ${t('ocr.offlineMode')}` : ''}</dd>
             </div>
           </dl>
+          {general.page_orientation && (
+            <p className="text-sm" data-testid="ocr-page-orientation">
+              <span className="text-muted-foreground">{t('ocr.pageOrientation.label')}:</span>{' '}
+              {t(PAGE_ORIENTATION_KEYS[general.page_orientation.reason] ?? 'ocr.pageOrientation.disabled')}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">{t('ocr.readOnlyInfo')}</p>
+          <p className="text-xs text-muted-foreground">{t('ocr.quality.legend')}</p>
           {!general.docling_available && (
             <Alert><AlertDescription>{t('ocr.doclingUnavailable')}</AlertDescription></Alert>
           )}

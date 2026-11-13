@@ -340,6 +340,8 @@ export interface AdminFeedbackListParams {
 
 // OCR Engine Manager (docs/ocr/OCR_ENGINE_MANAGER.md)
 export type OcrEngineId = 'rapidocr' | 'tesseract_fast' | 'tesseract_best' | 'easyocr'
+// Quality qualification: independent of installed/ready and of offline-verified.
+export type OcrQualityTier = 'recommended' | 'speed' | 'compatibility' | 'experimental'
 
 export type OcrLifecycleState =
   | 'not_installed'
@@ -386,6 +388,7 @@ export interface OcrEngineStatus {
   model_version: string
   license: string
   source_url: string
+  quality?: OcrQualityTier
   builtin: boolean
   download_size_bytes: number
   size_bytes: number
@@ -462,6 +465,13 @@ export interface OcrGeneralInfo {
   offline_mode: boolean
   dependency_problems?: string[]
   dependency_override?: boolean
+  // Page-orientation correction for scanned PDFs: available only when the
+  // Tesseract binary and its osd data are really present.
+  page_orientation?: {
+    enabled: boolean
+    available: boolean
+    reason: 'ok' | 'disabled' | 'tesseract_missing' | 'osd_data_missing'
+  }
 }
 
 export interface OcrEnginesResponse {

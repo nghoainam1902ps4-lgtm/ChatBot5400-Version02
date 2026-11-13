@@ -695,6 +695,10 @@ class OcrEngineStatus(BaseModel):
     license: str
     source_url: str
     builtin: bool
+    quality: str = Field(
+        "compatibility",
+        description="Quality qualification, independent of ready / offline state: recommended | speed | compatibility | experimental",
+    )
     download_size_bytes: int
     size_bytes: int
     installed_size_bytes: int
@@ -746,6 +750,9 @@ class OcrGeneralInfo(BaseModel):
     # content-core/Docling differ from the verified set (docs/ocr D-14)
     dependency_problems: List[str] = Field(default_factory=list)
     dependency_override: bool = False
+    # Page-orientation correction for scanned PDFs (docs/ocr D-25): enabled =
+    # not switched off; available = Tesseract binary + osd data really present.
+    page_orientation: Dict[str, Any] = Field(default_factory=dict)
 
 
 class OcrEnginesResponse(BaseModel):

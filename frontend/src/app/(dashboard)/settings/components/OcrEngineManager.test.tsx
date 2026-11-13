@@ -87,9 +87,10 @@ const rapid = engine({
   active: true,
 })
 
-function mockEngines(engines: OcrEngineStatus[]) {
+function mockEngines(engines: OcrEngineStatus[], general: Partial<OcrEnginesResponse['general']> = {}) {
+  const payload = data(engines)
   ;(useOcrEngines as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-    data: data(engines),
+    data: { ...payload, general: { ...payload.general, ...general } },
     isLoading: false,
     error: null,
     refetch: vi.fn(),
@@ -253,4 +254,48 @@ describe('OcrEngineManager', () => {
     expect(within(panel).getByRole('button', { name: /ocr.readiness.prepare/ })).toBeDisabled()
     expect(within(panel).getByText('ocr.readiness.checking')).toBeInTheDocument()
   })
+
+  it('shows the quality qualification separately from the ready state', () => {
+    mockEngines([
+      { ...rapid, quality: 'compatibility' },
+      engine({ id: 'tesseract_best', display_name: 'Tesseract Vietnamese Best', quality: 'recommended' }),
+      engine({ id: 'easyocr', display_name: 'EasyOCR Vietnamese', quality: 'experimental', state: 'ready', ready: true }),
+    ])
+    render(<OcrEngineManager />)
+    expect(within(row('tesseract_best')).getByText(/ocr\.quality\.tier\.recommended/)).toBeInTheDocument()
+    // Ready AND experimental at the same time: the two states are not merged.
+    expect(within(row('easyocr')).getByText(/ocr\.quality\.tier\.experimental/)).toBeInTheDocument()
+    expect(within(row('easyocr')).getByText('ocr.quality.note.easyocr')).toBeInTheDocument()
+    expect(screen.getByText('ocr.quality.legend')).toBeInTheDocument()
+  })
+
+  it('asks for confirmation before activating an experimental engine', () => {
+    mockEngines([rapid, engine({ id: 'easyocr', display_name: 'EasyOCR Vietnamese', quality: 'experimental', state: 'ready', ready: true })])
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<OcrEngineManager />)
+    fireEvent.click(within(row('easyocr')).getByRole('button', { name: /ocr\.use/ }))
+    expect(confirmSpy).toHaveBeenCalledWith('ocr.quality.experimentalConfirm')
+    expect(activate).not.toHaveBeenCalled()
+    confirmSpy.mockReturnValue(true)
+    fireEvent.click(within(row('easyocr')).getByRole('button', { name: /ocr\.use/ }))
+    expect(activate).toHaveBeenCalledWith('easyocr')
+    confirmSpy.mockRestore()
+  })
+
+  it('does not ask for confirmation for the other engines', () => {
+    mockEngines([rapid, engine({ id: 'tesseract_best', display_name: 'Tesseract Vietnamese Best', quality: 'recommended', state: 'ready', ready: true })])
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    render(<OcrEngineManager />)
+    fireEvent.click(within(row('tesseract_best')).getByRole('button', { name: /ocr\.use/ }))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(activate).toHaveBeenCalledWith('tesseract_best')
+    confirmSpy.mockRestore()
+  })
+
+  it('reports whether page-orientation correction is really available', () => {
+    mockEngines([rapid], { page_orientation: { enabled: true, available: false, reason: 'osd_data_missing' } })
+    render(<OcrEngineManager />)
+    expect(screen.getByTestId('ocr-page-orientation')).toHaveTextContent('ocr.pageOrientation.osd_data_missing')
+  })
+
 })

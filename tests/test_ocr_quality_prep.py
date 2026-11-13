@@ -467,3 +467,218 @@ def test_convert_document_uses_and_removes_the_temporary_copy(
             assert prep.as_meta()["rotated_pages"] == {"1": 90, "2": 90}
         assert seen["path"] != str(scan_pdf) and seen["existed"]
         assert not Path(seen["path"]).parent.exists()  # removed, also on failure
+
+
+# --- Phase 8D: release validation ---------------------------------------------
+
+
+def test_gate_refuses_to_call_itself(tmp_path):
+    proc = _run_gate(Path(tesseract_gate.__file__), "--version")
+    assert proc.returncode == 126 and "points to the gate itself" in proc.stderr
+    link = tmp_path / "tesseract"
+    link.symlink_to(tesseract_gate.__file__)
+    assert _run_gate(link, "--psm", "0", "x.png", "stdout").returncode == 126
+
+
+def test_gate_orientation_timeout_is_a_failed_osd_not_a_hang(tmp_path, monkeypatch):
+    def slow(*a, **k):
+        raise subprocess.TimeoutExpired("tesseract", 1)
+
+    monkeypatch.setattr(tesseract_gate.subprocess, "run", slow)
+    monkeypatch.setenv(tesseract_gate.REAL_ENV, str(_fake_tesseract(tmp_path)))
+    assert tesseract_gate.main(["--psm", "0", "x.png", "stdout"]) == 124
+
+
+def test_gate_holds_no_text_or_fixture_knowledge():
+    """The gate may only look at the orientation lines of Tesseract's OSD output."""
+    source = Path(tesseract_gate.__file__).read_text(encoding="utf-8")
+    for forbidden in ("BẢNG", "BANG KE", "fixture", "replace(", "tsv", "hocr"):
+        assert forbidden not in source, forbidden
+    recognised = "level\tpage_num\ttext\n5\t1\tBANG KE 1.250.000.000\n"
+    assert tesseract_gate.gate_osd(recognised, 2.0) == recognised
+
+
+def test_tesseract_cmd_never_comes_from_a_request():
+    """The command is deployment configuration: no API model carries one."""
+    import api.models as models
+
+    for name in ("OcrConfigUpdate", "OcrConfig"):
+        fields = getattr(models, name).model_fields
+        assert not [f for f in fields if "cmd" in f or "command" in f or "path" in f]
+
+
+@pytest.mark.parametrize(
+    "disable,cmd,osd,reason,available",
+    [
+        (None, "tesseract", True, "ok", True),
+        ("false", "tesseract", True, "disabled", False),
+        (None, None, True, "tesseract_missing", False),
+        (None, "tesseract", False, "osd_data_missing", False),
+    ],
+)
+def test_orientation_status(
+    osd_available, monkeypatch, disable, cmd, osd, reason, available
+):
+    if disable:
+        monkeypatch.setenv(pdf_prep.DISABLE_ENV, disable)
+    if not osd:
+        (osd_available / "osd.traineddata").unlink()
+    status = pdf_prep.orientation_status(cmd)
+    assert status["reason"] == reason and status["available"] is available
+    assert status["enabled"] is (disable is None)
+
+
+def test_prep_records_why_orientation_did_or_did_not_run(
+    scan_pdf, osd_available, monkeypatch
+):
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", lambda *a: (0, 9.0))
+    assert (
+        pdf_prep.prepare(str(scan_pdf), "tesseract").as_meta()["page_orientation"]
+        == "ok"
+    )
+    assert pdf_prep.prepare(str(scan_pdf), None).orientation == "tesseract_missing"
+    (osd_available / "osd.traineddata").unlink()
+    assert (
+        pdf_prep.prepare(str(scan_pdf), "tesseract").orientation == "osd_data_missing"
+    )
+    monkeypatch.setenv(pdf_prep.DISABLE_ENV, "false")
+    assert pdf_prep.prepare(str(scan_pdf), "tesseract").orientation == "disabled"
+
+
+def test_readiness_fingerprint_follows_the_quality_configuration(
+    osd_available, monkeypatch
+):
+    from open_notebook.ocr import readiness
+
+    monkeypatch.setattr(readiness.runtime, "tesseract_cmd", lambda: "tesseract")
+    monkeypatch.delenv(options.TESSERACT_GATE_ENV, raising=False)
+    monkeypatch.delenv(options.EASYOCR_CONFIDENCE_ENV, raising=False)
+    base = {
+        e: readiness.quality_config(e)
+        for e in ("rapidocr", "tesseract_best", "easyocr")
+    }
+    assert base["tesseract_best"]["osd_gate"] is True
+    assert base["easyocr"]["confidence_threshold"] == 0.2
+    assert base["rapidocr"]["page_orientation"]["available"] is True
+    # Every quality switch changes the fingerprint of the engines it affects.
+    monkeypatch.setenv(options.TESSERACT_GATE_ENV, "false")
+    assert readiness.quality_config("tesseract_best") != base["tesseract_best"]
+    assert readiness.quality_config("rapidocr") == base["rapidocr"]
+    monkeypatch.delenv(options.TESSERACT_GATE_ENV)
+    monkeypatch.setenv(options.EASYOCR_CONFIDENCE_ENV, "0.4")
+    assert readiness.quality_config("easyocr") != base["easyocr"]
+    monkeypatch.delenv(options.EASYOCR_CONFIDENCE_ENV)
+    # Orientation data removed: stale for EVERY engine (it is used by all of them),
+    # and orientation is never reported as available.
+    (osd_available / "osd.traineddata").unlink()
+    for engine in base:
+        cfg = readiness.quality_config(engine)
+        assert cfg != base[engine] and cfg["page_orientation"]["available"] is False
+    assert "quality" in readiness.fingerprint("rapidocr")
+
+
+def test_quality_tiers():
+    from open_notebook.ocr import catalog
+
+    tiers = {e: catalog.get_engine(e).quality for e in catalog.ENGINE_IDS}
+    assert tiers == {
+        "rapidocr": "compatibility",
+        "tesseract_fast": "speed",
+        "tesseract_best": "recommended",
+        "easyocr": "experimental",
+    }
+    assert set(tiers.values()) <= set(catalog.QUALITY_TIERS)
+    # An experimental engine is never the default (nor an automatic fallback).
+    assert catalog.get_engine(catalog.DEFAULT_ENGINE).quality != "experimental"
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "ocr"
+
+
+@pytest.mark.parametrize("angle", [90, 180, 270])
+def test_rotated_copy_keeps_text_layer_images_and_metadata(
+    osd_available, monkeypatch, angle
+):
+    """hon_hop.pdf: a born-digital page with a text layer + a scanned page."""
+    pdfium = pytest.importorskip("pypdfium2")
+    import pypdfium2.raw as raw
+
+    src = FIXTURES / "hon_hop.pdf"
+    if not src.exists():
+        pytest.skip("acceptance fixtures not present")
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", lambda *a: (angle, 9.0))
+    before = _sha(src)
+    prep = pdf_prep.prepare(str(src), "tesseract")
+    try:
+        assert prep.path and _sha(src) == before
+
+        def describe(path):
+            doc = pdfium.PdfDocument(path)
+            pages = []
+            for index in range(len(doc)):
+                page = doc[index]
+                pages.append(
+                    {
+                        "text": page.get_textpage().get_text_range(),
+                        "images": [
+                            o.get_px_size()
+                            for o in page.get_objects(
+                                filter=[raw.FPDF_PAGEOBJ_IMAGE], max_depth=3
+                            )
+                        ],
+                        "box": page.get_mediabox(),
+                        "rotation": page.get_rotation(),
+                    }
+                )
+            meta = doc.get_metadata_dict()
+            doc.close()
+            return pages, meta
+
+        before_pages, before_meta = describe(str(src))
+        after_pages, after_meta = describe(prep.path)
+        assert len(after_pages) == len(before_pages) == 2
+        assert after_meta == before_meta
+        assert before_pages[0]["text"].strip()  # page 1 has a real text layer
+        for a, b in zip(before_pages, after_pages):
+            assert b["text"] == a["text"]  # text layer intact, nothing rasterised
+            assert b["images"] == a["images"]  # same embedded scan, same pixels
+            assert b["box"] == a["box"]
+        # The ONLY difference: /Rotate of the scanned page; the text page is untouched.
+        assert after_pages[0]["rotation"] == before_pages[0]["rotation"]
+        assert after_pages[1]["rotation"] == (before_pages[1]["rotation"] + angle) % 360
+        assert prep.rotated_pages == {1: angle}
+    finally:
+        prep.cleanup()
+
+
+def test_gate_does_not_change_recognition_output(tmp_path):
+    """Real Tesseract, when installed: recognition through the gate == direct."""
+    import shutil
+
+    real = shutil.which(os.environ.get("OCR_TESSERACT_CMD", "tesseract"))
+    tessdata = os.environ.get("OCR_TEST_DATA_DIR") or os.environ.get("OCR_DATA_DIR")
+    lang_dir = Path(tessdata or "/nonexistent") / "models" / "tesseract"
+    if not real or not (lang_dir / "fast" / "vie.traineddata").is_file():
+        pytest.skip("Tesseract runtime / Vietnamese model not installed")
+    pdfium = pytest.importorskip("pypdfium2")
+    image = tmp_path / "page.png"
+    doc = pdfium.PdfDocument(str(FIXTURES / "vb_scan.pdf"))
+    doc[0].render(scale=2.0, grayscale=True).to_pil().save(image)
+    doc.close()
+    args = [
+        "-l",
+        "fast/vie",
+        "--tessdata-dir",
+        str(lang_dir),
+        str(image),
+        "stdout",
+        "tsv",
+    ]
+    direct = subprocess.run([real, *args], capture_output=True, timeout=300)
+    gated = _run_gate(Path(real), *args)
+    assert direct.returncode == 0 and gated.returncode == 0
+    assert gated.stdout.encode() == direct.stdout and len(direct.stdout) > 500
+    for extra in (["--version"], ["--list-langs", "--tessdata-dir", str(lang_dir)]):
+        a = subprocess.run([real, *extra], capture_output=True, timeout=60)
+        b = _run_gate(Path(real), *extra)
+        assert (b.returncode, b.stdout.encode()) == (a.returncode, a.stdout)

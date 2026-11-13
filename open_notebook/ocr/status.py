@@ -100,6 +100,7 @@ def engine_status(
         "license": spec.license,
         "source_url": spec.source_url,
         "builtin": spec.runtime == "builtin",
+        "quality": spec.quality,
         "download_size_bytes": spec.download_size,
         "size_bytes": spec.total_size,
         "installed_size_bytes": ms.installed_bytes,

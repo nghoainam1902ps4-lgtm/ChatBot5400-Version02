@@ -38,6 +38,10 @@ SCENARIOS="${SCENARIOS:-tesseract_best easyocr}"
 OLD_REF="${OLD_REF:-}"
 IMAGE="${IMAGE:-chatbot5400:ocr-accept}"
 OLD_IMAGE="${IMAGE}-old"
+# WITH_TESSERACT=false builds the image WITHOUT Tesseract (use another IMAGE name and
+# SCENARIOS="rapidocr easyocr"): proves these engines need no Tesseract and that
+# page-orientation correction is then reported as unavailable, not as working.
+WITH_TESSERACT="${WITH_TESSERACT:-true}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ocr-accept.XXXXXX")"
 PROJECT="ocraccept$$"
 FIXTURE="$REPO/tests/fixtures/ocr/vb_scan.pdf"
@@ -147,7 +151,7 @@ trap cleanup EXIT
 # --- build ---------------------------------------------------------------------------
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   log "Build image under test ($IMAGE), Tesseract build profile"
-  docker build --target runtime --build-arg OCR_INSTALL_TESSERACT=true -t "$IMAGE" "$REPO" || { fail "docker build"; exit 1; }
+  docker build --target runtime --build-arg OCR_INSTALL_TESSERACT="$WITH_TESSERACT" -t "$IMAGE" "$REPO" || { fail "docker build"; exit 1; }
 fi
 if [ -n "$OLD_REF" ]; then
   log "Build the deployed version ($OLD_REF)"
@@ -183,6 +187,14 @@ if [ -n "$OLD_REF" ]; then
   api check-data >/dev/null && pass "data (marker notebook) from $OLD_REF kept" || fail "data lost"
 fi
 
+if [ "$WITH_TESSERACT" = true ]; then
+  # osd data arrives with a Tesseract engine: not available before one is installed.
+  out="$(api page-orientation --expect unavailable)" && pass "page orientation reported unavailable before any Tesseract model is installed" || fail "page orientation: $out"
+else
+  out="$(api page-orientation --expect unavailable)" && pass "no Tesseract in the image: page orientation reported unavailable ($(printf '%s' "$out" | grep -o '"reason": "[a-z_]*"'))" || fail "page orientation: $out"
+  docker exec "$(app_id)" sh -c 'command -v tesseract' >/dev/null 2>&1 && fail "tesseract binary found in a WITH_TESSERACT=false image" || pass "no tesseract binary in the image"
+fi
+
 # --- 2. online preparation ------------------------------------------------------------------
 for E in $SCENARIOS; do
   log "2. ONLINE PREPARATION: $E"
@@ -213,6 +225,13 @@ for E in $SCENARIOS; do
   PREPARED="$PREPARED $E"
 done
 [ -n "$PREPARED" ] || { fail "no engine prepared; offline steps skipped"; exit 1; }
+case " $PREPARED " in
+  *" tesseract_"*) out="$(api page-orientation --expect available)" && pass "page orientation reported available (Tesseract + osd data installed)" || fail "page orientation: $out" ;;
+  *) out="$(api page-orientation --expect unavailable)" && pass "page orientation still unavailable (no Tesseract model installed); engines processed documents without it" || fail "page orientation: $out" ;;
+esac
+if [ "$WITH_TESSERACT" != true ]; then
+  docker exec "$(app_id)" sh -c 'command -v tesseract' >/dev/null 2>&1 && fail "tesseract appeared in the container (silent install?)" || pass "Tesseract was not installed silently"
+fi
 api settings-set --with-ocr >/dev/null && pass "settings marker incl. OCR config stored" || fail "settings-set"
 LAST="${PREPARED##* }"
 SUMS="$(model_sums)"; HF="$(hf_state)"
@@ -257,7 +276,7 @@ api settings-check --with-ocr --engine "$LAST" >/dev/null && pass "offline-resta
 log "5. ONLINE UPDATE: reconnect, rebuild for real, recreate, re-prepare"
 go_online
 OLD_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
-docker build --target runtime --build-arg OCR_INSTALL_TESSERACT=true --no-cache-filter runtime-base,runtime -t "$IMAGE" "$REPO" >/dev/null || fail "rebuild"
+docker build --target runtime --build-arg OCR_INSTALL_TESSERACT="$WITH_TESSERACT" --no-cache-filter runtime-base,runtime -t "$IMAGE" "$REPO" >/dev/null || fail "rebuild"
 NEW_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
 [ "$OLD_ID" != "$NEW_ID" ] && pass "rebuild produced a new image" || fail "rebuild reused the same image id"
 export APP_IMAGE="$IMAGE"

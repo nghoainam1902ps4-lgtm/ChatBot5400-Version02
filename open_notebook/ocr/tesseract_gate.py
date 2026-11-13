@@ -37,6 +37,19 @@ _ROTATE = re.compile(r"^(Rotate:\s*)(\d+)\s*$", re.MULTILINE)
 _CONFIDENCE = re.compile(r"^Orientation confidence:\s*([0-9.]+)\s*$", re.MULTILINE)
 
 
+OSD_TIMEOUT_SECONDS = 120
+
+
+def _is_self(real: str) -> bool:
+    import shutil
+
+    resolved = shutil.which(real) or real
+    try:
+        return os.path.samefile(resolved, __file__)
+    except OSError:
+        return False
+
+
 def min_confidence() -> float:
     try:
         value = float(os.environ.get(MIN_CONFIDENCE_ENV, "") or DEFAULT_MIN_CONFIDENCE)
@@ -88,11 +101,28 @@ def gate_osd(output: str, threshold: float) -> str:
 
 def main(argv: list[str]) -> int:
     real = os.environ.get(REAL_ENV) or "tesseract"
+    if _is_self(real):
+        # Misconfiguration (the "real" binary points back here): refuse instead
+        # of spawning ourselves forever.
+        sys.stderr.write(
+            "tesseract_gate: OCR_TESSERACT_REAL points to the gate itself\n"
+        )
+        return 126
     if not is_osd_call(argv):
         os.execvp(real, [real, *argv])  # never returns
-    proc = subprocess.run(  # noqa: S603 - fixed binary, arguments from Docling
-        [real, *argv], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False
-    )
+    try:
+        proc = subprocess.run(  # noqa: S603 - fixed binary, arguments from Docling
+            [real, *argv],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            check=False,
+            timeout=OSD_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        # Docling treats a failed orientation call as "no rotation" and goes on.
+        sys.stderr.write("tesseract_gate: orientation detection timed out\n")
+        return 124
     sys.stderr.buffer.write(proc.stderr)
     out = proc.stdout
     if proc.returncode == 0:

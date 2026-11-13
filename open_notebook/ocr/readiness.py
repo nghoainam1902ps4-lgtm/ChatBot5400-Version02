@@ -163,7 +163,32 @@ def fingerprint(engine_id: str) -> dict[str, Any]:
         fp["tesseract"] = runtime.probe_tesseract().version
     else:
         fp["easyocr"] = runtime._version("easyocr")
+    fp["quality"] = quality_config(engine_id)
     return fp
+
+
+def quality_config(engine_id: str) -> dict[str, Any]:
+    """The OCR quality settings a verdict was produced with (D-25 / D-26).
+
+    Part of the fingerprint: changing one of them (or installing / removing
+    the orientation data) makes an earlier verdict stale, so "offline ready"
+    always describes the configuration that will really run.
+    """
+    from open_notebook.ocr import options, pdf_prep, tesseract_gate
+
+    spec = catalog.get_engine(engine_id)
+    orientation = pdf_prep.orientation_status(runtime.tesseract_cmd())
+    cfg: dict[str, Any] = {
+        "page_orientation": {
+            k: orientation[k] for k in ("enabled", "available", "min_confidence")
+        }
+    }
+    if spec.runtime == "tesseract":
+        cfg["osd_gate"] = options.tesseract_osd_gate_enabled()
+        cfg["osd_gate_min_confidence"] = tesseract_gate.min_confidence()
+    elif spec.runtime == "easyocr":
+        cfg["confidence_threshold"] = options.easyocr_confidence_threshold()
+    return cfg
 
 
 def _child_env(local_only: bool) -> dict[str, str]:

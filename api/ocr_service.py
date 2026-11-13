@@ -24,6 +24,7 @@ from open_notebook.ocr import (
     compat,
     installer,
     paths,
+    pdf_prep,
     readiness,
     runtime,
     store,
@@ -163,6 +164,9 @@ async def list_engines() -> OcrEnginesResponse:
             + list(info.get("fingerprint_problems") or [])
         ),
         dependency_override=compat.override_enabled(),
+        page_orientation=await asyncio.to_thread(
+            lambda: pdf_prep.orientation_status(runtime.tesseract_cmd())
+        ),
     )
     engines = [await _status(e, config.docling_ocr_engine) for e in catalog.ENGINE_IDS]
     return OcrEnginesResponse(general=general, config=config, engines=engines)
