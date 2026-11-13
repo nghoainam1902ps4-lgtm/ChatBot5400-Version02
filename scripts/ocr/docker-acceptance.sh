@@ -217,7 +217,10 @@ for E in $SCENARIOS; do
   else
     fail "$E: online E2E: $out"; continue
   fi
-  docker logs "$(app_id)" 2>&1 | grep -q "Docling OCR finished: engine=$E actual_models=\['$(class_for "$E")'\]" &&
+  # Not `docker logs | grep -q`: under pipefail grep -q exits at the first match,
+  # docker logs gets SIGPIPE and the pipeline reports failure although the line is there.
+  docker logs "$(app_id)" > "$WORK/app.log" 2>&1
+  grep "Docling OCR finished: engine=$E actual_models=\['$(class_for "$E")'\]" "$WORK/app.log" >/dev/null &&
     pass "$E: worker log shows $(class_for "$E")" || fail "$E: engine not confirmed in worker log"
   before="$(model_sums)"
   api prepare --engine "$E" >/dev/null && [ "$(model_sums)" = "$before" ] &&
