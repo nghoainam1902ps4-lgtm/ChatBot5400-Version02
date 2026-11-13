@@ -330,3 +330,28 @@ Báo cáo đầy đủ: [OCR_PHASE8C_REPORT.md](OCR_PHASE8C_REPORT.md). Tóm t�
 - Script Docker: engine chỉ FAIL về nội dung vẫn đi tiếp các bước offline; ở đó văn bản phải trùng lúc
   online (so SHA-256). Lỗi nội dung vẫn được ghi FAIL một lần.
 
+## 11. Phase 8D — Kiểm tra phát hành cuối (2026-11-13)
+
+Báo cáo đầy đủ: [OCR_PHASE8D_REPORT.md](OCR_PHASE8D_REPORT.md).
+
+| Kiểm thử | Kết quả |
+|---|---|
+| `tests/test_ocr_integration.py`, strict, 4 engine (bộ gốc) | 38 PASS / 10 FAIL / 0 NOT VERIFIED — không đổi |
+| `-k tesseract_best` (bộ gốc) | 6 PASS / 3 FAIL — không đổi |
+| `scripts/ocr/release_criteria.py` (bổ sung) | Best 7/7 (3 kèm KL-1) · Fast 5/7 · RapidOCR 7/7 · EasyOCR 2/7; critical 7/7 · 7/7 · 7/7 · 2/7 |
+| `tests/test_ocr_release_criteria.py` | 13 passed |
+| `tests/test_ocr_quality_prep.py` | 60 passed (15 mới) |
+| Docker quick (Tesseract Best) | 42 PASS / 0 FAIL (lượt đầu 41 / 1: lỗi script P8D-1) |
+| Docker 4 engine | 74 PASS / 1 FAIL (nội dung EasyOCR) / 0 NOT VERIFIED |
+| Docker RapidOCR persistent (torch) | 42 PASS / 0 FAIL |
+| Docker image không có Tesseract (RapidOCR, EasyOCR) | 50 PASS / 1 FAIL (nội dung EasyOCR) / 0 NOT VERIFIED |
+| `pytest tests/` | 1239 passed / 10 failed / 44 skipped — cùng 10 lỗi của `main` |
+| Frontend | lint 0 error, tsc 0, vitest 408/408, build OK |
+| Bảo mật | 142 passed; trực tiếp 16/16 |
+
+- **P8D-1 (script nghiệm thu, đã sửa `c5162df`):** `docker logs | grep -q` dưới `pipefail` báo FAIL sai ở
+  bước "worker log shows …". Lượt quick đầu: 41 PASS / 1 FAIL do lỗi này; dòng log có thật trong container.
+- Lượt Docker full đầu bị ngắt giữa chừng khi phiên làm việc kết thúc (`docker-full-8d.run1-interrupted.log`);
+  script đã tự dọn container. Chạy lại bằng tiến trình tách rời.
+- Xác minh KL-1: với Tesseract Best, assertion tiêu đề là assertion **duy nhất** thất bại ở cả 3 bài. Với
+  Tesseract Fast còn thêm `table_rows` (nhãn `Tổng cộng`), nên ngoại lệ không áp dụng.

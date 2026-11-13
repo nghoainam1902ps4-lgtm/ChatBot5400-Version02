@@ -94,3 +94,46 @@ Bề mặt mới: hai module (`pdf_prep.py`, `tesseract_gate.py`), không endpoi
 
 Review độc lập diff Phase 8C: 0 High; 3 Medium và các điểm Low đã xử lý ở `755b637`
 (`OCR_PHASE8C_REPORT.md` §8). Kiểm tra bảo mật trực tiếp lặp lại trên stack nghiệm thu: xem báo cáo.
+
+## Phase 8D — Review trước phát hành
+
+### `tesseract_gate.py` (đã được chủ dự án chấp nhận có điều kiện)
+
+| Yêu cầu | Kết quả | Bằng chứng |
+|---|---|---|
+| Không kế thừa `BaseOcrModel`, không thay Tesseract, không đổi thuật toán nhận dạng | Đạt | File 135 dòng, chỉ thư viện chuẩn; không import Docling |
+| Không sửa Docling / Content Core / site-packages, không monkey patch | Đạt | Đặt qua `TesseractCliOcrOptions.tesseract_cmd` |
+| Không xử lý văn bản OCR, không từ khóa, không hardcode fixture | Đạt | `test_gate_holds_no_text_or_fixture_knowledge` |
+| Chuyển tiếp tham số, exit code, stdout, stderr | Đạt | `test_gate_process_passes_other_calls_through`; so byte-với-byte với Tesseract thật (`test_gate_does_not_change_recognition_output`: TSV, `--version`, `--list-langs`) |
+| Timeout | Đạt | Lệnh OSD giới hạn 120 s → exit 124, Docling coi là OSD lỗi và OCR tiếp; lệnh khác `exec` thẳng (như trước) |
+| Command injection | Đạt | Không `shell=True`; tham số dạng danh sách, do Docling tạo |
+| Đường dẫn binary | Đạt | `OCR_TESSERACT_REAL` do ứng dụng đặt từ `OCR_TESSERACT_CMD`/PATH — cấu hình của người vận hành |
+| Không đệ quy gọi lại chính nó | Đạt | exit 126 (`test_gate_refuses_to_call_itself`) |
+| Frontend không truyền được command | Đạt | Không trường nào trong `OcrConfig` / `OcrConfigUpdate` (`test_tesseract_cmd_never_comes_from_a_request`) |
+| Không lỗi tọa độ sau xoay | Đạt | Gate chỉ đổi OSD thành "đứng thẳng"; Docling tự quy đổi tọa độ như khi OSD trả 0 |
+| Rollback | Đạt | `OCR_TESSERACT_OSD_GATE=false`; gate không chạy được ⇒ tự gọi thẳng Tesseract |
+
+### `pdf_prep.py`
+
+| Yêu cầu | Kết quả | Bằng chứng |
+|---|---|---|
+| Chỉ xử lý bản tạm, không sửa file gốc | Đạt | SHA-256 trước/sau |
+| Không rasterize, giữ text layer, ảnh, MediaBox, metadata | Đạt | `test_rotated_copy_keeps_text_layer_images_and_metadata` (90/180/270°) |
+| Không sai bbox, không hỏng bảng | Đạt | bbox lệch ≤ 0,4 pt so với bản đứng thẳng; bảng cùng hình dạng (`runs/coordinates-after-rotation.json`) |
+| Dọn file tạm | Đạt | unit test + kiểm tra trên container: 3 job song song + 1 job sync, không sót `ocr-prep-*` |
+| Không cài / tải Tesseract ngầm | Đạt | Docker image không có Tesseract: không xuất hiện binary sau khi xử lý |
+
+### SSRF qua redirect — rủi ro CÒN LẠI (D-28)
+
+Không thay đổi trong Phase 8C/8D. Kiểm tra URL của worker là pre-check; Content Core / Docling tải lại và
+tự đi theo redirect, nên redirect khác ở lần tải thật và DNS rebinding không bị chặn. **Chưa khắc phục.**
+Biện pháp đề xuất cho môi trường ngân hàng (chọn ít nhất một, cần chủ dự án phê duyệt):
+
+1. Tắt URL ingestion với nguồn không tin cậy bằng cơ chế thực thi ở backend (từ chối `url` trong
+   `content_process` và ở API nguồn theo cấu hình). Chưa có trong mã; là một thay đổi riêng.
+2. Chính sách egress do quản trị viên phê duyệt cho container ứng dụng: chặn dải nội bộ, link-local và
+   metadata, chỉ cho phép các đích cần thiết (nhà cung cấp mô hình, Hugging Face khi chuẩn bị online).
+3. Vận hành offline sau khi chuẩn bị (mô hình online preparation → offline operation) thu hẹp bề mặt này
+   về 0 trong thời gian ngắt mạng.
+
+Production readiness phụ thuộc vào việc một biện pháp được phê duyệt và áp dụng.

@@ -90,7 +90,7 @@ services:
       - SURREAL_DATABASE=open_notebook
       - OPEN_NOTEBOOK_ENABLE_DOCLING=true
       - UV_TORCH_BACKEND=\${UV_TORCH_BACKEND:-cpu}
-      - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true
+      - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=${WITH_TESSERACT}   # the operator opt-in; off in the no-Tesseract scenario
       - OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true
       - OCR_RAPIDOCR_PERSISTENT=\${OCR_RAPIDOCR_PERSISTENT:-false}
       - OPEN_NOTEBOOK_WORKER_MAX_TASKS=1
@@ -191,7 +191,7 @@ if [ "$WITH_TESSERACT" = true ]; then
   # osd data arrives with a Tesseract engine: not available before one is installed.
   out="$(api page-orientation --expect unavailable)" && pass "page orientation reported unavailable before any Tesseract model is installed" || fail "page orientation: $out"
 else
-  out="$(api page-orientation --expect unavailable)" && pass "no Tesseract in the image: page orientation reported unavailable ($(printf '%s' "$out" | grep -o '"reason": "[a-z_]*"'))" || fail "page orientation: $out"
+  out="$(api page-orientation --expect unavailable)" && pass "no Tesseract (not in the image, not enabled): page orientation reported unavailable ($(printf '%s' "$out" | grep -o '"reason": "[a-z_]*"'))" || fail "page orientation: $out"
   docker exec "$(app_id)" sh -c 'command -v tesseract' >/dev/null 2>&1 && fail "tesseract binary found in a WITH_TESSERACT=false image" || pass "no tesseract binary in the image"
 fi
 

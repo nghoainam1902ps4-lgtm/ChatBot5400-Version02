@@ -85,3 +85,36 @@ chạy thật.
 | Review độc lập | PASS — 0 High; 3 Medium đã sửa | `OCR_PHASE8C_REPORT.md` §8 |
 | Production không bị ảnh hưởng; không xóa volume | PASS | `preflight/production-{before,after}.txt` |
 
+## Phase 8D — Kiểm tra phát hành cuối và phân loại chất lượng
+
+Bộ gốc và bộ có điều kiện được báo **riêng**; bộ có điều kiện không thay thế bộ gốc.
+
+| Hạng mục | Kết quả | Bằng chứng (`evidence/phase8d/`) |
+|---|---|---|
+| **A. Bộ gốc** 48 bài | 38 PASS / 10 FAIL / 0 NOT VERIFIED (không đổi) | `runs/ocr-acceptance-full-8d.json` |
+| A. Lộ trình nhanh (Tesseract Best) `FAIL == 0` | **FAIL** — 6 PASS / 3 FAIL | `runs/ocr-acceptance-quick-8d.json` |
+| 48 bài, fixture, ground truth, ngưỡng không đổi; không skip/xfail | PASS | `git diff 16fc623..HEAD -- tests/test_ocr_integration.py tests/fixtures` rỗng |
+| **B. Có điều kiện** — Tesseract Best: critical 7/7, mọi FAIL gốc chỉ do KL-1 | **PASS** — 4 PASS + 3 PASS_WITH_KNOWN_LIMITATION | `runs/release-criteria.{json,md}` |
+| B. Tesseract Fast | **FAIL** 2/7 (nhãn `Tổng cộng`); critical 7/7 | như trên |
+| B. RapidOCR | PASS 7/7 | như trên |
+| B. EasyOCR | **FAIL** 5/7; critical 2/7 | như trên |
+| Công cụ có điều kiện không nới hơn dự định (sai số tiền, sai nhãn, mất chữ ⇒ FAIL) | PASS | `tests/test_ocr_release_criteria.py` (13) |
+| `tesseract_gate.py`: 11 điều kiện của chủ dự án | PASS | `OCR_PHASE8D_REPORT.md` §2 |
+| Gate không đổi kết quả nhận dạng (so byte với Tesseract thật) | PASS | `test_gate_does_not_change_recognition_output` |
+| `pdf_prep.py`: file gốc, text layer, metadata, ảnh không đổi | PASS | `test_rotated_copy_keeps_text_layer_images_and_metadata` |
+| Tọa độ sau xoay 90 / 180 / 270° | PASS — lệch ≤ 0,4 pt | `runs/coordinates-after-rotation.json` |
+| Xử lý sync + async, 3 job song song, dọn file tạm | PASS | `runs/concurrency-live.json` |
+| Readiness hết hiệu lực khi cấu hình chất lượng đổi | PASS | `test_readiness_fingerprint_follows_the_quality_configuration` |
+| Trạng thái hướng trang báo đúng (không báo khả dụng khi thiếu Tesseract/osd) | PASS | unit test + Docker |
+| RapidOCR / EasyOCR không cần Tesseract; không cài ngầm | PASS — cục bộ: RapidOCR trùng 7/7 với baseline 8B; Docker: 50 PASS / 1 FAIL (nội dung EasyOCR), không có binary Tesseract trước và sau | `runs/no-tesseract/`, `runs/docker-no-tesseract-8d.log` |
+| Phân loại 4 lựa chọn trong catalog, API, giao diện vi/en, tài liệu vi/en | PASS | `OCR_ENGINE_MANAGER.md` §8, ADR-013 |
+| EasyOCR: cảnh báo xác nhận trước khi bật; không mặc định; không fallback | PASS | `OcrEngineManager.test.tsx`, `test_quality_tiers` |
+| Docker lộ trình nhanh (Tesseract Best) | PASS — 42 PASS / 0 FAIL (lượt đầu 41 / 1 do lỗi script P8D-1, đã sửa) | `runs/docker-quick-8d.log` |
+| Docker 4 engine, online → offline → restart → update → offline | Hạ tầng PASS (74 PASS); **1 FAIL nội dung EasyOCR** | `runs/docker-full-8d.log` |
+| RapidOCR persistent, backend torch | PASS — 42 / 0 | `runs/docker-rapidocr-persistent-8d.log` |
+| Backend regression | PASS — 1239 / 10, cùng 10 lỗi của `main` | `runs/pytest-full-8d.txt` |
+| Frontend lint / tsc / vitest / build | PASS — 0 error / 0 / 408 / OK | `runs/frontend-8d.txt` |
+| Bảo mật: test + kiểm tra trực tiếp | PASS — 142 passed; 16/16 | `runs/security-live-8d.json` |
+| SSRF qua redirect đã khắc phục | **KHÔNG** — rủi ro còn lại, cần biện pháp được duyệt | `OCR_SECURITY_REVIEW.md` |
+| `offline_verified` ngoài Docker | NOT VERIFIED — cần ngắt mạng máy chủ | — |
+| Production không bị ảnh hưởng; không xóa volume/image/cache | PASS | `preflight/production-{before,after}.txt` |

@@ -286,3 +286,43 @@ Mỗi quyết định: bối cảnh → quyết định → phương án bị lo
   trên trang đứng thẳng, nên 0,2 không mất gì mà vẫn lọc rác trên trang nhiễu.
 - Giới hạn không sửa được: ở 150 DPI model Latin Gen2 đọc sai chữ số và dấu kể cả khi giữ mọi dòng.
   5 bài nghiệm thu của EasyOCR vẫn FAIL; không hạ ngưỡng, không thay model.
+
+## D-27. Phân loại chất lượng và tiêu chí phát hành có điều kiện (Phase 8D)
+
+Quyết định của chủ dự án, thực hiện trong Phase 8D:
+
+1. **Ba trạng thái tách biệt:** (1) runtime/model sẵn sàng; (2) đã xác minh offline; (3) phân loại chất
+   lượng. `EngineSpec.quality` ∈ `recommended` (Tesseract Best) · `speed` (Tesseract Fast) ·
+   `compatibility` (RapidOCR) · `experimental` (EasyOCR). API trả `quality`; giao diện hiển thị riêng,
+   không gộp vào trạng thái "Sẵn sàng". Giữ đủ 3 engine / 4 lựa chọn.
+2. **EasyOCR = thử nghiệm:** giao diện hỏi xác nhận trước khi bật; không bao giờ là mặc định; không có
+   fallback tự động sang engine nào (D-07 giữ nguyên). Không tuyên bố tăng DPI là sửa được mọi lỗi.
+3. **Tiêu chí phát hành có điều kiện** (`scripts/ocr/release_criteria.py`): bổ sung, **không thay thế**
+   48 bài gốc. Với mỗi engine × fixture, công cụ đánh giá lại *mọi* assertion của bài gốc rồi phân loại:
+   - *Critical* — mọi số tiền, ngày, số hiệu; hình dạng bảng; giá trị số của từng dòng bảng; tiêu đề có
+     mặt đúng vị trí khi không xét dấu. Không bao giờ được miễn.
+   - *General* — CER, dấu tiếng Việt, tiêu đề đúng từng dấu, nhãn dòng bảng.
+   - *Giới hạn đã chấp nhận* — **KL-1**: Tesseract mất dấu ở tiêu đề in đậm
+     `BẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU`. Chỉ áp dụng khi cụm đó vẫn có mặt, đúng vị trí, nếu so không dấu;
+     và khi đó là lỗi **duy nhất** của bài. Bất kỳ lỗi nào khác ⇒ ngoại lệ không áp dụng.
+   Kết quả: `PASS` · `PASS_WITH_KNOWN_LIMITATION` · `FAIL`. Kết quả bài gốc luôn được báo cùng.
+4. Không sửa fixture, ground truth, ngưỡng; không `skip`/`xfail`; không sửa văn bản OCR; không từ điển
+   sửa lỗi. Ngưỡng trong công cụ được một unit test giữ bằng ngưỡng của bài gốc.
+5. **Chấp nhận `tesseract_gate.py`** (D-25 phần 1) sau review ở Phase 8D (`OCR_PHASE8D_REPORT.md` §2);
+   rollback `OCR_TESSERACT_OSD_GATE=false` giữ nguyên.
+6. **Chấp nhận `pdf_prep.py`** phạm vi hiện có. Trạng thái khả dụng của chuẩn hóa hướng trang được báo
+   trung thực (`general.page_orientation`, metadata `page_orientation`, log); không cài hay tải Tesseract
+   ngầm; RapidOCR / EasyOCR chạy bình thường khi thiếu Tesseract.
+7. **Readiness theo cấu hình chất lượng:** fingerprint gồm `quality` (gate, ngưỡng, trạng thái hướng
+   trang, ngưỡng EasyOCR). Đổi một trong số đó, hoặc cài/gỡ `osd.traineddata`, làm verdict cũ hết hiệu lực.
+
+## D-28. SSRF qua redirect: rủi ro còn lại, điều kiện production (Phase 8D)
+
+- Kiểm tra URL của worker là **pre-check**: Content Core / Docling tải lại URL và tự đi theo redirect, nên
+  redirect khác ở lần tải thật và DNS rebinding **không** được chặn (`BACKGROUND_JOB_SECURITY.md` §5).
+  Phase 8D **không** sửa điều này và không tuyên bố đã khắc phục.
+- Không đổi firewall, mạng production hay kiến trúc URL ingestion trong phase này.
+- Production readiness **phụ thuộc** một trong hai biện pháp được chủ dự án phê duyệt:
+  (a) tắt URL ingestion với nguồn không tin cậy bằng cơ chế thực thi ở backend (chưa có trong mã — cần
+  một thay đổi riêng); hoặc (b) chính sách egress của mạng do quản trị viên phê duyệt (chặn dải nội bộ,
+  metadata, chỉ cho phép đích cần thiết) áp cho container ứng dụng.

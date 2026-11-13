@@ -35,3 +35,36 @@ exposes no way to pass `ocr_options`.
 - Runtime installs (Docling, EasyOCR) are constrained to `uv.lock` via an exported constraints file,
   and a compatibility guard (versions + source fingerprints of the content-core internals the layer
   mirrors) disables non-default engines on drift instead of failing silently (docs/ocr D-14).
+
+## Addendum (Phase 8C / 8D): OCR quality and release classification
+
+Measured on synthetic Vietnamese business documents (details, in Vietnamese:
+`docs/ocr/OCR_QUALITY_BENCHMARK.md`, `docs/ocr/OCR_PHASE8D_REPORT.md`).
+
+Three states are reported separately and must not be merged:
+
+1. **Runtime / model ready** — the engine is installed and can be selected.
+2. **Offline verified** — the whole pipeline (Layout Heron + TableFormer + OCR) ran
+   with the network blocked.
+3. **Quality qualification** — what was measured for Vietnamese documents. An
+   engine can be ready and offline-verified and still not qualify.
+
+| Choice | Quality tier | Use for | Known limits |
+|---|---|---|---|
+| Tesseract Vietnamese Best | `recommended` | Scanned Vietnamese text and tables; best overall quality | Some bold upper-case headings lose diacritics (accepted, non-blocking) |
+| Tesseract Vietnamese Fast | `speed` | Faster; good table results on the holdout set | Some table labels and bold headings lose diacritics |
+| RapidOCR – PaddleOCR | `compatibility` | The original engine; model and defaults unchanged | Loses Vietnamese diacritics on scans; cannot match Vietnamese table labels |
+| EasyOCR Vietnamese | `experimental` | Evaluation only | Wrong digits and diacritics on 150 DPI scans; not for financial documents. A higher scan resolution helps but does not fix every error |
+
+Rules: the default engine is never changed automatically; there is no automatic
+fallback to another engine (in particular never to an experimental one); the UI asks
+for confirmation before an experimental engine is activated.
+
+Quality corrections (all through official Docling options, no Docling / content-core
+change): `tesseract_gate.py` (set as `TesseractCliOcrOptions.tesseract_cmd`) ignores
+low-confidence orientation guesses; `pdf_prep.py` corrects the orientation of scanned
+pages in a temporary copy (needs the Tesseract binary and `osd.traineddata`; when they
+are missing the engines work as before and the API reports the feature as unavailable);
+OCR render scale follows the scan resolution for Tesseract; EasyOCR confidence
+threshold 0.2. Switches: `OCR_TESSERACT_OSD_GATE=false`, `OCR_PDF_PREP=false`,
+`OCR_EASYOCR_CONFIDENCE`.

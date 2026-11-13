@@ -107,3 +107,16 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
 - Bằng chứng: `/home/admin/cb5400-ocr-accept/evidence/phase8c/`.
 - Trạng thái: chưa merge, chưa push, chưa triển khai.
 
+## Phase 8D
+
+- Branch `local/ocr-phase8c` (không tạo branch mới; kế thừa đủ 8B + 8C).
+- Commit: `09231ee` (phân loại chất lượng, trạng thái hướng trang, tiêu chí phát hành), `c5162df` (sửa race
+  của script Docker), + tài liệu.
+- File mới: `scripts/ocr/release_criteria.py`, `tests/test_ocr_release_criteria.py`.
+- Quyết định: D-27 (phân loại + tiêu chí có điều kiện + chấp nhận gate / pdf_prep), D-28 (SSRF còn lại).
+- Kết quả: bộ gốc 38/48 (không đổi); có điều kiện — Tesseract Best 7/7; Docker full 74 PASS / 1 FAIL;
+  RapidOCR persistent 42/0; regression không lỗi mới.
+- Trạng thái: READY FOR MERGE (có điều kiện, chờ xác nhận) · READY FOR CONDITIONAL RELEASE (Tesseract Best,
+  RapidOCR) · NOT READY FOR PRODUCTION (SSRF qua redirect, benchmark tài liệu thật).
+- Còn mở: `OCR_PHASE8D_REPORT.md` §11 F và §15.
+- Bằng chứng: `/home/admin/cb5400-ocr-accept/evidence/phase8d/`. Chưa push, chưa merge, chưa triển khai.

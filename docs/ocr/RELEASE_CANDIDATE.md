@@ -1,10 +1,18 @@
-# Release Candidate — OCR Engine Manager (Phase 0 → 8C)
+# Release Candidate — OCR Engine Manager (Phase 0 → 8D)
 
 - **Branch:** `claude/friendly-mendel-a2b6m5`.
 - **Gốc so sánh:** `5e04227` (trước tính năng) và `e32eae8` (Phase 7).
 - **Không merge main, không triển khai production** trong phiên phát triển.
 
-Trạng thái (sau Phase 8C, 2026-11-13): **CHỜ QUYẾT ĐỊNH CỦA CHỦ DỰ ÁN — xem §7.** Lỗi chất lượng chính
+Trạng thái (sau Phase 8D, 2026-11-13) — chi tiết ở §8:
+
+- **READY FOR MERGE (có điều kiện)** — theo tiêu chí phát hành có điều kiện D-27; chờ chủ dự án xác nhận.
+- **READY FOR CONDITIONAL RELEASE** — Tesseract Vietnamese Best (khuyến nghị) và RapidOCR (tương thích ngược).
+- **NOT READY FOR PRODUCTION** — rủi ro SSRF qua redirect chưa có biện pháp được phê duyệt; chưa benchmark
+  trên tài liệu thật.
+- Bộ nghiệm thu gốc **không đổi**: 38 PASS / 10 FAIL; lộ trình nhanh 6 PASS / 3 FAIL.
+
+Trạng thái sau Phase 8C (giữ để đối chiếu): **CHỜ QUYẾT ĐỊNH CỦA CHỦ DỰ ÁN — xem §7.** Lỗi chất lượng chính
 (P8B-4, P8B-5, P8B-6) đã xử lý; điều kiện §3.1 còn 3 FAIL do giới hạn model. Chưa merge, chưa push, chưa
 triển khai.
 
@@ -167,3 +175,52 @@ scan, trường khóa đạt 1,00.
 **Khuyến nghị sử dụng sau Phase 8C:** Tesseract Vietnamese Best cho văn bản và bảng scan tiếng Việt;
 RapidOCR giữ làm mặc định để tương thích ngược; EasyOCR không khuyến nghị cho scan dưới 200 DPI.
 
+## 8. Phase 8D — tiêu chí phát hành có điều kiện và trạng thái cuối
+
+Branch cục bộ `local/ocr-phase8c`. Báo cáo: [OCR_PHASE8D_REPORT.md](OCR_PHASE8D_REPORT.md). Quyết định: D-27, D-28.
+
+### 8.1 Tiêu chí phát hành có điều kiện (bổ sung, không thay §3)
+
+Điều kiện §3.1 gốc (`FAIL == 0` ở lộ trình nhanh) **vẫn được đo và báo**. Chủ dự án chấp nhận phát hành
+khi **tất cả** các điều sau đúng cho engine được phát hành:
+
+1. Mọi kiểm tra **Critical** đạt trên cả 7 fixture: mọi số tiền, mọi ngày, mọi số hiệu; hình dạng bảng;
+   giá trị số của từng dòng bảng; ô tiêu đề gộp; tiêu đề có mặt đúng vị trí khi không xét dấu.
+2. Mỗi bài gốc còn FAIL chỉ thất bại ở assertion tiêu đề, và lỗi đó là **KL-1** (mất dấu ở
+   `BẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU`). Có bất kỳ lỗi nào khác ⇒ bài đó FAIL, ngoại lệ không áp dụng.
+3. 48 bài gốc, fixture, ground truth, ngưỡng không đổi; không `skip` / `xfail`.
+4. Công cụ: `uv run python scripts/ocr/release_criteria.py --out … --markdown …`.
+
+### 8.2 Kết quả
+
+| Engine | Bộ gốc | Critical | Có điều kiện | Kết luận |
+|---|---|---|---|---|
+| Tesseract Vietnamese Best | 6/9 (3 FAIL) | 7/7 | 7/7 (3 bài áp dụng KL-1) | **Đạt tiêu chí có điều kiện** |
+| Tesseract Vietnamese Fast | 7/9 (2 FAIL) | 7/7 | 5/7 — 2 bài còn sai nhãn dòng `Tổng cộng` | **Không đạt** tiêu chí có điều kiện; dùng được với giới hạn đã ghi |
+| RapidOCR – PaddleOCR | 8/8 | 7/7 (tiêu chí riêng: trường số) | 7/7 | Đạt — engine tương thích ngược |
+| EasyOCR Vietnamese | 4/9 (5 FAIL) | 2/7 | 2/7 | **Không đạt** — thử nghiệm |
+
+| Điều kiện | Kết quả |
+|---|---|
+| §3.1 gốc, §4.3 lộ trình nhanh `FAIL == 0` | **KHÔNG ĐẠT theo đúng chữ** — 6 PASS / 3 FAIL |
+| §3.1 theo tiêu chí có điều kiện (Tesseract Best) | **ĐẠT** — 7/7, critical 7/7 |
+| §3.1 §5 Docker lộ trình nhanh không có `FAIL` | **ĐẠT** — 42 PASS / 0 FAIL (lượt đầu 41/1 do lỗi của script nghiệm thu, đã sửa `c5162df`) |
+| §3.2, §3.3 | **ĐẠT** — bảo mật trực tiếp 16/16; backend cùng 10 lỗi của `main` |
+| §4.1 Docker 4 engine | Hạ tầng **ĐẠT** — 74 PASS / 1 FAIL (nội dung EasyOCR) / 0 NOT VERIFIED |
+| §4.1 `OCR_RAPIDOCR_PERSISTENT=true`, backend torch (chạy lại sau Phase 8C) | **ĐẠT** — 42 PASS / 0 FAIL |
+| RapidOCR / EasyOCR khi image không có Tesseract | **ĐẠT** — 50 PASS / 1 FAIL (nội dung EasyOCR); không có Tesseract trong container, không cài ngầm; hướng trang báo `tesseract_missing` |
+| §4.2 Benchmark trên tài liệu thật | **CHƯA LÀM** |
+| Bảo mật: SSRF qua redirect | **CÒN MỞ** — cần biện pháp được phê duyệt (D-28) |
+
+### 8.3 Giới hạn
+
+- **Đã chấp nhận:** KL-1; `tesseract_gate.py` (đã review, rollback `OCR_TESSERACT_OSD_GATE=false`);
+  RapidOCR mất dấu tiếng Việt.
+- **Chưa chấp nhận / còn mở:** nhãn dòng bảng của Tesseract Fast; lỗi dấu ở tiêu đề/nhãn in đậm rộng hơn
+  cụm `BẢNG KÊ` (holdout: 4/13 tài liệu với Best, 3/13 với Fast; critical vẫn 13/13); EasyOCR; SSRF qua
+  redirect; `offline_verified` ngoài Docker; benchmark tài liệu thật.
+
+### 8.4 Trước merge và trước production
+
+Xem `OCR_PHASE8D_REPORT.md` §15. Tóm tắt: merge cần chủ dự án xác nhận D-27 và hai điểm còn mở về Tesseract;
+production cần thêm biện pháp SSRF được duyệt, benchmark tài liệu thật, backup và quy trình vận hành.

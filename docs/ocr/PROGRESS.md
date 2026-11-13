@@ -54,4 +54,12 @@
 | 8C | Docker 4 engine online → offline → restart → update | 72 PASS / 1 FAIL (nội dung EasyOCR) |
 | 8C | Regression / frontend / bảo mật trực tiếp / review độc lập | DONE (cùng 10 lỗi của `main`; 404/404; 16/16; 0 High, 3 Medium đã sửa) |
 | 8C | Điều kiện merge §3.1 (`FAIL == 0` lộ trình nhanh) | **OPEN — 3 FAIL do giới hạn model; cần quyết định** (`OCR_PHASE8C_REPORT.md` §9) |
-
+| 8D | Tiêu chí phát hành có điều kiện (`release_criteria.py`), xác minh KL-1 | DONE — Best: lỗi tiêu đề là duy nhất (3/3); Fast: không (thêm nhãn bảng) |
+| 8D | Review `tesseract_gate.py` (11 điều kiện), `pdf_prep.py`; chốt chặn đệ quy/timeout | DONE |
+| 8D | Phân loại chất lượng 4 lựa chọn: catalog, API, giao diện vi/en, tài liệu vi/en; cảnh báo EasyOCR | DONE |
+| 8D | Trạng thái hướng trang trung thực; readiness theo cấu hình chất lượng | DONE |
+| 8D | Bộ gốc 48 bài | 38 PASS / 10 FAIL (không đổi) |
+| 8D | Docker: quick, 4 engine, RapidOCR persistent torch, image không Tesseract | DONE — xem `OCR_PHASE8D_REPORT.md` §7–8 |
+| 8D | Regression / frontend / bảo mật | DONE — cùng 10 lỗi của `main`; 408/408; 16/16 |
+| 8D | SSRF qua redirect | **OPEN — chặn production**, cần biện pháp được duyệt (D-28) |
+| 8D | Trạng thái | READY FOR MERGE (có điều kiện) · READY FOR CONDITIONAL RELEASE · NOT READY FOR PRODUCTION |

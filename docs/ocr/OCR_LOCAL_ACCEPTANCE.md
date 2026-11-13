@@ -256,6 +256,20 @@ done
 Holdout chỉ dùng để **đánh giá** cấu hình đã chọn. Không tinh chỉnh tham số theo kết quả holdout.
 Cách so sánh với một commit cũ: `OCR_QUALITY_BENCHMARK.md` §6.
 
+### 8.2 Tiêu chí phát hành có điều kiện và các kịch bản bổ sung (Phase 8D)
+
+```bash
+source "$ACCEPT_DIR/env.sh"; cd "$ACCEPT_DIR/src"; E="$ACCEPT_DIR/evidence/phase8d/runs"; mkdir -p "$E"
+# Bổ sung, KHÔNG thay bộ gốc ở mục 4.3: đánh giá lại mọi assertion gốc, phân loại critical / general / KL-1
+uv run python scripts/ocr/release_criteria.py --out "$E/release-criteria.json" --markdown "$E/release-criteria.md"
+# RapidOCR lưu trọng số bền (backend torch)
+OCR_RAPIDOCR_PERSISTENT=true SCENARIOS="rapidocr" OLD_REF=5e04227 KEEP_WORK=1 bash scripts/ocr/docker-acceptance.sh 2>&1 | tee "$E/docker-rapidocr-persistent.log"
+# RapidOCR + EasyOCR trên image KHÔNG có Tesseract (không cài ngầm, hướng trang báo "không khả dụng")
+WITH_TESSERACT=false IMAGE=chatbot5400:ocr-accept-notess SCENARIOS="rapidocr easyocr" KEEP_WORK=1 bash scripts/ocr/docker-acceptance.sh 2>&1 | tee "$E/docker-no-tesseract.log"
+```
+
+Kết quả bộ gốc và bộ có điều kiện luôn được báo riêng (`RELEASE_CANDIDATE.md` §8).
+
 ## 9. Thu thập log và kết quả
 
 ```bash

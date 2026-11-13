@@ -97,3 +97,33 @@ Số đo trên dữ liệu tổng hợp, CPU; chi tiết: [OCR_QUALITY_BENCHMARK
   Best (cần `osd.traineddata`). Chưa cài thì hành vi như trước.
 - Metadata của source ghi `ocr_scale`, `scan_dpi`, `rotated_pages`.
 - Cấu hình và cách tắt từng phần: [OCR_QUALITY_OPTIMIZATION.md](OCR_QUALITY_OPTIMIZATION.md) §6.
+
+## 8. Ba trạng thái và phân loại chất lượng (Phase 8D, D-27)
+
+Giao diện và API báo **ba trạng thái độc lập** cho mỗi lựa chọn. Không trạng thái nào suy ra trạng thái khác.
+
+| Trạng thái | Câu hỏi nó trả lời | Nguồn |
+|---|---|---|
+| 1. Sẵn sàng (`state`, `ready`) | Runtime và model đã cài, chọn được chưa? | cài đặt + smoke test |
+| 2. Đã xác minh offline (`readiness`) | Toàn bộ pipeline chạy được khi không có Internet chưa? | "Chuẩn bị" / "Kiểm tra offline" |
+| 3. Chất lượng (`quality`) | Engine này đo được ra sao trên văn bản tiếng Việt? | benchmark Phase 8C/8D, cố định theo phiên bản |
+
+Một engine có thể "Sẵn sàng" và "Đã xác minh offline" nhưng vẫn ở mức "Thử nghiệm".
+
+| Lựa chọn | Phân loại | Dùng cho | Giới hạn đã đo |
+|---|---|---|---|
+| Tesseract Vietnamese Best | **Khuyến nghị cho tiếng Việt** | Văn bản và bảng scan tiếng Việt; chất lượng tổng thể tốt nhất | Một số tiêu đề in đậm chữ hoa mất dấu (đã chấp nhận, không chặn) |
+| Tesseract Vietnamese Fast | **Ưu tiên tốc độ** | Nhanh hơn; bảng biểu tốt trên tập holdout (41/42 dòng) | Một số nhãn chữ trong bảng và tiêu đề in đậm mất dấu |
+| RapidOCR – PaddleOCR | **Tương thích ngược** | Engine gốc; không đổi model hay cấu hình mặc định | Mất dấu tiếng Việt trên trang scan; không khớp được nhãn chữ trong bảng tiếng Việt (0/42 dòng holdout) |
+| EasyOCR Vietnamese | **Thử nghiệm** | Chỉ để đánh giá | Sai chữ số và dấu ở scan 150 DPI; không dùng cho văn bản tài chính. Tăng độ phân giải giúp cải thiện nhưng không sửa được mọi lỗi |
+
+Quy tắc:
+
+- Engine mặc định không bao giờ tự đổi. Không có fallback tự động sang engine khác; đặc biệt không bao
+  giờ sang engine thử nghiệm.
+- Trước khi bật engine thử nghiệm, giao diện hiển thị cảnh báo và yêu cầu admin xác nhận.
+- **Tự sửa hướng trang scan** là tính năng chung, hiển thị ở phần "Thông tin chung": khả dụng khi có
+  binary Tesseract và `osd.traineddata` (có sau khi cài Tesseract Fast hoặc Best). Khi không khả dụng,
+  mọi engine vẫn chạy theo khả năng gốc; hệ thống không tự tải hay cài Tesseract. Tắt hẳn bằng
+  `OCR_PDF_PREP=false`.
+- Tiếng Anh: `docs/7-DEVELOPMENT/decisions/ADR-013-ocr-engine-manager.md` (Addendum) và giao diện en-US.

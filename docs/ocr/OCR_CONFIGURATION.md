@@ -44,6 +44,19 @@ cũ. Không ghi gì vào DB cho tới khi admin lưu.
 Các biến Phase 8C là cấu hình toàn deployment (đọc khi dựng OCR options), không đổi theo từng job.
 Cơ sở chọn mặc định: [OCR_QUALITY_OPTIMIZATION.md](OCR_QUALITY_OPTIMIZATION.md).
 
+### 2.1 Trạng thái do API trả về (Phase 8D)
+
+| Trường | Ý nghĩa |
+|---|---|
+| `engines[].quality` | Phân loại chất lượng: `recommended` · `speed` · `compatibility` · `experimental`. Độc lập với `ready` và với `readiness` |
+| `general.page_orientation.enabled` | Chuẩn hóa hướng trang không bị tắt (`OCR_PDF_PREP`) |
+| `general.page_orientation.available` | Thật sự chạy được: có binary Tesseract **và** `osd.traineddata` |
+| `general.page_orientation.reason` | `ok` · `disabled` · `tesseract_missing` · `osd_data_missing` |
+| metadata source `page_orientation` | Như `reason`, cộng `not_a_pdf` / `skipped`, cho từng tài liệu |
+
+Đổi biến chất lượng nào (hoặc cài/gỡ `osd.traineddata`) cũng làm kết quả readiness cũ hết hiệu lực
+(fingerprint `quality`); chạy lại "Chuẩn bị" hoặc "Kiểm tra offline".
+
 ## 3. Ánh xạ engine → Docling (đã xác minh trên Docling 2.129.0)
 
 Xem `open_notebook/ocr/options.py` và DECISIONS D-01…D-04, D-09. Ghi chú quan trọng:
