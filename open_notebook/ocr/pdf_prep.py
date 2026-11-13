@@ -25,6 +25,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -220,11 +221,31 @@ def _page_rotation(
     render_scale = min(OSD_RENDER_SCALE, OSD_MAX_SIDE_PX / max(width, height, 1.0))
     image_path = os.path.join(workdir, f"page-{index}.png")
     try:
-        page.render(scale=render_scale, grayscale=True).to_pil().save(image_path)
+        with _pdfium_lock():
+            image = page.render(scale=render_scale, grayscale=True).to_pil()
+        image.save(image_path)
+        # The Tesseract call runs outside the lock: it does not touch pdfium.
         return detect_page_rotation(image_path, tesseract_cmd, tessdata)
     finally:
         if os.path.exists(image_path):
             os.remove(image_path)
+
+
+def _pdfium_lock() -> Any:
+    """Docling's own lock for pdfium, which is not thread-safe.
+
+    The worker converts one document at a time, but synchronous API requests
+    run in threads: this module must not use pdfium while Docling does.
+    """
+    try:
+        from docling.utils.locks import pypdfium2_lock
+
+        return pypdfium2_lock
+    except Exception:  # Docling not installed: nothing else uses pdfium
+        return _FALLBACK_LOCK
+
+
+_FALLBACK_LOCK = threading.Lock()
 
 
 def prepare(path: str, tesseract_cmd: str | None) -> PdfPrep:
@@ -254,16 +275,21 @@ def _prepare(path: str, tesseract_cmd: str | None, prep: PdfPrep) -> None:
     # Orientation needs the Tesseract binary and its ``osd`` data (installed
     # with either Tesseract engine); without them pages are left as they are.
     can_detect = bool(tesseract_cmd) and (Path(tessdata) / "osd.traineddata").is_file()
-    pdf = pdfium.PdfDocument(path)
+    lock = _pdfium_lock()  # held per pdfium call, never across Tesseract
+    with lock:
+        pdf = pdfium.PdfDocument(path)
+        page_count = len(pdf)
     workdir = tempfile.mkdtemp(prefix="ocr-prep-")
     prep._tmpdir = workdir
     try:
         dpis: list[float] = []
         checked, max_pages = 0, osd_max_pages()
-        for index in range(len(pdf)):
-            page = pdf[index]
+        for index in range(page_count):
+            with lock:
+                page = pdf[index]
             try:
-                dpi = _scan_dpi(page)
+                with lock:
+                    dpi = _scan_dpi(page)
                 if dpi is None:
                     continue  # born-digital page: nothing to do
                 dpis.append(dpi)
@@ -281,10 +307,12 @@ def _prepare(path: str, tesseract_cmd: str | None, prep: PdfPrep) -> None:
                     )
                     continue
                 if found and found[0] != 0 and found[1] >= threshold:
-                    page.set_rotation((page.get_rotation() + found[0]) % 360)
+                    with lock:
+                        page.set_rotation((page.get_rotation() + found[0]) % 360)
                     prep.rotated_pages[index] = found[0]
             finally:
-                page.close()
+                with lock:
+                    page.close()
         if dpis:
             # One scale per document (Docling has one OcrOptions): the HIGHEST scan
             # resolution, so no page is ever rendered below its own resolution or
@@ -295,7 +323,8 @@ def _prepare(path: str, tesseract_cmd: str | None, prep: PdfPrep) -> None:
             # Same file name in a private directory: Docling names the document
             # after the file it is given.
             target = os.path.join(workdir, Path(path).name)
-            pdf.save(target)
+            with lock:
+                pdf.save(target)
             prep.path = target
             logger.info(
                 f"OCR page orientation: corrected page(s) "
@@ -303,6 +332,7 @@ def _prepare(path: str, tesseract_cmd: str | None, prep: PdfPrep) -> None:
                 f"{os.path.basename(path)} in a temporary copy"
             )
     finally:
-        pdf.close()
+        with lock:
+            pdf.close()
     if prep.path is None:
         prep.cleanup()

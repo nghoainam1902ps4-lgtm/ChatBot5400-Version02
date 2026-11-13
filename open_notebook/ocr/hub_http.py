@@ -37,6 +37,18 @@ def bound_hub_timeouts() -> bool:
     huggingface_hub is not available (Docling not installed).
     """
     try:
+        return _install()
+    except Exception as e:  # a hub version that moved these internals
+        # Never fail a document over this: without the bound, the only loss is
+        # the slow fallback to the local cache on a dead link (D-24).
+        from loguru import logger
+
+        logger.warning(f"Hugging Face Hub timeout bound not installed: {e}")
+        return False
+
+
+def _install() -> bool:
+    try:
         from huggingface_hub import configure_http_backend
         from huggingface_hub.utils import _http as hub_http
     except ImportError:

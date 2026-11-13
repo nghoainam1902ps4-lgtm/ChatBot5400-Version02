@@ -326,3 +326,27 @@ Quyết định của chủ dự án, thực hiện trong Phase 8D:
   (a) tắt URL ingestion với nguồn không tin cậy bằng cơ chế thực thi ở backend (chưa có trong mã — cần
   một thay đổi riêng); hoặc (b) chính sách egress của mạng do quản trị viên phê duyệt (chặn dải nội bộ,
   metadata, chỉ cho phép đích cần thiết) áp cho container ứng dụng.
+
+## D-29. Công tắc tắt URL ingestion, mặc định TẮT (Phase 9A)
+
+- Bối cảnh: rủi ro SSRF còn lại (D-28) — worker chỉ kiểm tra URL trước; Content Core / Docling tải lại và
+  tự đi theo redirect; DNS rebinding không bị chặn. Chủ dự án chọn giảm thiểu bằng cách cho phép tắt hẳn
+  chức năng thêm nguồn từ URL, không viết lại HTTP client của Content Core.
+- Quyết định: biến môi trường `OPEN_NOTEBOOK_ENABLE_URL_INGESTION` (theo convention `OPEN_NOTEBOOK_ENABLE_*`
+  của dự án). **Chỉ bật khi giá trị là `true` / `1` / `yes` / `on`.** Thiếu, rỗng hoặc sai chính tả ⇒ tắt.
+  Không có API hay trường Settings để đổi; không vai trò nào được miễn (kể cả admin). Đọc ở mỗi lần gọi.
+- **Vì sao mặc định tắt:** repository này là bản triển khai nội bộ; yêu cầu là không được âm thầm bật khi
+  thiếu cấu hình. Hệ quả tương thích: bản triển khai nào đang dùng nguồn URL phải đặt
+  `OPEN_NOTEBOOK_ENABLE_URL_INGESTION=true` khi nâng cấp (ghi trong `environment-reference.md`,
+  `.env.example`, `docker-compose.yml`). Dữ liệu không đổi, không migration.
+- Thực thi bốn tầng, mỗi tầng từ chối **trước** mọi truy vấn DNS hay request: API tạo nguồn (multipart và
+  JSON, sync và async) → 403; API retry nguồn URL cũ → 403; lệnh worker `process_source` (gồm job đã xếp
+  hàng trước khi tắt và job không đi qua API) → lỗi vĩnh viễn; nút graph `content_process` và hai hàm URL
+  của lớp OCR.
+- Giữ nguyên: nội dung đã trích xuất của nguồn URL cũ vẫn đọc, tìm kiếm, chat được; không xóa gì. Upload
+  file, nhập văn bản, OCR, transformation, embedding, RAG, chat, gọi LLM, chuẩn bị model không bị ảnh hưởng.
+- Frontend: lấy trạng thái từ `GET /api/capabilities` (`url_ingestion_enabled`); tab "Thêm URL" bị vô hiệu
+  hóa kèm thông báo (vi/en). Trạng thái chưa biết (đang tải, backend cũ) ⇒ coi như tắt.
+- **Không tuyên bố đã sửa SSRF.** Khi tắt: rủi ro được giảm thiểu vì chức năng không còn. Khi bật: hành vi
+  và chính sách như cũ, rủi ro còn lại xuất hiện trở lại.
+- Test: `tests/test_url_ingestion_switch.py` (43 test, có fixture chặn mọi truy vấn DNS/kết nối).

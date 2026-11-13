@@ -37,3 +37,13 @@ An toàn vì:
 | Tắt một engine | Gỡ model (Settings) và bỏ biến `OPEN_NOTEBOOK_ENABLE_OCR_*` tương ứng |
 | Bỏ Tesseract khỏi image | Build lại không có `OCR_INSTALL_TESSERACT=true` |
 | Về lại engine mặc định | §1 |
+
+## Ghi chú Phase 9A — URL ingestion khi rollback
+
+- Bản trước RC (`5e04227`) **không có** công tắc `OPEN_NOTEBOOK_ENABLE_URL_INGESTION`: rollback mã về bản đó
+  đồng nghĩa chức năng thêm nguồn từ URL **hoạt động trở lại**, cùng với rủi ro SSRF còn lại. Nếu phải
+  rollback trong môi trường yêu cầu tắt URL ingestion, cần biện pháp tạm thời ở tầng mạng (chính sách egress
+  cho container ứng dụng) cho tới khi triển khai lại.
+- Công tắc không tạo dữ liệu mới và không cần hoàn tác: nguồn URL cũ không bị sửa hay xóa.
+- Tắt riêng công tắc trên bản RC (bật lại URL ingestion): đặt `OPEN_NOTEBOOK_ENABLE_URL_INGESTION=true` và
+  recreate container; cần phê duyệt vì rủi ro còn lại xuất hiện trở lại.

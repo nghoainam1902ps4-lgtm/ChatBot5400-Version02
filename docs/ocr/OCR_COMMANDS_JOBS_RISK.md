@@ -58,3 +58,16 @@ Khuyến nghị: **coi mục 1 và 3 là điều kiện bắt buộc trước kh
 | 2. GET trạng thái giới hạn | **Xong** — admin-only (frontend chỉ admin dùng); danh sách job không lộ payload |
 | 3. Phòng thủ tại worker | **Xong** — `file_path` trong `UPLOADS_FOLDER` (canonical, chống symlink), kiểm tra lại trước khi xoá; `validate_url()` + pre-check từng bước redirect (lần tải thật vẫn tự theo redirect — xem `BACKGROUND_JOB_SECURITY.md` §5); `content_state`/id ràng buộc với bản ghi source |
 | 4. Test | **Xong** — `tests/test_background_job_security.py` (57) |
+
+## Phase 9A — URL ingestion và job nền
+
+- Lệnh `process_source` giờ từ chối mọi job có `content_state.url` khi `OPEN_NOTEBOOK_ENABLE_URL_INGESTION`
+  không bật (mặc định tắt). Việc từ chối xảy ra ngay sau kiểm tra khóa `content_state`, **trước** khi nạp
+  source và trước mọi hoạt động mạng; lỗi là `ValueError` nên job không được retry.
+- Phạm vi phủ: job mới từ API, job retry, job đã xếp hàng trước khi tắt công tắc, và job được ghi thẳng
+  vào hàng đợi không qua API (API job tổng quát vẫn luôn bị từ chối như Phase 8A).
+- Nút graph `content_process` kiểm tra lại (phòng thủ nhiều tầng), kể cả khi job mang cả `url` lẫn `content`.
+- Job cho file tải lên và văn bản nhập tay không đổi. Các lệnh OCR (`ocr_install_model`, `ocr_test_engine`,
+  `ocr_prepare_engine`) không đọc công tắc này: chuẩn bị model online vẫn tải được.
+- Khi công tắc bật: như Phase 8A — kiểm tra URL + pre-check redirect; rủi ro còn lại ở
+  `BACKGROUND_JOB_SECURITY.md` §5 vẫn tồn tại.

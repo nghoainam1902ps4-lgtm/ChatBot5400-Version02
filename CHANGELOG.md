@@ -2,6 +2,40 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [Chưa phát hành] — OCR Engine Manager RC1
+
+Release Candidate, **chưa triển khai**. Chi tiết: `docs/ocr/OCR_PHASE9A_REPORT.md`,
+`docs/ocr/RELEASE_CANDIDATE.md`. Không có migration cơ sở dữ liệu.
+
+### Thay đổi hành vi khi nâng cấp — cần đọc
+
+- **Thêm nguồn từ URL mặc định bị TẮT.** Biến mới `OPEN_NOTEBOOK_ENABLE_URL_INGESTION`
+  chỉ bật khi đặt `true` / `1` / `yes` / `on`; thiếu hoặc sai giá trị ⇒ tắt, áp dụng
+  cho mọi vai trò kể cả Quản trị viên. Khi tắt: không tạo được nguồn từ URL (kể cả
+  YouTube), không xử lý lại được nguồn URL cũ; nội dung đã lưu của nguồn URL cũ vẫn
+  đọc, tìm kiếm và chat được. Upload file, nhập văn bản, OCR, chat không bị ảnh hưởng.
+  Bản triển khai nào cần nguồn URL phải đặt biến này thành `true` — việc đó làm xuất
+  hiện lại rủi ro SSRF còn tồn tại (`docs/security/BACKGROUND_JOB_SECURITY.md` §5–6).
+- **Kết quả "Sẵn sàng offline" cũ hết hiệu lực** sau khi nâng cấp: chạy lại "Chuẩn bị"
+  hoặc "Kiểm tra offline" một lần cho engine đang dùng. Việc xử lý tài liệu không bị chặn.
+
+### OCR Engine Manager
+
+- Chọn engine OCR cho Docling: RapidOCR (mặc định, không đổi), Tesseract Vietnamese
+  Fast / Best, EasyOCR Vietnamese. Layout Heron và TableFormer giữ nguyên.
+- Phân loại chất lượng hiển thị riêng với trạng thái sẵn sàng và xác minh offline:
+  Tesseract Best — khuyến nghị cho tiếng Việt; Tesseract Fast — ưu tiên tốc độ;
+  RapidOCR — tương thích ngược; EasyOCR — thử nghiệm (hỏi xác nhận trước khi bật).
+- Chuẩn bị model khi có Internet, vận hành khi ngắt Internet
+  (`docs/ocr/OCR_ONLINE_PREPARATION.md`).
+- Tự sửa hướng trang scan nằm ngang/ngược khi đã cài Tesseract Fast hoặc Best.
+- Giới hạn đã biết: xem `docs/ocr/OCR_ENGINE_MANAGER.md` §8.
+
+### Bảo mật
+
+- API job nền tổng quát bị khóa; job xử lý nguồn kiểm tra lại đường dẫn file và URL.
+- Công tắc tắt URL ingestion (ở trên).
+
 ## [1.0.8] - 2026-11-12
 
 Bổ sung **quy trình duyệt văn bản** và **phân quyền 4 vai trò**. Bản này **có

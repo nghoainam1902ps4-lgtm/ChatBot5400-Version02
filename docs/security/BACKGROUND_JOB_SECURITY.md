@@ -68,6 +68,9 @@ stub HTTP server only):
 
 ## 5. Residual risk
 
+**Status after Phase 9A:** the URL-related items below are **mitigated when URL ingestion
+is switched off** (the default, §6) and **still present when it is switched on**.
+
 - The redirect check is a **pre-check**. The worker validates the URL and each hop of the
   redirect chain the server returns to its own request. content-core/Docling then fetch the
   URL again and follow redirects themselves, so the pre-check does not cover:
@@ -81,3 +84,53 @@ stub HTTP server only):
   reachable by design.
 - `api/routers/sources.py` submits jobs on behalf of non-admin roles as before; those
   routes keep their existing checks (approval workflow, containment).
+
+## 6. URL ingestion switch (Phase 9A, docs/ocr D-29)
+
+`OPEN_NOTEBOOK_ENABLE_URL_INGESTION` — adding a source from a web address, and
+re-fetching an existing URL source.
+
+| | |
+|---|---|
+| Default | **Off.** Unset, empty, or any value other than `true` / `1` / `yes` / `on` keeps it off. A missing or mistyped value never enables it. |
+| Who can change it | Whoever controls the container environment. There is no API or Settings field; `GET /api/capabilities` only reports it. |
+| Exemptions | None. Admin, approver and contributor are refused alike. |
+| Read at | Every call (not cached at import). |
+
+Enforcement when off — each layer refuses **before** any DNS lookup or request:
+
+| Layer | Path | Result |
+|---|---|---|
+| API | `POST /api/sources` and `POST /api/sources/json` with `type=link` (sync and async) | 403, no source record, no job |
+| API | `POST /api/sources/{id}/retry` for a source whose asset is a URL | 403, nothing queued |
+| Worker | `process_source` with `content_state.url` — also jobs queued before the switch was turned off, retries, and anything that writes a job without the API | permanent failure (`ValueError`, not retried), before the source is loaded |
+| Graph | `content_process` with a `url`, with or without `content` | refused before `validate_source_url` and before content-core |
+| OCR layer | `should_use_native_ocr_for_url`, `extract_url_with_selected_ocr` | refused before the MIME probe / download |
+
+Not affected: file uploads, pasted text, OCR, Layout / TableFormer, transformations,
+embeddings, search, chat, provider (LLM / embedding) calls, OCR model installation and
+online preparation. A test pins the list of modules that consult the switch
+(`tests/test_url_ingestion_switch.py::test_switch_is_only_used_by_url_ingestion_code`).
+Existing URL sources are kept: their stored text, insights and embeddings stay readable
+and searchable; only the re-download is refused. Nothing is deleted or migrated.
+
+What this does and does not claim:
+
+- **Off:** the application offers no way to make the server fetch a user-supplied URL
+  through source ingestion, so the redirect / DNS-rebinding weakness of §5 cannot be
+  reached through it. This is a mitigation by removal of the feature, not a fix of the
+  downloader.
+- **On:** behaviour and policy are exactly as before (`validate_url` + redirect
+  pre-check). **The residual SSRF risk of §5 is back.** SSRF is not claimed to be fixed.
+- Out of scope of the switch (unchanged, admin-configured, already validated with
+  `validate_url`): provider / credential base URLs, model discovery, the optional
+  remote Crawl4AI / Firecrawl / Jina endpoints (only used by URL ingestion, so idle
+  while it is off), Hugging Face / model downloads during online preparation.
+- A release for the internal bank environment is assessed **only** with the switch off,
+  unless an additional control (for example an approved network egress policy for the
+  application container) is in place.
+
+Upgrade note: a deployment that used URL sources must set
+`OPEN_NOTEBOOK_ENABLE_URL_INGESTION=true` explicitly to keep the feature.
+
+Tests: `tests/test_url_ingestion_switch.py` (43), `frontend/src/components/sources/steps/SourceTypeStep.test.tsx` (3).

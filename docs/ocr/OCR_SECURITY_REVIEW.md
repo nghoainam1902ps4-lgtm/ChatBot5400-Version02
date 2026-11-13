@@ -137,3 +137,22 @@ Biện pháp đề xuất cho môi trường ngân hàng (chọn ít nhất mộ
    về 0 trong thời gian ngắt mạng.
 
 Production readiness phụ thuộc vào việc một biện pháp được phê duyệt và áp dụng.
+
+## Phase 9A — Cổng bảo mật cuối: tắt URL ingestion (D-29)
+
+| Trạng thái công tắc | Rủi ro SSRF qua nhập nguồn từ URL |
+|---|---|
+| **Tắt (mặc định)** | **Đã giảm thiểu.** Ứng dụng không còn đường nào để máy chủ tải một URL do người dùng đưa vào qua chức năng nguồn: API trả 403, worker và graph từ chối trước mọi truy vấn DNS. Điểm yếu redirect / DNS rebinding không thể bị chạm tới qua chức năng này |
+| **Bật** | **Còn tồn tại, như trước Phase 9A.** Kiểm tra URL + pre-check redirect vẫn chạy, nhưng lần tải thật do Content Core / Docling thực hiện và tự đi theo redirect |
+
+- Đây là giảm thiểu bằng cách **gỡ chức năng**, không phải sửa bộ tải. Không tuyên bố SSRF đã được khắc phục.
+- Phát hành cho môi trường ngân hàng chỉ được đánh giá với công tắc **tắt**, trừ khi có biện pháp bổ sung
+  được phê duyệt (ví dụ chính sách egress cho container ứng dụng).
+- Ngoài phạm vi công tắc (không đổi): URL nhà cung cấp LLM/embedding và dò model do admin cấu hình (đã qua
+  `validate_url`); tải model khi chuẩn bị online. Endpoint Crawl4AI / Firecrawl / Jina chỉ được dùng bởi
+  URL ingestion nên không hoạt động khi tắt.
+- Không vai trò nào được miễn; không có API đổi cấu hình; frontend chỉ đọc trạng thái.
+- Kiểm chứng: 43 test backend (có fixture làm test thất bại nếu có bất kỳ truy vấn DNS/kết nối nào), 3 test
+  frontend, và kiểm tra trực tiếp trên stack nghiệm thu cô lập (`OCR_PHASE9A_REPORT.md` §D).
+- Bộ test đã bắt được một lỗi trong chính bản vá đầu tiên: hàm tải của lớp OCR
+  (`extract_url_with_selected_ocr`) chưa có chốt chặn. Đã sửa trước khi commit.

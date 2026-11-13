@@ -45,6 +45,10 @@ services:
       - OPEN_NOTEBOOK_JWT_SECRET=${OPEN_NOTEBOOK_JWT_SECRET}
       # Auth is ENFORCED in production. Do not set OPEN_NOTEBOOK_DISABLE_AUTH here.
 
+      # SECURITY: sources from a URL. OFF unless explicitly "true" (docs/security/
+      # BACKGROUND_JOB_SECURITY.md §6). Enabling it re-opens a residual SSRF risk.
+      - OPEN_NOTEBOOK_ENABLE_URL_INGESTION=${OPEN_NOTEBOOK_ENABLE_URL_INGESTION:-false}
+
       # Database (internal network).
       - SURREAL_URL=ws://surrealdb:8000/rpc
       - SURREAL_USER=${SURREAL_USER:?set SURREAL_USER in .env}

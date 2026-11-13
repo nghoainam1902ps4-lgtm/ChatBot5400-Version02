@@ -27,6 +27,7 @@ import {
 import { useSourceStatus } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useAuth } from '@/lib/hooks/use-auth'
+import { useCapabilities } from '@/lib/hooks/use-capabilities'
 import type { TFunction } from 'i18next'
 import { cn } from '@/lib/utils'
 import { ContextToggle } from '@/components/common/ContextToggle'
@@ -199,6 +200,11 @@ function SourceCardImpl({
   
    const title = source.title || t('sources.untitledSource')
 
+  // Re-fetching a URL source is URL ingestion: the backend refuses it when the
+  // deployment switch is off, so the actions are not offered (closed by default).
+  const { data: capabilities } = useCapabilities()
+  const urlRefetchBlocked = sourceType === 'link' && capabilities?.url_ingestion_enabled !== true
+
   const handleRetry = () => {
     if (onRetry) {
       onRetry(source.id)
@@ -267,7 +273,7 @@ function SourceCardImpl({
         </>
       )}
 
-      {isFailed && (
+      {isFailed && !urlRefetchBlocked && (
         <>
           <DropdownMenuItem
             onClick={(e) => {
@@ -283,7 +289,7 @@ function SourceCardImpl({
         </>
       )}
 
-      {sourceType === 'link' && isCompleted && onRefreshContent && (
+      {sourceType === 'link' && isCompleted && onRefreshContent && !urlRefetchBlocked && (
         <>
           <DropdownMenuItem
             onClick={(e) => {

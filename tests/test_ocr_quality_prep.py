@@ -682,3 +682,38 @@ def test_gate_does_not_change_recognition_output(tmp_path):
         a = subprocess.run([real, *extra], capture_output=True, timeout=60)
         b = _run_gate(Path(real), *extra)
         assert (b.returncode, b.stdout.encode()) == (a.returncode, a.stdout)
+
+
+def test_pdf_prep_uses_doclings_pdfium_lock_and_never_across_tesseract(
+    scan_pdf, osd_available, monkeypatch
+):
+    """pdfium is not thread-safe: synchronous API requests run in threads, so the
+    preparation must share Docling's lock — and release it for the slow part."""
+    pytest.importorskip("docling")
+    from docling.utils.locks import pypdfium2_lock
+
+    assert pdf_prep._pdfium_lock() is pypdfium2_lock
+    held_during_tesseract = []
+
+    def detect(*a):
+        held_during_tesseract.append(pypdfium2_lock.locked())
+        return (90, 9.0)
+
+    monkeypatch.setattr(pdf_prep, "detect_page_rotation", detect)
+    prep = pdf_prep.prepare(str(scan_pdf), "tesseract")
+    try:
+        assert prep.rotated_pages == {0: 90, 1: 90}
+        assert held_during_tesseract == [False, False]
+        assert not pypdfium2_lock.locked()  # released on every path
+    finally:
+        prep.cleanup()
+
+
+def test_hub_timeout_install_never_fails_a_document(monkeypatch):
+    from open_notebook.ocr import hub_http
+
+    def broken():
+        raise AttributeError("huggingface_hub moved its internals")
+
+    monkeypatch.setattr(hub_http, "_install", broken)
+    assert hub_http.bound_hub_timeouts() is False
