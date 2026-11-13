@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -437,13 +438,28 @@ class TestRapidOcrPersistence:
         monkeypatch.setenv("OCR_RAPIDOCR_PERSISTENT", "true")
         monkeypatch.setattr(runtime, "auto_resolves_to_rapidocr", lambda: True)
         opts = build_ocr_options("rapidocr")
-        assert opts.rapidocr_params == {
-            "Global.model_root_dir": str(paths.rapidocr_dir())
-        }
+        # A Path, not a str: RapidOCR's pytorch loader (the production backend)
+        # does ``cfg.model_root_dir / name`` without wrapping it in Path(), so a
+        # str raised TypeError and the persistent mode never worked (Phase 8B).
+        assert opts.rapidocr_params == {"Global.model_root_dir": paths.rapidocr_dir()}
+        assert isinstance(opts.rapidocr_params["Global.model_root_dir"], Path)
         assert (
             opts.lang == [] and opts.backend == runtime.rapidocr_backend()
         )  # same model choice
         assert docling_extract.native_path_required(OcrSettings()) is True
+
+    def test_pytorch_loader_needs_a_path_model_root_dir(self):
+        """Tripwire for the reason above: if RapidOCR starts wrapping the value
+        in Path() itself, the str/Path distinction no longer matters."""
+        pytest.importorskip("rapidocr")
+        import importlib.util
+        import inspect
+
+        if importlib.util.find_spec("torch") is None:
+            pytest.skip("torch not installed")
+        from rapidocr.inference_engine.pytorch.networks import main as loader
+
+        assert "cfg.model_root_dir / " in inspect.getsource(loader)
 
     def test_import_copies_only_checksum_valid_weights(
         self, ocr_dir, monkeypatch, tmp_path

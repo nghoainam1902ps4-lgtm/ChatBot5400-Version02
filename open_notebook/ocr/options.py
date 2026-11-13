@@ -149,7 +149,7 @@ def build_ocr_options(engine_id: str, force_full_page: bool = False) -> Any:
         if rapidocr_persistent():
             # RapidOCR's own Global.model_root_dir: same PP-OCR models, same
             # URLs, SHA-256 checked by RapidOCR, stored on the data volume.
-            params["Global.model_root_dir"] = str(paths.rapidocr_dir())
+            params["Global.model_root_dir"] = paths.rapidocr_dir()
         if params:
             extra["rapidocr_params"] = params
         return RapidOcrOptions(
