@@ -10,7 +10,7 @@ const ACTIVE_STATES = new Set(['pending', 'downloading', 'installing'])
 
 /** True while any engine has an install job in flight (drives polling). */
 export function hasActiveOcrJob(data?: OcrEnginesResponse): boolean {
-  return !!data?.engines.some((e) => ACTIVE_STATES.has(e.state))
+  return !!data?.engines.some((e) => ACTIVE_STATES.has(e.state) || !!e.readiness_job)
 }
 
 export function useOcrEngines() {
@@ -53,6 +53,10 @@ export const useActivateOcrEngine = () =>
   useOcrMutation((id: OcrEngineId) => ocrApi.activate(id), 'ocr.activated')
 export const useRemoveOcrModel = () =>
   useOcrMutation((id: OcrEngineId) => ocrApi.removeModel(id), 'ocr.modelRemoved')
+export const usePrepareOcrEngine = () =>
+  useOcrMutation((id: OcrEngineId) => ocrApi.prepare(id), 'ocr.readiness.prepareQueued')
+export const useOcrReadinessCheck = () =>
+  useOcrMutation((id: OcrEngineId) => ocrApi.readinessCheck(id), 'ocr.readiness.checkQueued')
 export const useTestOcrEngine = () => useOcrMutation((id: OcrEngineId) => ocrApi.test(id))
 export const useUpdateOcrConfig = () =>
   useOcrMutation((data: Parameters<typeof ocrApi.updateConfig>[0]) => ocrApi.updateConfig(data), 'common.saveSuccess')

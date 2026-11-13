@@ -85,8 +85,25 @@ async def _reconcile_job(engine_id: str) -> None:
             )
 
 
+async def _reconcile_readiness_jobs(engine_id: str) -> None:
+    """Clear a prepare/check marker whose job ended without clearing it (worker crash)."""
+    st = store.read_state(engine_id)
+    for prefix in ("prepare", "readiness"):
+        job_id = st.get(f"{prefix}_job_id")
+        if not st.get(f"{prefix}_nonce") or not job_id:
+            continue
+        try:
+            data = await CommandService.get_command_status(job_id)
+            job_state = str(data.get("status") or "unknown").lower()
+        except Exception:
+            continue
+        if job_state in _FINISHED_JOB_STATES:
+            store.update_state(engine_id, **{f"{prefix}_nonce": None})
+
+
 async def _status(engine_id: str, active: str) -> OcrEngineStatus:
     await _reconcile_job(engine_id)
+    await _reconcile_readiness_jobs(engine_id)
     # Filesystem hashing + subprocess probes: off the event loop.
     info = await asyncio.to_thread(runtime.docling_info)
     data = await asyncio.to_thread(
@@ -222,6 +239,7 @@ async def _queue_readiness_job(
 ) -> dict[str, Any]:
     _require_engine(engine_id)
     async with _lock:
+        await _reconcile_readiness_jobs(engine_id)
         st = store.read_state(engine_id)
         if st.get(f"{prefix}_nonce"):
             raise InvalidInputError(

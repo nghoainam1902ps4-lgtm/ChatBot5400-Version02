@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Cpu, Download, FlaskConical, Loader2, PlayCircle, RotateCcw, Terminal, Trash2 } from 'lucide-react'
+import { CloudDownload, Cpu, Download, FlaskConical, Loader2, PlayCircle, RotateCcw, ShieldCheck, Terminal, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -37,11 +37,13 @@ import {
   useInstallOcrEngine,
   useOcrEngines,
   useOcrJob,
+  useOcrReadinessCheck,
+  usePrepareOcrEngine,
   useRemoveOcrModel,
   useTestOcrEngine,
   useUpdateOcrConfig,
 } from '@/lib/hooks/use-ocr'
-import type { OcrEngineId, OcrEngineStatus, OcrTestResult } from '@/lib/types/api'
+import type { OcrEngineId, OcrEngineStatus, OcrGeneralInfo, OcrTestResult } from '@/lib/types/api'
 
 // Static key maps (the locale test requires literal keys in source).
 const STATE_KEYS: Record<string, string> = {
@@ -74,6 +76,93 @@ const DESC_KEYS: Record<OcrEngineId, string> = {
   easyocr: 'ocr.engineDesc.easyocr',
 }
 const BUSY = new Set(['pending', 'downloading', 'installing'])
+const READINESS_KEYS: Record<string, string> = {
+  runtime_missing: 'ocr.readiness.state.runtimeMissing',
+  model_missing: 'ocr.readiness.state.modelMissing',
+  model_incomplete: 'ocr.readiness.state.modelIncomplete',
+  incompatible: 'ocr.readiness.state.incompatible',
+  pipeline_not_verified: 'ocr.readiness.state.pipelineNotVerified',
+  offline_ready: 'ocr.readiness.state.offlineReady',
+  not_offline_ready: 'ocr.readiness.state.notOfflineReady',
+}
+const CHECK_MODE_KEYS: Record<string, string> = {
+  online: 'ocr.readiness.mode.online',
+  local_only: 'ocr.readiness.mode.localOnly',
+  offline: 'ocr.readiness.mode.offline',
+}
+
+function YesNo({ ok }: { ok: boolean }) {
+  const { t } = useTranslation()
+  return <span className={ok ? 'text-primary' : 'text-muted-foreground'}>{ok ? t('ocr.readiness.yes') : t('ocr.readiness.no')}</span>
+}
+
+/**
+ * Offline-readiness panel for the ACTIVE engine. Values come only from real
+ * pipeline runs recorded by the backend (never inferred from files on disk).
+ */
+function ReadinessPanel({ engine, general }: { engine?: OcrEngineStatus; general: OcrGeneralInfo }) {
+  const { t } = useTranslation()
+  const prepare = usePrepareOcrEngine()
+  const check = useOcrReadinessCheck()
+  if (!engine) return null
+  const r = engine.readiness
+  const last = r?.last_check
+  const pending = !!engine.readiness_job
+  const verifiedLayout = last?.pipeline_ok ? last.layout_model : null
+  const verifiedTable = last?.pipeline_ok ? `${last.table_model ?? ''} (${last.table_mode ?? ''})` : null
+  return (
+    <section aria-labelledby="ocr-readiness" className="space-y-2 rounded-lg border p-4" data-slot="ocr-readiness">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 id="ocr-readiness" className="text-sm font-semibold">{t('ocr.readiness.title')}</h3>
+        {r && (
+          <Badge variant={r.state === 'offline_ready' ? 'default' : r.state === 'not_offline_ready' ? 'destructive' : 'secondary'}>
+            {t(READINESS_KEYS[r.state] ?? 'ocr.readiness.state.pipelineNotVerified')}
+          </Badge>
+        )}
+      </div>
+      <p className="text-sm text-muted-foreground">{t('ocr.readiness.desc')}</p>
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+        <div className="flex gap-2"><dt className="text-muted-foreground">{t('ocr.readiness.doclingRuntime')}:</dt><dd><YesNo ok={general.docling_available} /></dd></div>
+        <div className="flex gap-2"><dt className="text-muted-foreground">{t('ocr.readiness.activeEngine')}:</dt><dd>{engine.display_name}</dd></div>
+        <div className="flex gap-2"><dt className="text-muted-foreground">{t('ocr.layoutModel')}:</dt><dd>{verifiedLayout ?? `${general.layout_model ?? '—'} · ${t('ocr.readiness.notVerified')}`}</dd></div>
+        <div className="flex gap-2"><dt className="text-muted-foreground">{t('ocr.tableModel')}:</dt><dd>{verifiedTable ?? `${general.table_model ?? '—'} · ${t('ocr.readiness.notVerified')}`}</dd></div>
+        <div className="flex gap-2"><dt className="text-muted-foreground">{t('ocr.readiness.ocrModel')}:</dt><dd>{engine.model_name} · {engine.model.status}</dd></div>
+        <div className="flex gap-2"><dt className="text-muted-foreground">{t('ocr.readiness.fullPipeline')}:</dt><dd><YesNo ok={!!r?.pipeline_ok} /></dd></div>
+        <div className="flex gap-2"><dt className="text-muted-foreground">{t('ocr.readiness.localOnly')}:</dt><dd><YesNo ok={!!r?.local_only_verified} /></dd></div>
+        <div className="flex gap-2"><dt className="text-muted-foreground">{t('ocr.readiness.offlineVerified')}:</dt><dd><YesNo ok={!!r?.offline_verified} /></dd></div>
+        <div className="flex gap-2 sm:col-span-2">
+          <dt className="text-muted-foreground">{t('ocr.readiness.lastCheck')}:</dt>
+          <dd>
+            {last?.checked_at
+              ? `${new Date(last.checked_at * 1000).toLocaleString()} · ${t(CHECK_MODE_KEYS[last.mode] ?? 'ocr.readiness.mode.online')}`
+              : '—'}
+            {r?.stale ? ` · ${t('ocr.readiness.stale')}` : ''}
+          </dd>
+        </div>
+      </dl>
+      {last?.error && !last.pipeline_ok && (
+        <Alert variant="destructive"><AlertDescription className="break-words">{last.error}</AlertDescription></Alert>
+      )}
+      <p className="text-xs text-muted-foreground">{t('ocr.readiness.hint')}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" onClick={() => prepare.mutate(engine.id)} disabled={pending || prepare.isPending}>
+          <CloudDownload className="h-4 w-4" aria-hidden />
+          {t('ocr.readiness.prepare')}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => check.mutate(engine.id)} disabled={pending || check.isPending}>
+          <ShieldCheck className="h-4 w-4" aria-hidden />
+          {t('ocr.readiness.check')}
+        </Button>
+        {pending && (
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            {engine.readiness_job === 'prepare' ? t('ocr.readiness.preparing') : t('ocr.readiness.checking')}
+          </span>
+        )}
+      </div>
+    </section>
+  )
+}
 
 function formatBytes(n?: number | null): string {
   if (!n) return '0 MB'
@@ -289,6 +378,12 @@ function EngineRow({
         </Alert>
       )}
 
+      {engine.readiness && (
+        <p className="text-xs text-muted-foreground" data-slot="engine-readiness">
+          {t('ocr.readiness.title')}: {t(READINESS_KEYS[engine.readiness.state] ?? 'ocr.readiness.state.pipelineNotVerified')}
+        </p>
+      )}
+
       {engine.last_test && (
         <p className="text-xs text-muted-foreground">
           {t('ocr.lastTest')}: {engine.last_test.success ? t('ocr.testSuccess') : t('ocr.testFailed')}
@@ -450,6 +545,8 @@ export function OcrEngineManager() {
             </Alert>
           )}
         </section>
+
+        <ReadinessPanel engine={engines.find((e) => e.active)} general={general} />
 
         <section aria-labelledby="ocr-engines" className="space-y-2">
           <h3 id="ocr-engines" className="text-sm font-semibold">{t('ocr.engines')}</h3>

@@ -17,6 +17,10 @@ export const ocrApi = {
     (await apiClient.post<OcrEngineStatus>(`/ocr/engines/${id}/activate`)).data,
   test: async (id: OcrEngineId) =>
     (await apiClient.post<OcrJobResponse>(`/ocr/engines/${id}/test`)).data,
+  prepare: async (id: OcrEngineId) =>
+    (await apiClient.post<OcrJobResponse>(`/ocr/engines/${id}/prepare`)).data,
+  readinessCheck: async (id: OcrEngineId) =>
+    (await apiClient.post<OcrJobResponse>(`/ocr/engines/${id}/readiness-check`)).data,
   removeModel: async (id: OcrEngineId) =>
     (await apiClient.delete<{ engine_id: string; removed: string[] }>(`/ocr/engines/${id}/model`)).data,
   job: async (jobId: string) =>

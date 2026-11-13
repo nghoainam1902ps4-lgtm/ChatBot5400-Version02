@@ -9,6 +9,8 @@ const activate = vi.fn()
 const testMutate = vi.fn()
 const remove = vi.fn()
 const updateConfig = vi.fn()
+const prepare = vi.fn()
+const readinessCheck = vi.fn()
 
 vi.mock('@/lib/hooks/use-ocr', () => ({
   useOcrEngines: vi.fn(),
@@ -18,6 +20,8 @@ vi.mock('@/lib/hooks/use-ocr', () => ({
   useRemoveOcrModel: () => ({ mutate: remove, isPending: false }),
   useUpdateOcrConfig: () => ({ mutate: updateConfig, isPending: false }),
   useOcrJob: () => ({ data: undefined }),
+  usePrepareOcrEngine: () => ({ mutate: prepare, isPending: false }),
+  useOcrReadinessCheck: () => ({ mutate: readinessCheck, isPending: false }),
 }))
 
 import { useOcrEngines } from '@/lib/hooks/use-ocr'
@@ -216,5 +220,37 @@ describe('OcrEngineManager', () => {
       docling_ocr_force_full_page: false,
       docling_ocr_num_threads: 2,
     })
+  })
+
+  it('readiness panel: never claims verification without a real pipeline check', () => {
+    mockEngines([{ ...rapid, readiness: { state: 'pipeline_not_verified', ocr_ok: false, pipeline_ok: false, local_only_verified: false, offline_verified: false, stale: false, last_check: null } }])
+    render(<OcrEngineManager />)
+    const panel = document.querySelector('[data-slot="ocr-readiness"]') as HTMLElement
+    expect(within(panel).getByText('ocr.readiness.state.pipelineNotVerified')).toBeInTheDocument()
+    expect(within(panel).getAllByText(/ocr.readiness.notVerified/).length).toBe(2)
+    fireEvent.click(within(panel).getByRole('button', { name: /ocr.readiness.prepare/ }))
+    expect(prepare).toHaveBeenCalledWith('rapidocr')
+    fireEvent.click(within(panel).getByRole('button', { name: /ocr.readiness.check/ }))
+    expect(readinessCheck).toHaveBeenCalledWith('rapidocr')
+  })
+
+  it('readiness panel: shows verified Heron/TableFormer and failure details', () => {
+    const ok = { mode: 'local_only' as const, success: true, pipeline_ok: true, checked_at: 1, layout_model: 'layout_heron', table_model: 'docling_tableformer', table_mode: 'accurate' }
+    mockEngines([{ ...rapid, readiness: { state: 'offline_ready', ocr_ok: true, pipeline_ok: true, local_only_verified: true, offline_verified: false, stale: false, last_check: ok } }])
+    render(<OcrEngineManager />)
+    const panel = document.querySelector('[data-slot="ocr-readiness"]') as HTMLElement
+    expect(within(panel).getByText('ocr.readiness.state.offlineReady')).toBeInTheDocument()
+    expect(within(panel).getByText('layout_heron')).toBeInTheDocument()
+    expect(within(panel).getByText('docling_tableformer (accurate)')).toBeInTheDocument()
+  })
+
+  it('readiness panel: pending job disables actions and failure is explained', () => {
+    const bad = { mode: 'local_only' as const, success: false, pipeline_ok: false, checked_at: 1, error: 'Heron model not available locally' }
+    mockEngines([{ ...rapid, readiness_job: 'check', readiness: { state: 'not_offline_ready', ocr_ok: false, pipeline_ok: false, local_only_verified: false, offline_verified: false, stale: false, last_check: bad } }])
+    render(<OcrEngineManager />)
+    const panel = document.querySelector('[data-slot="ocr-readiness"]') as HTMLElement
+    expect(within(panel).getByText('Heron model not available locally')).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: /ocr.readiness.prepare/ })).toBeDisabled()
+    expect(within(panel).getByText('ocr.readiness.checking')).toBeInTheDocument()
   })
 })

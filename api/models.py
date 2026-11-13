@@ -714,6 +714,7 @@ class OcrEngineStatus(BaseModel):
     dependency_problems: List[str] = Field(default_factory=list)
     # Offline readiness (docs/ocr/OCR_ONLINE_PREPARATION.md)
     readiness: Dict[str, Any] = Field(default_factory=dict)
+    readiness_job: Optional[str] = None
 
 
 class OcrConfig(BaseModel):

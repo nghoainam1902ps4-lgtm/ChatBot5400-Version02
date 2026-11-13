@@ -122,6 +122,10 @@ def engine_status(
         "options": _safe_describe(engine_id),
         "dependency_problems": deps,
         "readiness": _safe_readiness(engine_id, rt.status, ms.status),
+        # A prepare / readiness-check job is queued or running for this engine.
+        "readiness_job": "prepare"
+        if st.get("prepare_nonce")
+        else ("check" if st.get("readiness_nonce") else None),
     }
 
 

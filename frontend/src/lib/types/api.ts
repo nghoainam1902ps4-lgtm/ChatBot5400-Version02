@@ -406,6 +406,39 @@ export interface OcrEngineStatus {
   last_test?: OcrTestResult | null
   options: Record<string, unknown>
   dependency_problems?: string[]
+  readiness?: OcrReadiness
+  readiness_job?: 'prepare' | 'check' | null
+}
+
+export type OcrReadinessState =
+  | 'runtime_missing'
+  | 'model_missing'
+  | 'model_incomplete'
+  | 'incompatible'
+  | 'pipeline_not_verified'
+  | 'offline_ready'
+  | 'not_offline_ready'
+
+export interface OcrReadinessCheck {
+  mode: 'online' | 'local_only' | 'offline'
+  success?: boolean
+  pipeline_ok?: boolean
+  checked_at?: number
+  error?: string
+  layout_model?: string | null
+  table_model?: string | null
+  table_mode?: string | null
+  ocr_models?: string[] | null
+}
+
+export interface OcrReadiness {
+  state: OcrReadinessState
+  ocr_ok: boolean
+  pipeline_ok: boolean
+  local_only_verified: boolean
+  offline_verified: boolean
+  stale: boolean
+  last_check?: OcrReadinessCheck | null
 }
 
 export interface OcrConfig {
