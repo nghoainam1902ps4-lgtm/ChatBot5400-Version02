@@ -29,7 +29,7 @@ one-time nonce.
 | Command | Input now validated in the worker (all callers, admins included) |
 |---|---|
 | `process_source` | `source_id`/`notebook_ids`/`transformations` must be ids of the right table; `content_state` keys limited to `url`, `file_path`, `content`, `delete_source`; `file_path`/`url` must equal the source's own asset |
-| source graph `content_process` | `file_path`: canonical path (symlinks resolved) must be a regular file strictly inside `UPLOADS_FOLDER`; `url`: `validate_url()` + every redirect hop re-validated; delete re-checked immediately before `unlink` (a symlink is removed itself, never its target) |
+| source graph `content_process` | `file_path`: canonical path (symlinks resolved) must be a regular file strictly inside `UPLOADS_FOLDER`; `url`: `validate_url()` + every hop of a redirect pre-check re-validated (see §5); delete re-checked immediately before `unlink` (a symlink is removed itself, never its target) |
 | `run_transformation` | `source:` / `transformation:` ids |
 | `create_insight`, `embed_source` | `source:` id |
 | `embed_note` | `note:` id |
@@ -68,7 +68,16 @@ stub HTTP server only):
 
 ## 5. Residual risk
 
-- DNS rebinding between the worker's validation and content-core's own fetch (same
-  window as the API had before); private hosts remain reachable by design.
+- The redirect check is a **pre-check**. The worker validates the URL and each hop of the
+  redirect chain the server returns to its own request. content-core/Docling then fetch the
+  URL again and follow redirects themselves, so the pre-check does not cover:
+  - a server that answers the second request differently (e.g. 200 first, then a 302 to an
+    internal address);
+  - DNS rebinding between the check and the fetch;
+  - network errors during the pre-check, in which case only the URL itself is checked.
+
+  Closing this fully would need the worker to download through a pinned client and hand the
+  file to extraction (a content-core behaviour change, not done here). Private hosts remain
+  reachable by design.
 - `api/routers/sources.py` submits jobs on behalf of non-admin roles as before; those
   routes keep their existing checks (approval workflow, containment).

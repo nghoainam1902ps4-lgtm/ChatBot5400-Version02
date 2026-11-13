@@ -72,11 +72,13 @@ DOCLING_HF_REPOS = (
 )
 
 
-def _docling_cache_signature() -> dict[str, list[str]]:
-    """Snapshots of the Docling repos present in the HF cache (cheap listing).
+def _docling_cache_signature() -> dict[str, list[list[Any]]]:
+    """Files of the Docling repos in the HF cache: [snapshot/rel_path, size].
 
     Part of the fingerprint so that a verdict goes stale when the cache is
-    cleared or replaced — presence alone never makes an engine ready.
+    cleared, pruned (snapshot symlinks left dangling: size -1) or replaced —
+    presence alone never makes an engine ready. Sizes come from ``stat`` (no
+    hashing), so this stays cheap enough for every status request.
     """
     try:
         from huggingface_hub import constants
@@ -84,15 +86,21 @@ def _docling_cache_signature() -> dict[str, list[str]]:
         cache = Path(constants.HF_HUB_CACHE)
     except Exception:
         return {}
-    out: dict[str, list[str]] = {}
+    out: dict[str, list[list[Any]]] = {}
     for repo in DOCLING_HF_REPOS:
         snaps = cache / f"models--{repo.replace('/', '--')}" / "snapshots"
+        files: list[list[Any]] = []
         try:
-            out[repo] = sorted(
-                p.name for p in snaps.iterdir() if p.is_dir() and any(p.iterdir())
-            )
+            for f in snaps.rglob("*"):
+                if f.is_symlink() or f.is_file():
+                    try:
+                        size = f.stat().st_size  # follows the snapshot symlink
+                    except OSError:
+                        size = -1  # dangling: blob pruned
+                    files.append([f.relative_to(snaps).as_posix(), size])
         except OSError:
-            out[repo] = []
+            pass
+        out[repo] = sorted(files)
     return out
 
 
@@ -173,7 +181,9 @@ def run_pipeline_check(engine_id: str, mode: str) -> dict[str, Any]:
     try:
         proc = subprocess.run(
             [sys.executable, "-m", "open_notebook.ocr.readiness", "_child", engine_id],
-            env=_child_env(mode == "local_only"),
+            # The network is blocked for every check except "online": an
+            # "offline" verdict must not depend on the Internet probe being right.
+            env=_child_env(mode != "online"),
             capture_output=True,
             timeout=CHECK_TIMEOUT,
             check=False,
@@ -226,7 +236,9 @@ def readiness_status(
         checks.get("local_only"),
         checks.get("offline"),
     )
-    best = next((c for c in (offline, local) if fresh(c)), None)
+    # The most recent fresh no-network check decides (a newer failure wins).
+    fresh_no_network = [c for c in (offline, local) if c is not None and fresh(c)]
+    best = max(fresh_no_network, key=lambda c: c.get("checked_at", 0), default=None)
     info = {
         "engine": engine_id,
         "ocr_ok": any(

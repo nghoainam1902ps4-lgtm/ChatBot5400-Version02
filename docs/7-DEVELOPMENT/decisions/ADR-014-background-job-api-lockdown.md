@@ -20,7 +20,8 @@ because it assumed only the API's feature endpoints created jobs.
 - Workers do not trust job input (`open_notebook/utils/job_input_guard.py`):
   - upload paths must resolve, via realpath, inside `UPLOADS_FOLDER`;
   - files are only deleted inside uploads;
-  - URLs pass `validate_url()` on every redirect hop;
+  - URLs pass `validate_url()`, including each hop of a redirect pre-check (defence in
+    depth; the real fetch follows redirects itself, see Consequences);
   - record ids must belong to the expected table;
   - `process_source` only processes the file/URL that is the source's own asset.
 - Invalid job input raises `ValueError`, which marks the job permanently failed (no retry).
@@ -30,5 +31,6 @@ because it assumed only the API's feature endpoints created jobs.
 - External scripts that submitted jobs through `/api/commands/jobs` must use the feature
   endpoints, or must be added to the allow-list with a reviewed input schema.
 - Job status and listing are admin-only. The frontend only used them from admin screens.
-- Residual risk: DNS rebinding between the worker's validation and the fetch. Private hosts
-  stay reachable by design (self-hosted model servers).
+- Residual risk: the redirect check is a pre-check. content-core fetches again and follows
+  redirects itself, so a server that answers differently the second time, or DNS rebinding,
+  is not covered. Private hosts stay reachable by design (self-hosted model servers).

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+import time
 from typing import Any
 
 from loguru import logger
@@ -18,7 +19,15 @@ from api.models import (
 )
 from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.exceptions import InvalidInputError, NotFoundError
-from open_notebook.ocr import catalog, compat, installer, paths, runtime, store
+from open_notebook.ocr import (
+    catalog,
+    compat,
+    installer,
+    paths,
+    readiness,
+    runtime,
+    store,
+)
 from open_notebook.ocr.status import engine_status
 
 _OCR_COMMANDS = (
@@ -69,6 +78,11 @@ async def _reconcile_job(engine_id: str) -> None:
     st = store.read_state(engine_id)
     if st.get("state") not in store.ACTIVE_JOB_STATES or not st.get("job_id"):
         return
+    if st.get("prepare_nonce"):
+        # A running prepare downloads models itself (job_id is the previous
+        # install's): its outcome is recorded by the prepare job; a crashed one
+        # is covered by the stale timeout in store.job_is_active.
+        return
     try:
         data = await CommandService.get_command_status(st["job_id"])
         job_state = str(data.get("status") or "unknown").lower()
@@ -85,12 +99,31 @@ async def _reconcile_job(engine_id: str) -> None:
             )
 
 
+# A prepare/check may wait behind long source-processing jobs, then run up to
+# two pipeline checks (+ downloads). Past this age the marker is considered
+# dead even if the queue still says "running" (worker killed mid-job).
+READINESS_MARKER_STALE_SECONDS = (
+    store.PENDING_STALE_AFTER_SECONDS
+    + 2 * readiness.CHECK_TIMEOUT
+    + store.STALE_AFTER_SECONDS
+)
+
+
 async def _reconcile_readiness_jobs(engine_id: str) -> None:
     """Clear a prepare/check marker whose job ended without clearing it (worker crash)."""
     st = store.read_state(engine_id)
     for prefix in ("prepare", "readiness"):
         job_id = st.get(f"{prefix}_job_id")
-        if not st.get(f"{prefix}_nonce") or not job_id:
+        if not st.get(f"{prefix}_nonce"):
+            continue
+        queued_at = st.get(f"{prefix}_queued_at")
+        if (
+            queued_at
+            and time.time() - float(queued_at) > READINESS_MARKER_STALE_SECONDS
+        ):
+            store.update_state(engine_id, **{f"{prefix}_nonce": None})
+            continue
+        if not job_id:
             continue
         try:
             data = await CommandService.get_command_status(job_id)
@@ -246,7 +279,9 @@ async def _queue_readiness_job(
                 "This action is already queued or running for this engine."
             )
         nonce = secrets.token_urlsafe(32)
-        store.update_state(engine_id, **{f"{prefix}_nonce": nonce})
+        store.update_state(
+            engine_id, **{f"{prefix}_nonce": nonce, f"{prefix}_queued_at": time.time()}
+        )
         try:
             job_id = await _submit(command, engine_id, nonce)
         except Exception:

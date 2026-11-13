@@ -134,6 +134,34 @@ class TestReadinessStates:
         r = self.s("rapidocr")
         assert r["stale"] and r["state"] == readiness.PIPELINE_NOT_VERIFIED
 
+    def test_newer_failed_check_wins_over_older_offline_pass(self, ocr_dir):
+        old_pass = dict(_check("tesseract_best", "offline", True), checked_at=100.0)
+        new_fail = dict(_check("tesseract_best", "local_only", False), checked_at=200.0)
+        readiness.record("tesseract_best", old_pass)
+        readiness.record("tesseract_best", new_fail)
+        r = self.s()
+        assert r["state"] == readiness.NOT_OFFLINE_READY
+
+    def test_pruned_docling_blobs_make_verdict_stale(
+        self, ocr_dir, monkeypatch, tmp_path
+    ):
+        """HF snapshots are symlinks to blobs: pruning blobs leaves them dangling."""
+        from huggingface_hub import constants
+
+        cache = tmp_path / "hub"
+        repo = cache / "models--docling-project--docling-models"
+        blob = repo / "blobs" / "b1"
+        blob.parent.mkdir(parents=True)
+        blob.write_bytes(b"weights")
+        snap = repo / "snapshots" / "abc"
+        snap.mkdir(parents=True)
+        (snap / "model.pt").symlink_to(blob)
+        monkeypatch.setattr(constants, "HF_HUB_CACHE", str(cache))
+        readiness.record("tesseract_best", _check("tesseract_best", "local_only", True))
+        assert self.s()["state"] == readiness.OFFLINE_READY
+        blob.unlink()  # cache pruned, dangling snapshot link remains
+        assert self.s()["state"] == readiness.PIPELINE_NOT_VERIFIED
+
     def test_engine_status_exposes_readiness(self, ocr_dir, monkeypatch):
         from open_notebook.ocr import status
 
@@ -171,6 +199,29 @@ class TestChecks:
         online_env = readiness._child_env(local_only=False)
         assert online_env["HTTPS_PROXY"] == "http://proxy.example:3128"
         assert online_env["https_proxy"] == "http://proxy.example:3128"
+
+    @pytest.mark.parametrize(
+        "mode,blocked", [("online", False), ("local_only", True), ("offline", True)]
+    )
+    def test_network_blocked_for_every_no_download_check(
+        self, monkeypatch, ocr_dir, mode, blocked
+    ):
+        """An "offline" verdict must not rely on the Internet probe being right."""
+        seen = {}
+
+        def fake_run(cmd, env=None, **kw):
+            seen["proxy"] = env.get("HTTPS_PROXY")
+            return SimpleNamespace(stdout=b'{"success": false}', stderr=b"")
+
+        monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:3128")
+        monkeypatch.setattr(readiness.subprocess, "run", fake_run)
+        monkeypatch.setattr(
+            runtime,
+            "probe_tesseract",
+            lambda: runtime.RuntimeStatus(kind="tesseract", status="ready"),
+        )
+        readiness.run_pipeline_check("tesseract_best", mode)
+        assert (seen["proxy"] == readiness.DEAD_PROXY) is blocked
 
     def test_pipeline_ok_requires_heron_and_tableformer_accurate(
         self, monkeypatch, ocr_dir
@@ -294,7 +345,7 @@ class TestOfflineFailureMessages:
             DownloadFileException("modelscope"),
             wrapped,
         ):
-            assert "Prepare models" in readiness.explain_offline_failure(exc)
+            assert "Prepare models" in (readiness.explain_offline_failure(exc) or "")
 
     def test_ordinary_url_errors_untouched(self):
         assert (
@@ -343,7 +394,7 @@ class TestOfflineFailureMessages:
         with pytest.raises(
             ValueError, match="Prepare models"
         ):  # ValueError => no retry
-            await g.content_process({"content_state": {"content": "plain text"}})
+            await g.content_process({"content_state": {"content": "plain text"}})  # type: ignore[typeddict-item]
 
 
 class TestRapidOcrPersistence:
@@ -428,7 +479,7 @@ class TestReadinessApi:
     def test_queue_with_nonce_and_no_duplicates(
         self, client, monkeypatch, action, command, prefix
     ):
-        seen = {}
+        seen: dict[str, str] = {}
 
         async def fake_submit(cmd, engine_id, nonce):
             seen.update(cmd=cmd, nonce=nonce)
@@ -441,6 +492,61 @@ class TestReadinessApi:
         assert (
             client.post(f"/api/ocr/engines/tesseract_best/{action}").status_code == 400
         )
+
+    @pytest.mark.asyncio
+    async def test_dead_marker_is_cleared_after_timeout(self, ocr_dir, monkeypatch):
+        """Worker killed mid-check: the queue keeps saying "running" forever."""
+        from api import ocr_service
+
+        monkeypatch.setattr(
+            ocr_service.CommandService,
+            "get_command_status",
+            AsyncMock(return_value={"status": "running"}),
+        )
+        store.write_state(
+            "tesseract_best",
+            {
+                "prepare_nonce": "n",
+                "prepare_job_id": "command:1",
+                "prepare_queued_at": time.time(),
+            },
+        )
+        await ocr_service._reconcile_readiness_jobs("tesseract_best")
+        assert store.read_state("tesseract_best")["prepare_nonce"] == "n"  # alive
+        store.update_state(
+            "tesseract_best",
+            prepare_queued_at=time.time()
+            - ocr_service.READINESS_MARKER_STALE_SECONDS
+            - 1,
+        )
+        await ocr_service._reconcile_readiness_jobs("tesseract_best")
+        assert store.read_state("tesseract_best")["prepare_nonce"] is None
+
+    @pytest.mark.asyncio
+    async def test_prepare_download_not_failed_by_install_reconcile(
+        self, ocr_dir, monkeypatch
+    ):
+        """prepare downloads with the previous install's job_id still recorded."""
+        from api import ocr_service
+
+        monkeypatch.setattr(
+            ocr_service.CommandService,
+            "get_command_status",
+            AsyncMock(return_value={"status": "completed"}),
+        )
+        store.write_state(
+            "tesseract_best",
+            {
+                "state": store.DOWNLOADING,
+                "job_id": "command:old-install",
+                "prepare_nonce": "n",
+            },
+        )
+        await ocr_service._reconcile_job("tesseract_best")
+        assert store.read_state("tesseract_best")["state"] == store.DOWNLOADING
+        store.update_state("tesseract_best", prepare_nonce=None)
+        await ocr_service._reconcile_job("tesseract_best")  # no prepare: crash path
+        assert store.read_state("tesseract_best")["state"] == store.FAILED
 
     @pytest.mark.parametrize("action", ["prepare", "readiness-check"])
     def test_non_admin_forbidden(self, client, monkeypatch, action):

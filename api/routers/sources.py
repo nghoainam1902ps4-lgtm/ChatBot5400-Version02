@@ -523,6 +523,21 @@ async def _build_content_state(
     return content_state
 
 
+def _source_asset(
+    source_data: SourceCreate, file_path: Optional[str]
+) -> Optional[Asset]:
+    """The file/URL a source is created from (both processing paths).
+
+    The worker only processes the file/URL recorded on the source itself
+    (commands/source_commands.py ``_bind_content_to_source``).
+    """
+    if source_data.type == "link":
+        return Asset(url=source_data.url)
+    if source_data.type == "upload":
+        return Asset(file_path=file_path or source_data.file_path)
+    return None
+
+
 async def _create_source_async_path(
     source_data: SourceCreate,
     content_state: dict[str, Any],
@@ -537,17 +552,10 @@ async def _create_source_async_path(
 
     # Create source record with asset - let SurrealDB generate the ID
     # Persist asset before save so it's available for retry if processing fails
-    if source_data.type == "link":
-        source_asset = Asset(url=source_data.url)
-    elif source_data.type == "upload":
-        source_asset = Asset(file_path=file_path or source_data.file_path)
-    else:
-        source_asset = None
-
     source = Source(
         title=source_data.title or "Processing...",
         topics=[],
-        asset=source_asset,
+        asset=_source_asset(source_data, file_path),
         approval_status=approval_status,
         submitted_by=submitted_by,
         submitted_at=datetime.now() if submitted_by else None,
@@ -626,6 +634,7 @@ async def _create_source_sync_path(
     source_data: SourceCreate,
     content_state: dict[str, Any],
     transformation_ids: List[str],
+    file_path: Optional[str] = None,
     approval_status: str = "approved",
     submitted_by: Optional[str] = None,
     assigned_approver: Optional[str] = None,
@@ -645,6 +654,7 @@ async def _create_source_sync_path(
         source = Source(
             title=source_data.title or "Processing...",
             topics=[],
+            asset=_source_asset(source_data, file_path),
             approval_status=approval_status,
             submitted_by=submitted_by,
             submitted_at=datetime.now() if submitted_by else None,
@@ -786,6 +796,7 @@ async def create_source(
             source_data,
             content_state,
             transformation_ids,
+            file_path,
             approval_status=approval_status,
             submitted_by=submitted_by,
             assigned_approver=assigned_approver,

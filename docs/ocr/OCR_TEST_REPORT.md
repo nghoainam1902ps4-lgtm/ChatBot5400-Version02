@@ -164,12 +164,12 @@ Môi trường như trên; ngày 2026-11-13; so sánh với `e32eae8` (Phase 7).
 | Bộ test / kiểm tra | Kết quả |
 |---|---|
 | `test_background_job_security.py` (mới: quyền router commands, tắt submit tổng quát, upload path / delete / URL redirect / record id, `process_source` binding, nonce OCR) | 57 passed |
-| `test_ocr_readiness.py` (mới: trạng thái, lỗi thời theo fingerprint gồm cache Docling + trọng số RapidOCR, tiến trình con chặn mạng, prepare, lỗi offline, RapidOCR bền vững, API) | 32 passed |
+| `test_ocr_readiness.py` (mới: trạng thái, lỗi thời theo fingerprint gồm cache Docling + trọng số RapidOCR, tiến trình con chặn mạng, prepare, lỗi offline, RapidOCR bền vững, API) | 39 passed |
 | `test_ocr_acceptance_driver.py` (driver Docker với stub HTTP — **không phải** nghiệm thu runtime) | 9 passed |
 | `test_ocr_engine_manager.py` / `test_ocr_docling_parity.py` / `test_ocr_dependency_compat.py` / `test_ocr_bundle_cli.py` / `test_ocr_source_graph.py` | 99 / 24 / 12 / 11 / 5 passed |
 | `test_graphs.py` (uploads chuyển vào tmp vì guard mới) | 22 passed |
 | `test_ocr_doc_commands.py` (khối bash trong docs/ocr, `bash -n`) | 2 passed |
-| Regression backend toàn bộ (offline harness) | **1044 passed, 10 failed**; `e32eae8`: 951 passed, 10 failed — **cùng 10 lỗi có sẵn**, 0 lỗi mới |
+| Regression backend toàn bộ (offline harness) | **1053 passed, 10 failed**; `e32eae8`: 951 passed, 10 failed — **cùng 10 lỗi có sẵn**, 0 lỗi mới |
 | Frontend: tsc / lint / vitest / build | 0 lỗi / 0 error (7 warning có sẵn) / 404 passed / PASS |
 | ruff + mypy (file thay đổi) | sạch |
 | ShellCheck + `bash -n` (`docker-acceptance.sh`) | sạch |
@@ -196,3 +196,29 @@ Môi trường như trên; ngày 2026-11-13; so sánh với `e32eae8` (Phase 7).
 | P8-3 | Kết quả sẵn sàng có thể bị dùng lại sau khi recreate làm mất trọng số RapidOCR / cache HF | Fingerprint gồm snapshot Docling + trọng số RapidOCR ⇒ kết quả lỗi thời |
 | P8-4 | Thiếu model khi offline ⇒ job retry nhiều lần với lỗi khó hiểu | `ValueError` + hướng dẫn (D-22) |
 | P8-5 | Test proxy phụ thuộc biến môi trường của harness | Test tự đặt proxy, độc lập môi trường |
+
+### 8.4 Review độc lập diff Phase 8A (agent riêng, chỉ đọc mã) và xử lý
+
+| # | Mức | Phát hiện | Xử lý | Test |
+|---|---|---|---|---|
+| R8-1 | **Cao** | Đường tạo nguồn **sync** (`async_processing=false`, mặc định của API/JSON) không lưu `asset`. Do đó guard `_bind_content_to_source` từ chối mọi nguồn upload / link: job lỗi, API trả 500. UI luôn dùng async nên không thấy | Helper `_source_asset` dùng chung cho hai đường | `TestSyncSourceAssetPersistence` (2; fail trước khi sửa, pass sau) |
+| R8-2 | Trung bình–Cao | Kiểm tra `offline` chạy với mạng thật. Nếu probe Internet báo sai (DNS chậm, chỉ bị chặn 4 host, mirror HF), model có thể được tải mà vẫn ghi `offline_verified` | Chặn mạng tiến trình con cho mọi mode trừ `online` | `test_network_blocked_for_every_no_download_check` (3) |
+| R8-3 | Trung bình | Worker bị kill giữa chừng ⇒ marker prepare / check không bao giờ được xoá: nút bị khoá, frontend poll mãi | `*_queued_at` + timeout `READINESS_MARKER_STALE_SECONDS` | `test_dead_marker_is_cleared_after_timeout` |
+| R8-4 | Trung bình | Prepare tải model trong khi `job_id` còn là của lần install cũ ⇒ `_reconcile_job` đánh dấu FAILED giữa chừng | Bỏ qua reconcile install khi đang prepare; prepare chết thì timeout của store vẫn áp dụng | `test_prepare_download_not_failed_by_install_reconcile` |
+| R8-5 | Trung bình | Kiểm tra offline pass cũ che lần kiểm tra mới hơn bị thất bại | Lấy lần kiểm tra no-network còn hiệu lực **mới nhất** | `test_newer_failed_check_wins_over_older_offline_pass` |
+| R8-6 | Thấp–Trung bình | Kiểm tra redirect chỉ là pre-check; lần tải thật của content-core tự theo redirect | Sửa docstring và tài liệu cho đúng (rủi ro còn lại, `BACKGROUND_JOB_SECURITY.md` §5); không đổi hành vi content-core | – |
+| R8-7 | Thấp | Fingerprint không thấy blob HF bị dọn (symlink snapshot bị treo) | Signature gồm từng file + kích thước (`-1` khi treo) | `test_pruned_docling_blobs_make_verdict_stale` |
+| R8-8 | Thấp (không chắc) | Kiểm tra readiness không đọc `ContentSettings` | **Giữ nguyên:** `num_threads` / `force_full_page` không đổi model nào được nạp, mà readiness chỉ chứng minh model có sẵn; tiến trình con không phụ thuộc DB | – |
+
+Agent review cũng xác nhận các phần sau là sạch:
+
+- router commands, path guard (kể cả trường hợp `/uploads-evil`);
+- mọi chỗ gọi `submit_command` với `require_record_id`;
+- luồng async upload / link / text và retry;
+- nonce OCR (trong một tiến trình API);
+- polling frontend;
+- mặc định RapidOCR;
+- không có `pip` / `apt` từ HTTP.
+
+Giới hạn ghi nhận: lock nonce là theo tiến trình (chạy nhiều uvicorn worker không được bảo đảm, như các
+job OCR trước đây).

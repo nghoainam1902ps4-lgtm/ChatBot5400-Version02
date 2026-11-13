@@ -17,9 +17,10 @@ phỏng (mock / stub) là nghiệm thu runtime.
 | Cài model theo nhu cầu, ghim checksum, lưu bền vững, offline bundle (máy air-gapped) | §2.1–2.2 Test Report |
 | Khoá dependency theo `uv.lock` + guard tương thích | D-14; 12 test |
 | Bảo mật job nền: `/api/commands/*` chỉ admin, tắt submit tổng quát, worker kiểm tra lại đầu vào | ADR-014, D-19; 57 test với file canary |
-| Readiness không bao giờ dựa vào file; kết quả lỗi thời khi phiên bản / cache / trọng số đổi | D-20; 32 test; chạy thật: `prepare` trả `not_offline_ready` đúng khi HF bị chặn |
+| Readiness không bao giờ dựa vào file; kết quả lỗi thời khi phiên bản / cache / trọng số đổi | D-20; 39 test; chạy thật: `prepare` trả `not_offline_ready` đúng khi HF bị chặn |
 | RapidOCR lưu bền vững qua `Global.model_root_dir` | Chạy thật với onnxruntime khi mạng bị chặn |
-| Regression | 1044 passed / 10 failed so với 951 / 10 ở `e32eae8`: cùng 10 lỗi có sẵn, 0 lỗi mới |
+| Regression | 1053 passed / 10 failed so với 951 / 10 ở `e32eae8`: cùng 10 lỗi có sẵn, 0 lỗi mới |
+| Review độc lập diff 8A | 7/8 phát hiện đã sửa kèm test, gồm một lỗi Cao: tạo nguồn upload/link qua đường **sync** bị guard mới chặn (`OCR_TEST_REPORT.md` §8.4) |
 | Frontend | tsc 0 lỗi, lint 0 error, vitest 404 passed, build PASS |
 | Tài liệu | `OCR_ONLINE_PREPARATION.md`, `OCR_LOCAL_ACCEPTANCE.md` (lệnh qua `bash -n`); ShellCheck sạch |
 

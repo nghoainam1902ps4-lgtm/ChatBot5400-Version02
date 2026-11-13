@@ -56,5 +56,5 @@ Khuyến nghị: **coi mục 1 và 3 là điều kiện bắt buộc trước kh
 |---|---|
 | 1. POST/DELETE chỉ admin | **Xong** — toàn bộ router admin-only; POST bị tắt bằng allow-list rỗng (deny by default) |
 | 2. GET trạng thái giới hạn | **Xong** — admin-only (frontend chỉ admin dùng); danh sách job không lộ payload |
-| 3. Phòng thủ tại worker | **Xong** — `file_path` trong `UPLOADS_FOLDER` (canonical, chống symlink), kiểm tra lại trước khi xoá; `validate_url()` + mọi bước redirect; `content_state`/id ràng buộc với bản ghi source |
+| 3. Phòng thủ tại worker | **Xong** — `file_path` trong `UPLOADS_FOLDER` (canonical, chống symlink), kiểm tra lại trước khi xoá; `validate_url()` + pre-check từng bước redirect (lần tải thật vẫn tự theo redirect — xem `BACKGROUND_JOB_SECURITY.md` §5); `content_state`/id ràng buộc với bản ghi source |
 | 4. Test | **Xong** — `tests/test_background_job_security.py` (57) |

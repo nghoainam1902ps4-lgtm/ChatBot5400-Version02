@@ -88,7 +88,15 @@ def safe_delete_upload(path: str) -> bool:
 
 
 async def validate_source_url(url: str) -> None:
-    """Existing URL policy, re-applied in the worker incl. every redirect hop."""
+    """Existing URL policy, re-applied in the worker, plus a redirect pre-check.
+
+    Validates the URL and every hop of the redirect chain the server returns
+    *to this pre-check*. It is defence in depth, not a guarantee: the actual
+    fetch is done afterwards by content-core/Docling, which follow redirects
+    themselves, so a server that answers differently the second time (or DNS
+    rebinding) is not covered; network errors during the pre-check fall back
+    to the URL check alone. See docs/security/BACKGROUND_JOB_SECURITY.md §5.
+    """
     from open_notebook.utils.url_validation import validate_url
 
     try:

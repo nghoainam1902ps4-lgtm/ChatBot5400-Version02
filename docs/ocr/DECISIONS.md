@@ -172,7 +172,8 @@ Mỗi quyết định: bối cảnh → quyết định → phương án bị lo
 - Worker áp dụng phòng thủ nhiều lớp, không tin API (`open_notebook/utils/job_input_guard.py`):
   - `file_path` phải nằm trong `UPLOADS_FOLDER` (kiểm tra bằng `realpath`);
   - chỉ xoá file nằm trong uploads;
-  - URL được `validate_url()` kiểm tra lại ở **mọi** bước redirect;
+  - URL được `validate_url()` kiểm tra lại, kèm pre-check từng bước redirect. Đây là phòng thủ
+    nhiều lớp: lần tải thật vẫn tự theo redirect, xem `BACKGROUND_JOB_SECURITY.md` §5;
   - record id phải đúng bảng;
   - với `process_source`, file/URL phải trùng với asset của chính source đó.
 - Không tiếp tục chặn ở API rồi tin tưởng worker. Chi tiết: `docs/security/BACKGROUND_JOB_SECURITY.md`.

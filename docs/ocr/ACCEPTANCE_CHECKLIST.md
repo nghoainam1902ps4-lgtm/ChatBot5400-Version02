@@ -20,7 +20,7 @@ Trạng thái: **PASS** (có bằng chứng thực tế) · **FAIL** · **NOT VE
 | Offline installation | PASS | Bundle thật, mạng bị chặn, 4/4 ready; bundle giả mạo bị từ chối |
 | Chuyển engine an toàn | PASS | Settings đọc lại mỗi job (`test_settings_reloaded_for_every_job`); activate từ chối engine chưa ready (`test_activate_refuses_not_ready_engine_and_keeps_current`); chạy Fast+Best đồng thời |
 | Gỡ model đang dùng bị chặn | PASS | `test_active_engine_cannot_be_removed`, `test_delete_active_model_refused`, UI ẩn nút |
-| Regression: không lỗi mới | PASS (trong phạm vi chạy được) | Phase 8A: 1044 passed / 10 failed so với `e32eae8`: 951 passed / 10 failed — đúng 10 lỗi có sẵn, 0 lỗi mới; 4 file cần tiktoken NOT VERIFIED (mạng) |
+| Regression: không lỗi mới | PASS (trong phạm vi chạy được) | Phase 8A: 1053 passed / 10 failed so với `e32eae8`: 951 passed / 10 failed — đúng 10 lỗi có sẵn, 0 lỗi mới; 4 file cần tiktoken NOT VERIFIED (mạng) |
 | Backend test | PASS | Phase 7: 167 test OCR (+39 full pipeline NOT VERIFIED) + `test_graphs.py` 22/22 (Test Report §7.2) |
 | Frontend build | PASS | `npm run build` |
 | Docker test | NOT VERIFIED | Script viết lại (mạng internal, upgrade, rebuild thật, E2E API+worker) — chưa chạy: Docker Hub 429 / ghcr 403 / Debian apt 403 trong Cloud. Chạy theo `OCR_LOCAL_ACCEPTANCE.md` §5 |
@@ -50,7 +50,7 @@ chạy thật.
 | Prepare online tải đúng phần thiếu, dùng lại model đã có | PASS (mã + test) / NOT VERIFIED (Docker) | `test_prepare_online_runs_online_then_local_only`, `test_prepare_offline_with_missing_model_fails_fast`, `test_prepare_never_installs_runtime`; Docker bước 2 (prepare lần 2: checksum không đổi) chưa chạy |
 | Không báo OFFLINE READY chỉ từ file/checksum | PASS | `test_files_present_are_not_enough`, `test_online_check_alone_is_not_offline_ready` |
 | Phân biệt OCR-only / full pipeline / local-only / offline thật | PASS (mã + test) | `readiness_status` (`ocr_ok`, `pipeline_ok`, `local_only_verified`, `offline_verified`); UI hiển thị riêng từng dòng |
-| Kết quả lỗi thời sau cập nhật / mất cache / mất trọng số RapidOCR | PASS | `test_changed_dependencies_make_verdict_stale`, `test_cleared_docling_cache_makes_verdict_stale`, `test_lost_rapidocr_weights_make_verdict_stale` |
+| Kết quả lỗi thời sau cập nhật / mất cache / mất trọng số RapidOCR | PASS | `test_changed_dependencies_make_verdict_stale`, `test_cleared_docling_cache_makes_verdict_stale`, `test_pruned_docling_blobs_make_verdict_stale`, `test_lost_rapidocr_weights_make_verdict_stale`, `test_newer_failed_check_wins_over_older_offline_pass` |
 | Chạy thật `prepare` khi model Docling không tải được ⇒ không báo sẵn sàng | PASS (Cloud, thật) | `prepare --engines tesseract_best` ⇒ `not_offline_ready` kèm lỗi Hugging Face chính xác, exit ≠ 0 |
 | Thiếu model khi offline ⇒ lỗi rõ ràng, không treo, không fallback | PASS (mã + test) / NOT VERIFIED (E2E) | `explain_offline_failure` ⇒ `ValueError` (không retry); `test_content_process_fails_fast_without_retry`, `test_ordinary_url_errors_untouched` |
 | RapidOCR lưu bền vững qua tham số chính thức | PASS (onnx, thật) / NOT VERIFIED (torch) | `Global.model_root_dir`; chạy offline với overlay onnxruntime: log RapidOCR "File exists and is valid" từ thư mục bền vững; torch cần modelscope (bị chặn) |
@@ -59,5 +59,6 @@ chạy thật.
 | Full pipeline 4 engine | NOT VERIFIED | huggingface.co / modelscope.cn 403 trong Cloud; `OCR_LOCAL_ACCEPTANCE.md` §4.3–4.4 |
 | Docker: cập nhật online → chuẩn bị → offline (mọi engine) → restart offline → cập nhật online | NOT VERIFIED | Script hoàn chỉnh (`bash -n`, ShellCheck sạch, driver 9 test với stub); Docker Hub 429 / ghcr 403 / apt 403 |
 | API + worker E2E thật | NOT VERIFIED | Tải SurrealDB binary bị chính sách phiên từ chối — không vượt qua |
-| Regression so với `e32eae8` | PASS | 1044 passed / 10 failed vs 951 / 10, cùng 10 lỗi có sẵn |
+| Regression so với `e32eae8` | PASS | 1053 passed / 10 failed vs 951 / 10, cùng 10 lỗi có sẵn |
+| Review độc lập diff 8A | PASS | 8 phát hiện: 7 đã sửa kèm test, 1 giữ nguyên có lý do (`OCR_TEST_REPORT.md` §8.4) |
 | Tài liệu `OCR_ONLINE_PREPARATION.md` (15 chủ đề), lệnh qua `bash -n` | PASS | `check_doc_commands.py` |

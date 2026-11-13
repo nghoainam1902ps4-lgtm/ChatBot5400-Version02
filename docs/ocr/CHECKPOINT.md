@@ -61,7 +61,8 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
   - `d87a9b3` — Docker acceptance online / offline;
   - `b27f87b` — test proxy độc lập harness;
   - `cbfb198` — fingerprint gồm cache Docling + trọng số RapidOCR;
-  - commit tài liệu Phase 8A.
+  - commit tài liệu Phase 8A;
+  - commit sửa theo review độc lập (R8-1 … R8-7, `OCR_TEST_REPORT.md` §8.4).
 - File mới:
   - `open_notebook/utils/job_input_guard.py`, `open_notebook/ocr/readiness.py`;
   - `tests/test_background_job_security.py`, `tests/test_ocr_readiness.py`;

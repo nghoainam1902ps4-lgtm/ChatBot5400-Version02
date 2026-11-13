@@ -168,7 +168,7 @@ Có ba mức kiểm tra:
 |---|---|---|
 | `online` | khi `prepare` có Internet | pipeline chạy được; có thể vừa tải model |
 | `local_only` | tiến trình con với mọi proxy trỏ tới cổng đóng `127.0.0.1:9` | mọi lần tải đều thất bại ⇒ pass chứng minh mọi thứ đã nằm sẵn trên máy |
-| `offline` | khi Internet thật sự không tới được | bằng chứng mạnh nhất |
+| `offline` | khi Internet thật sự không tới được (tiến trình con **vẫn** bị chặn mạng như `local_only`) | bằng chứng mạnh nhất |
 
 ## 9. Xác nhận sẵn sàng offline
 
@@ -179,7 +179,7 @@ Có ba mức kiểm tra:
 | `model_missing` / `model_incomplete` | thiếu model OCR, hoặc model sai checksum |
 | `pipeline_not_verified` | chưa có lần kiểm tra chặn mạng nào còn hiệu lực; có thể đã pass `online` (OCR-only) |
 | `not_offline_ready` | lần kiểm tra chặn mạng hoặc offline gần nhất thất bại |
-| `offline_ready` | lần kiểm tra `local_only` hoặc `offline` gần nhất pass toàn bộ pipeline, và chưa có gì thay đổi |
+| `offline_ready` | lần kiểm tra `local_only` / `offline` **mới nhất** (còn hiệu lực) pass toàn bộ pipeline. Lần mới hơn thất bại ⇒ `not_offline_ready` |
 
 Các nguyên tắc khi xác định trạng thái:
 
@@ -189,7 +189,7 @@ Các nguyên tắc khi xác định trạng thái:
 - Kết quả bị coi là **lỗi thời** khi một trong các thứ sau thay đổi:
   - phiên bản Docling / Content Core / RapidOCR / torch / Tesseract / EasyOCR;
   - checksum model;
-  - snapshot Heron / TableFormer trong cache;
+  - file Heron / TableFormer trong cache (kể cả symlink snapshot bị treo khi blob bị dọn);
   - trọng số RapidOCR;
   - `OCR_RAPIDOCR_PERSISTENT` hoặc `OCR_RAPIDOCR_FORCE_CPU`.
 
