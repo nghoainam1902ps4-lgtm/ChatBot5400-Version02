@@ -1,14 +1,26 @@
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel, Field
 from surreal_commands import registry
 
+from api.auth import require_admin
 from api.command_service import CommandService
-from open_notebook.exceptions import OpenNotebookError
+from open_notebook.exceptions import AuthorizationError, OpenNotebookError
 
-router = APIRouter()
+# Generic background-job API (docs/security/BACKGROUND_JOB_SECURITY.md).
+# Deny by default: every route is admin-only. Feature endpoints (sources,
+# insights, podcasts, embeddings, OCR) submit their own jobs with validated
+# input and their own authorisation; the only frontend consumer of this router
+# is admin-only insight polling (GET /commands/jobs/{id}).
+router = APIRouter(dependencies=[Depends(require_admin)])
+
+# Commands that may be submitted through the GENERIC endpoint with
+# caller-supplied input. Empty on purpose: no client needs it, and generic
+# input bypasses feature-level validation. Add an entry only together with a
+# strict input model and tests.
+GENERIC_SUBMIT_ALLOWLIST: frozenset[tuple[str, str]] = frozenset()
 
 
 class CommandExecutionRequest(BaseModel):
@@ -53,6 +65,11 @@ async def execute_command(request: CommandExecutionRequest):
         }
     }
     """
+    if (request.app, request.command) not in GENERIC_SUBMIT_ALLOWLIST:
+        raise AuthorizationError(
+            "Generic command submission is disabled. Use the feature endpoint "
+            "(sources, insights, podcasts, embeddings, OCR) instead."
+        )
     try:
         # Submit command using app name (not module name)
         job_id = await CommandService.submit_command_job(

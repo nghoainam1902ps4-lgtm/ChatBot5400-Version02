@@ -166,6 +166,18 @@ mã nguồn kho này).
 Tài liệu tính năng/sử dụng chi tiết nằm trong thư mục [`docs/`](docs/index.md)
 (phần lớn kế thừa từ dự án gốc).
 
+### 🔤 OCR Engine Manager (tiếng Việt)
+
+Settings → Content Processing → **OCR Engine Manager**: chọn engine OCR cho PDF scan/ảnh
+(RapidOCR mặc định, Tesseract Vietnamese Fast/Best, EasyOCR Vietnamese — đều là engine gốc
+của Docling, chạy CPU). Model chỉ được tải khi quản trị viên bấm **Cài đặt**, lưu bền vững
+trong `notebook_data/ocr`. Mô hình vận hành: **chuẩn bị online** (nút *Chuẩn bị model* /
+`python -m open_notebook.ocr.cli prepare`) rồi **xử lý tài liệu offline** (OCR, Layout Heron,
+TableFormer, Markdown). Trạng thái sẵn sàng offline chỉ được xác nhận sau khi chạy pipeline thật khi
+mạng đã bị chặn — xem [`docs/ocr/OCR_ONLINE_PREPARATION.md`](docs/ocr/OCR_ONLINE_PREPARATION.md).
+Tài liệu khác: [`docs/ocr/`](docs/ocr/OCR_ENGINE_MANAGER.md) (cấu hình, Docker, offline bundle,
+benchmark, rollback).
+
 ---
 
 ## 🙏 Nguồn dự án / Upstream

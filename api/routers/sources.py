@@ -53,6 +53,10 @@ from open_notebook.exceptions import (
     UnsupportedTypeException,
 )
 from open_notebook.utils.text_utils import build_accent_insensitive_pattern
+from open_notebook.utils.url_ingestion import (
+    DISABLED_MESSAGE as URL_INGESTION_DISABLED_MESSAGE,
+)
+from open_notebook.utils.url_ingestion import url_ingestion_enabled
 
 router = APIRouter()
 
@@ -337,8 +341,7 @@ async def get_sources(
         if not auth_disabled() and not current_user.is_admin:
             params["me"] = ensure_record_id(current_user.id)
             conditions.append(
-                "((approval_status OR 'approved') = 'approved' "
-                "OR submitted_by = $me)"
+                "((approval_status OR 'approved') = 'approved' OR submitted_by = $me)"
             )
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
@@ -471,6 +474,37 @@ def _cleanup_uploaded_file(
             pass
 
 
+def _require_url_ingestion() -> None:
+    """403 when adding / re-processing sources from a URL is switched off."""
+    if not url_ingestion_enabled():
+        raise HTTPException(status_code=403, detail=URL_INGESTION_DISABLED_MESSAGE)
+
+
+def _require_admin_for_server_file(
+    source_data: SourceCreate,
+    upload_file: Optional[UploadFile],
+    current_user: TokenUser,
+) -> None:
+    """A source may only be built from a file the request itself uploaded.
+
+    The JSON endpoint still accepts a ``file_path`` that is already inside the
+    uploads folder (kept for administrator scripts). For any other role that
+    would be a way to read - and, with ``delete_source``, remove - a file
+    another user uploaded, including submissions still waiting for approval.
+    """
+    if (
+        source_data.type == "upload"
+        and upload_file is None
+        and source_data.file_path
+        and not current_user.is_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Upload the file with the request; referring to a file "
+            "that is already on the server requires an administrator.",
+        )
+
+
 async def _build_content_state(
     source_data: SourceCreate, file_path: Optional[str]
 ) -> dict[str, Any]:
@@ -479,6 +513,9 @@ async def _build_content_state(
     content_state: dict[str, Any] = {}
 
     if source_data.type == "link":
+        # Deployment switch (D-29): refused for every role, before the URL is
+        # even looked at (no DNS lookup, no request).
+        _require_url_ingestion()
         if not source_data.url:
             raise HTTPException(status_code=400, detail="URL is required for link type")
         # Block SSRF to internal/metadata addresses before the server ever
@@ -523,6 +560,21 @@ async def _build_content_state(
     return content_state
 
 
+def _source_asset(
+    source_data: SourceCreate, file_path: Optional[str]
+) -> Optional[Asset]:
+    """The file/URL a source is created from (both processing paths).
+
+    The worker only processes the file/URL recorded on the source itself
+    (commands/source_commands.py ``_bind_content_to_source``).
+    """
+    if source_data.type == "link":
+        return Asset(url=source_data.url)
+    if source_data.type == "upload":
+        return Asset(file_path=file_path or source_data.file_path)
+    return None
+
+
 async def _create_source_async_path(
     source_data: SourceCreate,
     content_state: dict[str, Any],
@@ -537,17 +589,10 @@ async def _create_source_async_path(
 
     # Create source record with asset - let SurrealDB generate the ID
     # Persist asset before save so it's available for retry if processing fails
-    if source_data.type == "link":
-        source_asset = Asset(url=source_data.url)
-    elif source_data.type == "upload":
-        source_asset = Asset(file_path=file_path or source_data.file_path)
-    else:
-        source_asset = None
-
     source = Source(
         title=source_data.title or "Processing...",
         topics=[],
-        asset=source_asset,
+        asset=_source_asset(source_data, file_path),
         approval_status=approval_status,
         submitted_by=submitted_by,
         submitted_at=datetime.now() if submitted_by else None,
@@ -626,6 +671,7 @@ async def _create_source_sync_path(
     source_data: SourceCreate,
     content_state: dict[str, Any],
     transformation_ids: List[str],
+    file_path: Optional[str] = None,
     approval_status: str = "approved",
     submitted_by: Optional[str] = None,
     assigned_approver: Optional[str] = None,
@@ -645,10 +691,13 @@ async def _create_source_sync_path(
         source = Source(
             title=source_data.title or "Processing...",
             topics=[],
+            asset=_source_asset(source_data, file_path),
             approval_status=approval_status,
             submitted_by=submitted_by,
             submitted_at=datetime.now() if submitted_by else None,
-            assigned_approver=assigned_approver if approval_status == "pending" else None,
+            assigned_approver=assigned_approver
+            if approval_status == "pending"
+            else None,
         )
         await source.save()
 
@@ -724,6 +773,7 @@ async def create_source(
     content directly.
     """
     source_data, upload_file = form_data
+    _require_admin_for_server_file(source_data, upload_file, current_user)
     # A contributor's content must be reviewed before it becomes visible.
     approval_status = "pending" if current_user.requires_approval else "approved"
     submitted_by = current_user.id
@@ -786,6 +836,7 @@ async def create_source(
             source_data,
             content_state,
             transformation_ids,
+            file_path,
             approval_status=approval_status,
             submitted_by=submitted_by,
             assigned_approver=assigned_approver,
@@ -1116,6 +1167,9 @@ async def retry_source_processing(source_id: str):
                     "delete_source": False,  # Don't delete on retry
                 }
             elif source.asset.url:
+                # Re-fetching an old URL source is URL ingestion too (D-29).
+                # Its stored content stays readable; only the re-download is refused.
+                _require_url_ingestion()
                 content_state = {"url": source.asset.url}
             else:
                 raise HTTPException(

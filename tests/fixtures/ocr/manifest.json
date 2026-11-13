@@ -1,0 +1,429 @@
+{
+  "vb_scan": {
+    "file": "vb_scan.pdf",
+    "kind": "scanned_text",
+    "pages": 1,
+    "text_layer": [
+      false
+    ],
+    "ordered_phrases": [
+      "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+      "QUYẾT ĐỊNH",
+      "Điều 1.",
+      "Điều 2.",
+      "Điều 3."
+    ],
+    "key_fields": {
+      "doc_numbers": [
+        "1234/2024/QĐ-MẪU",
+        "39/2016/TT-MẪU"
+      ],
+      "dates": [
+        "15 tháng 03 năm 2024",
+        "30/12/2016",
+        "01/04/2024"
+      ],
+      "amounts": [
+        "1.250.000.000"
+      ]
+    },
+    "ground_truth": "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\nSố: 1234/2024/QĐ-MẪU\nHà Nội, ngày 15 tháng 03 năm 2024\nQUYẾT ĐỊNH\nVề việc ban hành quy định mẫu phục vụ kiểm thử nhận dạng ký tự\nCăn cứ Thông tư số 39/2016/TT-MẪU ngày 30/12/2016;\nXét đề nghị của Trưởng phòng Kiểm thử Dữ liệu Giả lập,\nĐiều 1. Ban hành kèm theo Quyết định này Quy định mẫu.\nĐiều 2. Hạn mức thử nghiệm là 1.250.000.000 đồng.\nĐiều 3. Quyết định có hiệu lực kể từ ngày 01/04/2024.\nNơi nhận: Như Điều 3; Lưu: VT, KTDL.",
+    "tables": [],
+    "rotated": false
+  },
+  "bang_gop_scan": {
+    "file": "bang_gop_scan.pdf",
+    "kind": "scanned_table_merged",
+    "pages": 1,
+    "text_layer": [
+      false
+    ],
+    "ordered_phrases": [
+      "BẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU"
+    ],
+    "key_fields": {
+      "amounts": [
+        "2.500.000",
+        "1.200.000",
+        "18.750.000",
+        "9.375.000",
+        "350.000.000",
+        "175.000.000",
+        "371.250.000",
+        "185.575.000"
+      ],
+      "dates": [
+        "05/01/2024",
+        "12/02/2024",
+        "20/03/2024",
+        "31/03/2024"
+      ],
+      "doc_numbers": []
+    },
+    "ground_truth": "BẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU\nSTT Nội dung Số tiền (đồng) Ngày\nKỳ 1 Kỳ 2\n1 Phí dịch vụ mẫu 2.500.000 1.200.000 05/01/2024\n2 Lãi suất giả định 18.750.000 9.375.000 12/02/2024\n3 Khoản vay thử nghiệm 350.000.000 175.000.000 20/03/2024\n4 Tổng cộng 371.250.000 185.575.000 31/03/2024",
+    "tables": [
+      {
+        "cols": 5,
+        "rows_min": 5,
+        "rows_max": 6,
+        "merged_header": "Số tiền (đồng)",
+        "sub_headers": [
+          "Kỳ 1",
+          "Kỳ 2"
+        ],
+        "row_checks": [
+          {
+            "label": "Phí dịch vụ mẫu",
+            "cells": [
+              "2.500.000",
+              "1.200.000",
+              "05/01/2024"
+            ]
+          },
+          {
+            "label": "Lãi suất giả định",
+            "cells": [
+              "18.750.000",
+              "9.375.000",
+              "12/02/2024"
+            ]
+          },
+          {
+            "label": "Khoản vay thử nghiệm",
+            "cells": [
+              "350.000.000",
+              "175.000.000",
+              "20/03/2024"
+            ]
+          },
+          {
+            "label": "Tổng cộng",
+            "cells": [
+              "371.250.000",
+              "185.575.000",
+              "31/03/2024"
+            ]
+          }
+        ]
+      }
+    ],
+    "rotated": false
+  },
+  "nhieu_trang_scan": {
+    "file": "nhieu_trang_scan.pdf",
+    "kind": "scanned_multipage",
+    "pages": 2,
+    "text_layer": [
+      false,
+      false
+    ],
+    "ordered_phrases": [
+      "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+      "QUYẾT ĐỊNH",
+      "Điều 1.",
+      "Điều 2.",
+      "Điều 3.",
+      "BẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU"
+    ],
+    "key_fields": {
+      "doc_numbers": [
+        "1234/2024/QĐ-MẪU",
+        "39/2016/TT-MẪU"
+      ],
+      "dates": [
+        "15 tháng 03 năm 2024",
+        "30/12/2016",
+        "01/04/2024",
+        "05/01/2024",
+        "12/02/2024",
+        "20/03/2024",
+        "31/03/2024"
+      ],
+      "amounts": [
+        "1.250.000.000",
+        "2.500.000",
+        "1.200.000",
+        "18.750.000",
+        "9.375.000",
+        "350.000.000",
+        "175.000.000",
+        "371.250.000",
+        "185.575.000"
+      ]
+    },
+    "ground_truth": "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\nSố: 1234/2024/QĐ-MẪU\nHà Nội, ngày 15 tháng 03 năm 2024\nQUYẾT ĐỊNH\nVề việc ban hành quy định mẫu phục vụ kiểm thử nhận dạng ký tự\nCăn cứ Thông tư số 39/2016/TT-MẪU ngày 30/12/2016;\nXét đề nghị của Trưởng phòng Kiểm thử Dữ liệu Giả lập,\nĐiều 1. Ban hành kèm theo Quyết định này Quy định mẫu.\nĐiều 2. Hạn mức thử nghiệm là 1.250.000.000 đồng.\nĐiều 3. Quyết định có hiệu lực kể từ ngày 01/04/2024.\nNơi nhận: Như Điều 3; Lưu: VT, KTDL.\nBẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU\nSTT Nội dung Số tiền (đồng) Ngày\nKỳ 1 Kỳ 2\n1 Phí dịch vụ mẫu 2.500.000 1.200.000 05/01/2024\n2 Lãi suất giả định 18.750.000 9.375.000 12/02/2024\n3 Khoản vay thử nghiệm 350.000.000 175.000.000 20/03/2024\n4 Tổng cộng 371.250.000 185.575.000 31/03/2024",
+    "tables": [
+      {
+        "cols": 5,
+        "rows_min": 5,
+        "rows_max": 6,
+        "merged_header": "Số tiền (đồng)",
+        "sub_headers": [
+          "Kỳ 1",
+          "Kỳ 2"
+        ],
+        "row_checks": [
+          {
+            "label": "Phí dịch vụ mẫu",
+            "cells": [
+              "2.500.000",
+              "1.200.000",
+              "05/01/2024"
+            ]
+          },
+          {
+            "label": "Lãi suất giả định",
+            "cells": [
+              "18.750.000",
+              "9.375.000",
+              "12/02/2024"
+            ]
+          },
+          {
+            "label": "Khoản vay thử nghiệm",
+            "cells": [
+              "350.000.000",
+              "175.000.000",
+              "20/03/2024"
+            ]
+          },
+          {
+            "label": "Tổng cộng",
+            "cells": [
+              "371.250.000",
+              "185.575.000",
+              "31/03/2024"
+            ]
+          }
+        ]
+      }
+    ],
+    "rotated": false
+  },
+  "vb_xoay_scan": {
+    "file": "vb_xoay_scan.pdf",
+    "kind": "scanned_rotated",
+    "pages": 1,
+    "text_layer": [
+      false
+    ],
+    "ordered_phrases": [
+      "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+      "QUYẾT ĐỊNH",
+      "Điều 1.",
+      "Điều 2.",
+      "Điều 3."
+    ],
+    "key_fields": {
+      "doc_numbers": [
+        "1234/2024/QĐ-MẪU",
+        "39/2016/TT-MẪU"
+      ],
+      "dates": [
+        "15 tháng 03 năm 2024",
+        "30/12/2016",
+        "01/04/2024"
+      ],
+      "amounts": [
+        "1.250.000.000"
+      ]
+    },
+    "ground_truth": "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\nSố: 1234/2024/QĐ-MẪU\nHà Nội, ngày 15 tháng 03 năm 2024\nQUYẾT ĐỊNH\nVề việc ban hành quy định mẫu phục vụ kiểm thử nhận dạng ký tự\nCăn cứ Thông tư số 39/2016/TT-MẪU ngày 30/12/2016;\nXét đề nghị của Trưởng phòng Kiểm thử Dữ liệu Giả lập,\nĐiều 1. Ban hành kèm theo Quyết định này Quy định mẫu.\nĐiều 2. Hạn mức thử nghiệm là 1.250.000.000 đồng.\nĐiều 3. Quyết định có hiệu lực kể từ ngày 01/04/2024.\nNơi nhận: Như Điều 3; Lưu: VT, KTDL.",
+    "tables": [],
+    "rotated": true
+  },
+  "vb_text": {
+    "file": "vb_text.pdf",
+    "kind": "text_layer",
+    "pages": 1,
+    "text_layer": [
+      true
+    ],
+    "ordered_phrases": [
+      "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+      "QUYẾT ĐỊNH",
+      "Điều 1.",
+      "Điều 2.",
+      "Điều 3."
+    ],
+    "key_fields": {
+      "doc_numbers": [
+        "1234/2024/QĐ-MẪU",
+        "39/2016/TT-MẪU"
+      ],
+      "dates": [
+        "15 tháng 03 năm 2024",
+        "30/12/2016",
+        "01/04/2024"
+      ],
+      "amounts": [
+        "1.250.000.000"
+      ]
+    },
+    "ground_truth": "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\nSố: 1234/2024/QĐ-MẪU\nHà Nội, ngày 15 tháng 03 năm 2024\nQUYẾT ĐỊNH\nVề việc ban hành quy định mẫu phục vụ kiểm thử nhận dạng ký tự\nCăn cứ Thông tư số 39/2016/TT-MẪU ngày 30/12/2016;\nXét đề nghị của Trưởng phòng Kiểm thử Dữ liệu Giả lập,\nĐiều 1. Ban hành kèm theo Quyết định này Quy định mẫu.\nĐiều 2. Hạn mức thử nghiệm là 1.250.000.000 đồng.\nĐiều 3. Quyết định có hiệu lực kể từ ngày 01/04/2024.\nNơi nhận: Như Điều 3; Lưu: VT, KTDL.",
+    "tables": [],
+    "rotated": false
+  },
+  "bang_gop_text": {
+    "file": "bang_gop_text.pdf",
+    "kind": "text_layer_table_merged",
+    "pages": 1,
+    "text_layer": [
+      true
+    ],
+    "ordered_phrases": [
+      "BẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU"
+    ],
+    "key_fields": {
+      "amounts": [
+        "2.500.000",
+        "1.200.000",
+        "18.750.000",
+        "9.375.000",
+        "350.000.000",
+        "175.000.000",
+        "371.250.000",
+        "185.575.000"
+      ],
+      "dates": [
+        "05/01/2024",
+        "12/02/2024",
+        "20/03/2024",
+        "31/03/2024"
+      ],
+      "doc_numbers": []
+    },
+    "ground_truth": "BẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU\nSTT Nội dung Số tiền (đồng) Ngày\nKỳ 1 Kỳ 2\n1 Phí dịch vụ mẫu 2.500.000 1.200.000 05/01/2024\n2 Lãi suất giả định 18.750.000 9.375.000 12/02/2024\n3 Khoản vay thử nghiệm 350.000.000 175.000.000 20/03/2024\n4 Tổng cộng 371.250.000 185.575.000 31/03/2024",
+    "tables": [
+      {
+        "cols": 5,
+        "rows_min": 5,
+        "rows_max": 6,
+        "merged_header": "Số tiền (đồng)",
+        "sub_headers": [
+          "Kỳ 1",
+          "Kỳ 2"
+        ],
+        "row_checks": [
+          {
+            "label": "Phí dịch vụ mẫu",
+            "cells": [
+              "2.500.000",
+              "1.200.000",
+              "05/01/2024"
+            ]
+          },
+          {
+            "label": "Lãi suất giả định",
+            "cells": [
+              "18.750.000",
+              "9.375.000",
+              "12/02/2024"
+            ]
+          },
+          {
+            "label": "Khoản vay thử nghiệm",
+            "cells": [
+              "350.000.000",
+              "175.000.000",
+              "20/03/2024"
+            ]
+          },
+          {
+            "label": "Tổng cộng",
+            "cells": [
+              "371.250.000",
+              "185.575.000",
+              "31/03/2024"
+            ]
+          }
+        ]
+      }
+    ],
+    "rotated": false
+  },
+  "hon_hop": {
+    "file": "hon_hop.pdf",
+    "kind": "mixed_text_and_scan",
+    "pages": 2,
+    "text_layer": [
+      true,
+      false
+    ],
+    "ordered_phrases": [
+      "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+      "QUYẾT ĐỊNH",
+      "BẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU"
+    ],
+    "key_fields": {
+      "doc_numbers": [
+        "1234/2024/QĐ-MẪU"
+      ],
+      "dates": [
+        "15 tháng 03 năm 2024",
+        "05/01/2024",
+        "12/02/2024",
+        "20/03/2024",
+        "31/03/2024"
+      ],
+      "amounts": [
+        "2.500.000",
+        "1.200.000",
+        "18.750.000",
+        "9.375.000",
+        "350.000.000",
+        "175.000.000",
+        "371.250.000",
+        "185.575.000"
+      ]
+    },
+    "ground_truth": "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\nSố: 1234/2024/QĐ-MẪU\nHà Nội, ngày 15 tháng 03 năm 2024\nQUYẾT ĐỊNH\nVề việc ban hành quy định mẫu phục vụ kiểm thử nhận dạng ký tự\nBẢNG KÊ CHI TIẾT KHOẢN MỤC MẪU\nSTT Nội dung Số tiền (đồng) Ngày\nKỳ 1 Kỳ 2\n1 Phí dịch vụ mẫu 2.500.000 1.200.000 05/01/2024\n2 Lãi suất giả định 18.750.000 9.375.000 12/02/2024\n3 Khoản vay thử nghiệm 350.000.000 175.000.000 20/03/2024\n4 Tổng cộng 371.250.000 185.575.000 31/03/2024",
+    "tables": [
+      {
+        "cols": 5,
+        "rows_min": 5,
+        "rows_max": 6,
+        "merged_header": "Số tiền (đồng)",
+        "sub_headers": [
+          "Kỳ 1",
+          "Kỳ 2"
+        ],
+        "row_checks": [
+          {
+            "label": "Phí dịch vụ mẫu",
+            "cells": [
+              "2.500.000",
+              "1.200.000",
+              "05/01/2024"
+            ]
+          },
+          {
+            "label": "Lãi suất giả định",
+            "cells": [
+              "18.750.000",
+              "9.375.000",
+              "12/02/2024"
+            ]
+          },
+          {
+            "label": "Khoản vay thử nghiệm",
+            "cells": [
+              "350.000.000",
+              "175.000.000",
+              "20/03/2024"
+            ]
+          },
+          {
+            "label": "Tổng cộng",
+            "cells": [
+              "371.250.000",
+              "185.575.000",
+              "31/03/2024"
+            ]
+          }
+        ]
+      }
+    ],
+    "rotated": false
+  }
+}

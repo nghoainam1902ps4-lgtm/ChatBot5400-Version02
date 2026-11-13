@@ -70,12 +70,17 @@ export interface SettingsResponse {
   docling_vision?: boolean
   youtube_preferred_languages?: string[]
   podcast_enabled?: boolean
+  /** Read-only here; changed via POST /ocr/engines/{id}/activate. */
+  docling_ocr_engine?: string
 }
 
 export interface Capabilities {
   docling_available: boolean
   crawl4ai_available: boolean
   crawl4ai_remote_configured: boolean
+  /** Deployment configuration (OPEN_NOTEBOOK_ENABLE_URL_INGESTION). Read-only:
+   *  the backend refuses URL sources for every role when it is false. */
+  url_ingestion_enabled?: boolean
 }
 
 export interface CreateNotebookRequest {
@@ -334,4 +339,159 @@ export interface AdminFeedbackListParams {
   context?: 'notebook' | 'source'
   sort?: string
   direction?: 'asc' | 'desc'
+}
+
+// OCR Engine Manager (docs/ocr/OCR_ENGINE_MANAGER.md)
+export type OcrEngineId = 'rapidocr' | 'tesseract_fast' | 'tesseract_best' | 'easyocr'
+// Quality qualification: independent of installed/ready and of offline-verified.
+export type OcrQualityTier = 'recommended' | 'speed' | 'compatibility' | 'experimental'
+
+export type OcrLifecycleState =
+  | 'not_installed'
+  | 'pending'
+  | 'downloading'
+  | 'installing'
+  | 'requires_restart'
+  | 'ready'
+  | 'failed'
+  | 'incompatible'
+
+export interface OcrRuntimeStatus {
+  kind: string
+  status: 'ready' | 'missing' | 'incompatible' | 'requires_restart'
+  version?: string | null
+  detail?: string | null
+  install_env_var?: string | null
+  install_cli?: string | null
+  extra?: Record<string, unknown>
+}
+
+export interface OcrTestResult {
+  engine: string
+  display_name?: string
+  model?: string
+  languages?: string[]
+  device?: string
+  docling_class?: string
+  ocr_models?: string[]
+  text?: string
+  cer?: number
+  success: boolean
+  error?: string
+  elapsed_seconds?: number
+  tested_at?: number
+}
+
+export interface OcrEngineStatus {
+  id: OcrEngineId
+  display_name: string
+  description: string
+  languages: string[]
+  model_name: string
+  model_version: string
+  license: string
+  source_url: string
+  quality?: OcrQualityTier
+  builtin: boolean
+  download_size_bytes: number
+  size_bytes: number
+  installed_size_bytes: number
+  runtime: OcrRuntimeStatus
+  model: { status: string; installed_bytes: number; files: { rel_path: string; present: boolean; verified: boolean }[] }
+  state: OcrLifecycleState
+  ready: boolean
+  active: boolean
+  job?: {
+    job_id?: string | null
+    state?: string | null
+    progress?: { bytes_done?: number; bytes_total?: number; file?: string } | null
+    updated_at?: number | null
+  } | null
+  error?: string | null
+  smoke?: { ok: boolean | null; detail: string } | null
+  last_test?: OcrTestResult | null
+  options: Record<string, unknown>
+  dependency_problems?: string[]
+  readiness?: OcrReadiness
+  readiness_job?: 'prepare' | 'check' | null
+}
+
+export type OcrReadinessState =
+  | 'runtime_missing'
+  | 'model_missing'
+  | 'model_incomplete'
+  | 'incompatible'
+  | 'pipeline_not_verified'
+  | 'offline_ready'
+  | 'not_offline_ready'
+
+export interface OcrReadinessCheck {
+  mode: 'online' | 'local_only' | 'offline'
+  success?: boolean
+  pipeline_ok?: boolean
+  checked_at?: number
+  error?: string
+  layout_model?: string | null
+  table_model?: string | null
+  table_mode?: string | null
+  ocr_models?: string[] | null
+}
+
+export interface OcrReadiness {
+  state: OcrReadinessState
+  ocr_ok: boolean
+  pipeline_ok: boolean
+  local_only_verified: boolean
+  offline_verified: boolean
+  stale: boolean
+  last_check?: OcrReadinessCheck | null
+}
+
+export interface OcrConfig {
+  docling_ocr: boolean
+  docling_ocr_engine: OcrEngineId
+  docling_ocr_device: string
+  docling_ocr_num_threads: number | null
+  docling_ocr_force_full_page: boolean
+}
+
+export interface OcrGeneralInfo {
+  document_engine: string
+  docling_available: boolean
+  docling_version?: string | null
+  docling_api_compatible?: boolean | null
+  docling_missing_api: string[]
+  layout_model?: string | null
+  table_model?: string | null
+  ocr_device: string
+  models_dir: string
+  offline_mode: boolean
+  dependency_problems?: string[]
+  dependency_override?: boolean
+  // Page-orientation correction for scanned PDFs: available only when the
+  // Tesseract binary and its osd data are really present.
+  page_orientation?: {
+    enabled: boolean
+    available: boolean
+    reason: 'ok' | 'disabled' | 'tesseract_missing' | 'osd_data_missing'
+  }
+}
+
+export interface OcrEnginesResponse {
+  general: OcrGeneralInfo
+  config: OcrConfig
+  engines: OcrEngineStatus[]
+}
+
+export interface OcrJobResponse {
+  job_id: string
+  engine_id: string
+  state: string
+}
+
+export interface OcrJobStatus {
+  job_id: string
+  status: string
+  result?: { success?: boolean; result?: OcrTestResult; error_message?: string } | null
+  error_message?: string | null
 }

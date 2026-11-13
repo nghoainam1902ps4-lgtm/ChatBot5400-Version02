@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { Control, FieldErrors, UseFormRegister, UseFormSetValue, useWatch } from "react-hook-form"
 import { FileIcon, LinkIcon, FileTextIcon } from "lucide-react"
 import { useTranslation } from "@/lib/hooks/use-translation"
+import { useCapabilities } from "@/lib/hooks/use-capabilities"
 import { FormSection } from "@/components/ui/form-section"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
@@ -153,6 +154,11 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
 
   // Check for batch size limit
   const isOverLimit = itemCount > MAX_BATCH_SIZE
+
+  // URL ingestion is deployment configuration reported by the backend, which
+  // also enforces it. Closed by default: unknown (loading / failed) = disabled.
+  const { data: capabilities } = useCapabilities()
+  const urlIngestionEnabled = capabilities?.url_ingestion_enabled === true
   return (
     <div className="space-y-6">
       <FormSection
@@ -172,14 +178,25 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
                 {getSourceTypes(t).map((type) => {
                   const Icon = type.icon
                   return (
-                    <TabsTrigger key={type.value} value={type.value} className="gap-2">
+                    <TabsTrigger
+                      key={type.value}
+                      value={type.value}
+                      className="gap-2"
+                      disabled={type.value === 'link' && !urlIngestionEnabled}
+                    >
                       <Icon className="h-4 w-4" />
                       {type.label}
                     </TabsTrigger>
                   )
                 })}
               </TabsList>
-              
+
+              {capabilities && !urlIngestionEnabled && (
+                <p className="mt-3 text-sm text-muted-foreground" role="note" data-testid="url-ingestion-disabled">
+                  {t('sources.urlIngestionDisabled')}
+                </p>
+              )}
+
               {getSourceTypes(t).map((type) => (
                 <TabsContent key={type.value} value={type.value} className="mt-4">
                   <p className="text-sm text-muted-foreground mb-4">{type.description}</p>

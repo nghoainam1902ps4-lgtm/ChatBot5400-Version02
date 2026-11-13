@@ -6,6 +6,7 @@
 #
 #   OPEN_NOTEBOOK_ENABLE_DOCLING=true   -> content-core[docling]  (Docling engine, OCR, image sources)
 #   OPEN_NOTEBOOK_ENABLE_CRAWL4AI=true  -> content-core[crawl4ai] + Chromium  (local JS rendering)
+#   OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT / _EASYOCR -> OCR engine runtimes (see below)
 #
 # Design (see docs/7-DEVELOPMENT/decisions/ADR-007-optin-runtimes.md):
 #   - Blocking: installs finish before api/worker/frontend start.
@@ -52,6 +53,11 @@ mkdir -p "${UV_CACHE_DIR:-/app/data/.cache/uv}" \
 
 CCORE_VERSION="$(ccore_version)"
 
+# Constraints exported from uv.lock at image build (see Dockerfile). Applied to
+# the Docling install so a fresh container gets the verified Docling/torch/
+# RapidOCR versions, not whatever is newest on PyPI (docs/ocr DECISIONS D-14).
+CONSTRAINTS="${OPEN_NOTEBOOK_RUNTIME_CONSTRAINTS:-/app/runtime-constraints.txt}"
+
 # ---------------------------------------------------------------------------
 # Docling
 # ---------------------------------------------------------------------------
@@ -62,7 +68,20 @@ if is_true "$OPEN_NOTEBOOK_ENABLE_DOCLING"; then
         log "WARNING: could not determine content-core version; skipping Docling install."
     else
         log "Installing Docling (first start; this pulls a large ML stack — several hundred MB to a few GB — and can take several minutes)..."
-        if uv pip install --python "$VENV_PY" "content-core[docling]==${CCORE_VERSION}"; then
+        # Air-gapped: reinstall only from the persistent uv cache (no index access).
+        UV_NET=""
+        if is_true "$OCR_OFFLINE"; then
+            UV_NET="--offline"
+            log "OCR_OFFLINE=true: installing Docling from the local uv cache only."
+        fi
+        if [ -f "$CONSTRAINTS" ]; then
+            log "Using locked runtime constraints: $CONSTRAINTS"
+            install_docling() { uv pip install $UV_NET --python "$VENV_PY" -c "$CONSTRAINTS" "content-core[docling]==${CCORE_VERSION}"; }
+        else
+            log "WARNING: $CONSTRAINTS not found; Docling versions are NOT pinned to uv.lock."
+            install_docling() { uv pip install $UV_NET --python "$VENV_PY" "content-core[docling]==${CCORE_VERSION}"; }
+        fi
+        if install_docling; then
             log "Docling installed. The Docling engine, OCR and image sources are now available."
         else
             log "WARNING: Docling install FAILED. Booting without it — the Docling engine, OCR and image sources will be unavailable. Fix connectivity and restart to retry."
@@ -109,6 +128,21 @@ if is_true "$OPEN_NOTEBOOK_ENABLE_CRAWL4AI"; then
                 fi
             fi
         fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# OCR Engine Manager runtimes (docs/ocr/OCR_DOCKER_STORAGE.md). Model weights
+# live on the /app/data volume and are never downloaded here; this only
+# restores the RUNTIME an admin enabled, which a recreated container lacks:
+#   OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true -> tesseract-ocr (apt, or staged .deb offline)
+#   OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true   -> easyocr==<pinned> (uv cache / staged wheels)
+# Degrade, don't die: failures are logged and the engine shows "runtime missing".
+# ---------------------------------------------------------------------------
+if is_true "$OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT" || is_true "$OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR"; then
+    log "Restoring enabled OCR runtimes..."
+    if ! "$VENV_PY" -m open_notebook.ocr.cli runtime ensure; then
+        log "WARNING: OCR runtime restore reported a problem; see the messages above."
     fi
 fi
 

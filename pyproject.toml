@@ -73,12 +73,17 @@ dependencies = [
 # 'docling' (migration 28); the app falls back to the simple extractor when the
 # package is absent.
 docling = ["content-core[docling]>=2.0.7,<3"]
+# OCR Engine Manager: EasyOCR runtime (docs/ocr). Locked here so the runtime
+# installer can constrain it and its dependencies to versions verified with the
+# locked Docling; installed on demand (OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true),
+# never part of the base image.
+ocr-easyocr = ["easyocr==1.7.2"]
 
 [tool.setuptools]
 package-dir = {"open_notebook" = "open_notebook"}
 
 [tool.setuptools.package-data]
-open_notebook = ["ai/assets/*"]
+open_notebook = ["ai/assets/*", "ocr/assets/*"]
 
 
 [build-system]

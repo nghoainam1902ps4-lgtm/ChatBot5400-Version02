@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from api import approvals_service
-from api.auth import TokenUser, get_current_user
+from api.auth import TokenUser, get_current_user, require_admin
 from api.models import NoteResponse, SaveAsNoteRequest, SourceInsightResponse
 from open_notebook.domain.notebook import SourceInsight
 from open_notebook.exceptions import (
@@ -47,7 +47,7 @@ async def get_insight(
         raise HTTPException(status_code=500, detail="Error fetching insight")
 
 
-@router.delete("/insights/{insight_id}")
+@router.delete("/insights/{insight_id}", dependencies=[Depends(require_admin)])
 async def delete_insight(insight_id: str):
     """Delete a specific insight."""
     try:

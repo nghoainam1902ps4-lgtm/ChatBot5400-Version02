@@ -2,6 +2,58 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [Chưa phát hành] — OCR Engine Manager RC1
+
+Release Candidate. Chi tiết: `docs/ocr/OCR_PHASE9B_REPORT.md`, `docs/ocr/OCR_RELEASE_NOTES.md`,
+`docs/ocr/RELEASE_CANDIDATE.md`. Không có migration cơ sở dữ liệu.
+
+### Thay đổi hành vi khi nâng cấp — cần đọc
+
+- **Thêm nguồn từ URL mặc định bị TẮT.** Biến mới `OPEN_NOTEBOOK_ENABLE_URL_INGESTION`
+  chỉ bật khi đặt `true` / `1` / `yes` / `on`; thiếu hoặc sai giá trị ⇒ tắt, áp dụng
+  cho mọi vai trò kể cả Quản trị viên. Khi tắt: không tạo được nguồn từ URL (kể cả
+  YouTube), không xử lý lại được nguồn URL cũ; nội dung đã lưu của nguồn URL cũ vẫn
+  đọc, tìm kiếm và chat được. Upload file, nhập văn bản, OCR, chat không bị ảnh hưởng.
+  Bản triển khai nào cần nguồn URL phải đặt biến này thành `true` — việc đó làm xuất
+  hiện lại rủi ro SSRF còn tồn tại (`docs/security/BACKGROUND_JOB_SECURITY.md` §5–6).
+- **Kết quả "Sẵn sàng offline" cũ hết hiệu lực** sau khi nâng cấp: chạy lại "Chuẩn bị"
+  hoặc "Kiểm tra offline" một lần cho engine đang dùng. Việc xử lý tài liệu không bị chặn.
+- **Chỉ quản trị viên** được ghi / kiểm tra credential nhà cung cấp và model, quản lý
+  transformation, embed và dựng lại embedding, xóa insight (trước đây backend chỉ yêu
+  cầu đăng nhập; giao diện vốn đã ẩn các trang này). Tài khoản khác gọi trực tiếp các
+  API đó nhận 403. Người không phải quản trị viên không còn tạo được nguồn từ một file
+  đã nằm sẵn trên máy chủ (`POST /api/sources/json` với `file_path`).
+- **Lần khởi động đầu của image mới cần Internet** để cài Docling đúng phiên bản đã khóa.
+  Nếu file override đang đặt `UV_OFFLINE=1` / `HF_HUB_OFFLINE=1`, bỏ chúng trước khi nâng cấp.
+
+### OCR Engine Manager
+
+- Chọn engine OCR cho Docling: RapidOCR (mặc định, không đổi), Tesseract Vietnamese
+  Fast / Best, EasyOCR Vietnamese. Layout Heron và TableFormer giữ nguyên.
+- Phân loại chất lượng hiển thị riêng với trạng thái sẵn sàng và xác minh offline:
+  Tesseract Best — khuyến nghị cho tiếng Việt; Tesseract Fast — ưu tiên tốc độ;
+  RapidOCR — tương thích ngược; EasyOCR — thử nghiệm (hỏi xác nhận trước khi bật).
+- Chuẩn bị model khi có Internet, vận hành khi ngắt Internet
+  (`docs/ocr/OCR_ONLINE_PREPARATION.md`).
+- Tự sửa hướng trang scan nằm ngang/ngược khi đã cài Tesseract Fast hoặc Best.
+- Bước dò hướng trang có giới hạn tổng thời gian (`OCR_PAGE_OSD_BUDGET_SECONDS`, mặc định
+  600 giây mỗi tài liệu): hết thời gian thì các trang còn lại giữ nguyên hướng, tài liệu
+  vẫn được xử lý; log ghi `page_orientation_limit`.
+- Log ghi `conversion_status` / `conversion_errors`: Docling chuyển đổi một phần không
+  còn im lặng.
+- `OCR_INSTALL_TESSERACT=true` trong `.env` giữ Tesseract qua mọi lần `up -d --build`.
+- Công cụ benchmark cục bộ cho tài liệu của đơn vị (`scripts/ocr/local_document_benchmark.py`)
+  và script kiểm tra sức khỏe chỉ đọc (`scripts/ocr/production_health_check.sh`).
+- Giới hạn đã biết: xem `docs/ocr/OCR_ENGINE_MANAGER.md` §8.
+
+### Bảo mật
+
+- API job nền tổng quát bị khóa; job xử lý nguồn kiểm tra lại đường dẫn file và URL.
+- Công tắc tắt URL ingestion (ở trên).
+- Thực thi vai trò quản trị viên ở backend cho credential, model và các chức năng bảo trì
+  (ở trên): đóng đường đổi `base_url` của credential để lấy khóa API và đường dò địa chỉ
+  nội bộ qua "kiểm tra kết nối".
+
 ## [1.0.8] - 2026-11-12
 
 Bổ sung **quy trình duyệt văn bản** và **phân quyền 4 vai trò**. Bản này **có

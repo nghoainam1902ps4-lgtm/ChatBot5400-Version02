@@ -10,12 +10,83 @@ from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.domain.notebook import Source
 
 
+@pytest.fixture(autouse=True)
+def _url_ingestion_enabled(monkeypatch):
+    """This module covers behaviour WITH URL ingestion switched on (URL policy,
+    engine routing). The deployment default is OFF (D-29); the switched-off
+    behaviour is covered by tests/test_url_ingestion_switch.py."""
+    monkeypatch.setenv("OPEN_NOTEBOOK_ENABLE_URL_INGESTION", "true")
+
+
 @pytest.fixture
 def client():
     """Create test client after environment variables have been cleared by conftest."""
     from api.main import app
 
     return TestClient(app)
+
+
+class TestSyncSourceAssetPersistence:
+    """The SYNC path (async_processing=false, the API default) must record the
+    same asset as the async path: the worker only processes the file/URL that
+    is recorded on the source (commands/source_commands.py)."""
+
+    def _run(self, client, data, files=None):
+        from commands.source_commands import _bind_content_to_source
+
+        saved, bind_errors = [], []
+
+        async def capture_save(self_source):
+            saved.append(self_source)
+            self_source.id = "source:fake"
+            self_source.command = None
+
+        def fake_execute(app, name, payload, timeout=None):
+            try:
+                _bind_content_to_source(payload["content_state"], saved[0])
+            except Exception as e:  # noqa: BLE001 - recorded for the assertion
+                bind_errors.append(e)
+            # Stop here: the test is about what the worker would receive.
+            return MagicMock(is_success=lambda: False, error_message="stop")
+
+        with (
+            patch.object(Source, "save", autospec=True, side_effect=capture_save),
+            patch.object(Source, "delete", new_callable=AsyncMock),
+            patch("api.routers.sources.execute_command_sync", side_effect=fake_execute),
+            patch("api.routers.sources.Source.add_to_notebook", new_callable=AsyncMock),
+            patch("api.routers.sources.Notebook.get", new_callable=AsyncMock),
+        ):
+            client.post("/api/sources", data=data, files=files)
+        return saved, bind_errors
+
+    def test_sync_link_source_passes_worker_binding(self, client):
+        saved, errors = self._run(
+            client,
+            {
+                "type": "link",
+                "url": "https://example.com/a",
+                "notebooks": '["notebook:1"]',
+            },
+        )
+        assert (
+            saved and saved[0].asset and saved[0].asset.url == "https://example.com/a"
+        )
+        assert errors == []
+
+    def test_sync_upload_source_passes_worker_binding(self, client):
+        target = os.path.join(os.path.abspath(UPLOADS_FOLDER), "sync-doc.pdf")
+        with patch(
+            "api.routers.sources.save_uploaded_file",
+            new_callable=AsyncMock,
+            return_value=target,
+        ):
+            saved, errors = self._run(
+                client,
+                {"type": "upload", "notebooks": '["notebook:1"]'},
+                files={"file": ("sync-doc.pdf", b"%PDF", "application/pdf")},
+            )
+        assert saved and saved[0].asset and saved[0].asset.file_path == target
+        assert errors == []
 
 
 class TestAsyncSourceAssetPersistence:

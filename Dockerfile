@@ -60,6 +60,14 @@ COPY open_notebook/__init__.py ./open_notebook/__init__.py
 # Install dependencies (this layer is cached unless dependencies change)
 RUN uv sync --frozen --no-dev
 
+# Versions for the on-demand runtimes (Docling, EasyOCR), exported from uv.lock:
+# the entrypoint / OCR admin CLI install them with `-c` so a fresh container
+# gets exactly the verified versions instead of whatever is newest on PyPI.
+# See docs/ocr/DECISIONS.md D-14.
+RUN uv export --frozen --no-dev --extra docling --extra ocr-easyocr \
+      --no-hashes --no-emit-project --no-header --no-annotate \
+      -o /app/runtime-constraints.txt
+
 # Pre-download tiktoken encoding so the app works offline (issue #264).
 # /app/tiktoken-cache is intentionally outside /app/data/ so that volume mounts
 # of /app/data (for user data persistence) do not hide the pre-baked encoding.
@@ -98,6 +106,10 @@ COPY . /app
 # Copy pre-downloaded tiktoken encoding from builder (outside /data/ — volume-mount safe)
 COPY --from=backend-builder /app/tiktoken-cache /app/tiktoken-cache
 
+# Lock-derived constraints for runtime installs (Docling, EasyOCR)
+COPY --from=backend-builder /app/runtime-constraints.txt /app/runtime-constraints.txt
+ENV OPEN_NOTEBOOK_RUNTIME_CONSTRAINTS=/app/runtime-constraints.txt
+
 # Copy built frontend from standalone output
 COPY --from=frontend-builder /app/frontend/.next/standalone /app/frontend/
 COPY --from=frontend-builder /app/frontend/.next/static /app/frontend/.next/static
@@ -120,6 +132,20 @@ ENV API_HOST=0.0.0.0
 ENV UV_CACHE_DIR=/app/data/.cache/uv
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/data/.cache/playwright
 ENV HF_HOME=/app/data/.cache/huggingface
+
+# OCR Engine Manager (docs/ocr). Models are downloaded on demand into the data
+# volume; one fixed TESSDATA_PREFIX serves both Tesseract Fast and Best
+# (docs/ocr/DECISIONS.md D-04). No OCR engine is downloaded at build or boot.
+ENV OCR_DATA_DIR=/app/data/ocr
+ENV TESSDATA_PREFIX=/app/data/ocr/models/tesseract
+# Optional build profile: bake the Tesseract executable into the image
+# (docker compose build --build-arg OCR_INSTALL_TESSERACT=true). Without it,
+# OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true installs it at container start.
+ARG OCR_INSTALL_TESSERACT=false
+RUN if [ "$OCR_INSTALL_TESSERACT" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends tesseract-ocr \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Data directory (volume-mounted by users) and supervisor log directory
 RUN mkdir -p /app/data /var/log/supervisor \

@@ -719,6 +719,7 @@ function SourceDetailContentInner({
                     </AlertTitle>
                     <AlertDescription>
                       {t('sources.notEmbeddedDesc')}
+                      {isAdmin && (
                       <div className="mt-3">
                         <Button
                           onClick={handleEmbedContent}
@@ -729,6 +730,7 @@ function SourceDetailContentInner({
                           {isEmbedding ? t('sources.embedding') : t('sources.embedContent')}
                         </Button>
                       </div>
+                      )}
                     </AlertDescription>
                   </Alert>
                 )}

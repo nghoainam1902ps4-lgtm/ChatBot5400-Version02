@@ -38,12 +38,21 @@ services:
       context: ..
       dockerfile: Dockerfile
       target: runtime
+      args:
+        # Bake the Tesseract binary into the image (needed by the Tesseract
+        # Vietnamese engines). Set OCR_INSTALL_TESSERACT=true in .env so EVERY
+        # later `docker compose up -d --build` keeps it; default: not installed.
+        OCR_INSTALL_TESSERACT: ${OCR_INSTALL_TESSERACT:-false}
     environment:
       # REQUIRED — encrypts stored provider API keys. Never commit the real value.
       - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY}
       # Signs login JWTs. Set it so sessions survive restarts (else ephemeral).
       - OPEN_NOTEBOOK_JWT_SECRET=${OPEN_NOTEBOOK_JWT_SECRET}
       # Auth is ENFORCED in production. Do not set OPEN_NOTEBOOK_DISABLE_AUTH here.
+
+      # SECURITY: sources from a URL. OFF unless explicitly "true" (docs/security/
+      # BACKGROUND_JOB_SECURITY.md §6). Enabling it re-opens a residual SSRF risk.
+      - OPEN_NOTEBOOK_ENABLE_URL_INGESTION=${OPEN_NOTEBOOK_ENABLE_URL_INGESTION:-false}
 
       # Database (internal network).
       - SURREAL_URL=ws://surrealdb:8000/rpc
@@ -71,6 +80,11 @@ services:
       # very memory-hungry; running several in parallel OOM-kills the worker
       # (exit 137) on a small VPS and leaves sources stuck on "Processing...".
       - OPEN_NOTEBOOK_WORKER_MAX_TASKS=1
+      # OCR Engine Manager runtimes (Settings → OCR Engine Manager). Models live in
+      # ./notebook_data/ocr; these flags restore the runtimes after a recreate.
+      # - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true
+      # - OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true
+      # - OCR_OFFLINE=true
     volumes:
       # Persists uploads, chat checkpoints, and the runtime-installed Docling /
       # PyTorch packages + ML models (under /app/data/.cache) across restarts.

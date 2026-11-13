@@ -9,6 +9,12 @@ from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import ConfigurationError, ContextLengthExceededError
+from open_notebook.utils.job_input_guard import (
+    UnsafeJobInput,
+    require_record_id,
+    same_upload,
+)
+from open_notebook.utils.url_ingestion import assert_url_ingestion_enabled
 
 try:
     from open_notebook.graphs.source import source_graph
@@ -16,6 +22,21 @@ try:
 except ImportError as e:
     logger.error(f"Failed to import graphs: {e}")
     raise ValueError("graphs not available")
+
+
+def _bind_content_to_source(content_state: Dict[str, Any], source: Source) -> None:
+    """The file/URL processed must be the one recorded on the source itself.
+
+    Stops a job from pointing an existing source at another file or URL (e.g.
+    reading an arbitrary uploaded file into someone else's source).
+    """
+    asset = getattr(source, "asset", None)
+    file_path = content_state.get("file_path")
+    url = content_state.get("url")
+    if file_path and not same_upload(file_path, getattr(asset, "file_path", None)):
+        raise UnsafeJobInput("file_path does not match the source's uploaded file.")
+    if url and url != getattr(asset, "url", None):
+        raise UnsafeJobInput("url does not match the source's URL.")
 
 
 class SourceProcessingInput(CommandInput):
@@ -43,7 +64,11 @@ class SourceProcessingOutput(CommandOutput):
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 120,  # Allow queue to drain
-        "stop_on": [ValueError, ConfigurationError, ContextLengthExceededError],  # Don't retry validation/config errors
+        "stop_on": [
+            ValueError,
+            ConfigurationError,
+            ContextLengthExceededError,
+        ],  # Don't retry validation/config errors
         "retry_log_level": "debug",  # Avoid log noise during transaction conflicts
     },
 )
@@ -61,6 +86,22 @@ async def process_source_command(
         logger.info(f"Transformations: {input_data.transformations}")
         logger.info(f"Embed: {input_data.embed}")
 
+        # 0. Validate job input against the records it claims to process
+        # (docs/security/BACKGROUND_JOB_SECURITY.md). Applies to every caller.
+        require_record_id(input_data.source_id, "source")
+        for nb_id in input_data.notebook_ids:
+            require_record_id(nb_id, "notebook")
+        for trans_id in input_data.transformations:
+            require_record_id(trans_id, "transformation")
+        allowed_keys = {"url", "file_path", "content", "delete_source"}
+        unknown = set(input_data.content_state) - allowed_keys
+        if unknown:
+            raise UnsafeJobInput(f"Unsupported content_state keys: {sorted(unknown)}")
+        if input_data.content_state.get("url"):
+            # URL ingestion switched off (D-29): applies to new jobs, retries,
+            # re-processing and jobs queued before the switch was turned off.
+            assert_url_ingestion_enabled()
+
         # 1. Load transformation objects from IDs
         transformations = []
         for trans_id in input_data.transformations:
@@ -76,6 +117,7 @@ async def process_source_command(
         source = await Source.get(input_data.source_id)
         if not source:
             raise ValueError(f"Source '{input_data.source_id}' not found")
+        _bind_content_to_source(input_data.content_state, source)
 
         # Update source with command reference
         source.command = (
@@ -117,9 +159,7 @@ async def process_source_command(
         logger.info(
             f"Successfully processed source: {processed_source.id} in {processing_time:.2f}s"
         )
-        logger.info(
-            f"Created {insights_created} insights, embedding {embed_status}"
-        )
+        logger.info(f"Created {insights_created} insights, embedding {embed_status}")
 
         return SourceProcessingOutput(
             success=True,
@@ -152,9 +192,7 @@ async def process_source_command(
                 f"Source '{input_data.source_id}' was deleted while processing"
             ) from e
         # Transient failure - will be retried (surreal-commands logs final failure)
-        logger.debug(
-            f"Transient error processing source {input_data.source_id}: {e}"
-        )
+        logger.debug(f"Transient error processing source {input_data.source_id}: {e}")
         raise
 
 
@@ -200,7 +238,11 @@ class RunTransformationOutput(CommandOutput):
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError, ContextLengthExceededError],  # Don't retry validation/config errors
+        "stop_on": [
+            ValueError,
+            ConfigurationError,
+            ContextLengthExceededError,
+        ],  # Don't retry validation/config errors
         "retry_log_level": "warning",
     },
 )
@@ -224,6 +266,9 @@ async def run_transformation_command(
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+    # Job input is never trusted (docs/security/BACKGROUND_JOB_SECURITY.md).
+    require_record_id(input_data.source_id, "source")
+    require_record_id(input_data.transformation_id, "transformation")
 
     try:
         logger.info(

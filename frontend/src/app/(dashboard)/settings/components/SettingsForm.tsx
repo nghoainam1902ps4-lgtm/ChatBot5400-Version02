@@ -115,6 +115,15 @@ export function SettingsForm() {
     }
   }, [hasResetForm, reset, settings])
 
+  // Re-sync with the server when settings change elsewhere on the page (e.g.
+  // the OCR Engine Manager toggles docling_ocr) — but never over unsaved edits,
+  // so saving this form cannot silently revert that change.
+  useEffect(() => {
+    if (settings && hasResetForm && !isDirty) {
+      reset(toFormData(settings))
+    }
+  }, [settings, hasResetForm, isDirty, reset])
+
   const onSubmit = async (data: SettingsFormData) => {
     try {
       await updateSettings.mutateAsync(data)

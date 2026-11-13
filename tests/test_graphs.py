@@ -28,6 +28,14 @@ from open_notebook.graphs.transformation import (
 # ============================================================================
 
 
+@pytest.fixture(autouse=True)
+def _url_ingestion_enabled(monkeypatch):
+    """This module covers behaviour WITH URL ingestion switched on (URL policy,
+    engine routing). The deployment default is OFF (D-29); the switched-off
+    behaviour is covered by tests/test_url_ingestion_switch.py."""
+    monkeypatch.setenv("OPEN_NOTEBOOK_ENABLE_URL_INGESTION", "true")
+
+
 class TestGraphTools:
     """Test suite for graph tool definitions."""
 
@@ -281,6 +289,24 @@ class TestSaveSourceTitlePreservation:
 
 class TestContentProcessDeleteSource:
     """content-core 2.x no longer deletes the uploaded file; the graph must."""
+
+    @pytest.fixture(autouse=True)
+    def _stock_ocr_environment(self, monkeypatch):
+        # These tests exercise the content-core path with default settings. Pin
+        # the stock-install assumption (Docling Auto resolves to RapidOCR) so an
+        # optional OCR runtime installed in the dev venv (e.g. EasyOCR, which
+        # makes the OCR Engine Manager pin RapidOCR via Docling directly — see
+        # docs/ocr/DECISIONS.md D-03) does not change which path runs.
+        monkeypatch.setattr(
+            "open_notebook.ocr.runtime.auto_resolves_to_rapidocr", lambda: True
+        )
+
+    @pytest.fixture(autouse=True)
+    def _uploads_in_tmp(self, monkeypatch, tmp_path):
+        # The worker only accepts files inside UPLOADS_FOLDER
+        # (docs/security/BACKGROUND_JOB_SECURITY.md); these tests' uploads
+        # live in tmp_path, so make that the uploads directory.
+        monkeypatch.setattr("open_notebook.config.UPLOADS_FOLDER", str(tmp_path))
 
     @pytest.mark.asyncio
     @patch("open_notebook.graphs.source.extract_content")
