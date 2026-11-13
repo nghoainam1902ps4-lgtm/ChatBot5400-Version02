@@ -75,3 +75,20 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
   - API + worker E2E;
   - RapidOCR torch với `OCR_RAPIDOCR_PERSISTENT=true`.
 - Trạng thái phát hành: `RELEASE_CANDIDATE.md`.
+
+## Phase 8B
+
+- Nghiệm thu trên máy thật theo `OCR_LOCAL_ACCEPTANCE.md`. Kết quả: `OCR_TEST_REPORT.md` §9; đối chiếu
+  điều kiện: `RELEASE_CANDIDATE.md` §6.
+- Commit (cục bộ, trên `45e2254`, chưa push):
+  - `5e6522e` — sửa script nghiệm thu (P8B-1);
+  - `5cbcb37` — readiness local-only (P8B-2);
+  - `a8a30c0` — mypy cho test;
+  - `4a0b00f` — timeout cho request HF Hub (P8B-3, D-24);
+  - `2128587` — xử lý review độc lập;
+  - `d9652c0` — RapidOCR persistent với backend torch (P8B-8);
+  - commit tài liệu Phase 8B.
+- File mới: `open_notebook/ocr/hub_http.py`, `tests/test_ocr_hub_http.py`.
+- Vấn đề còn mở: P8B-4 (OSD Tesseract trên crop), P8B-5 (ngưỡng confidence EasyOCR), P8B-6/7 (giới
+  hạn đã biết, cần quyết định về ngưỡng test).
+- Trạng thái: chưa đủ điều kiện merge `main` hay production.

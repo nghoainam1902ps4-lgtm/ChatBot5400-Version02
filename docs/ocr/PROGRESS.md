@@ -38,3 +38,10 @@
 | 8A | Docker acceptance: cập nhật online → chuẩn bị → offline → restart offline → cập nhật online | DONE (chạy thật: BLOCKED — registry/apt) |
 | 8A | Regression so với `e32eae8` | DONE (0 lỗi mới) |
 | 8A | Tài liệu (`OCR_ONLINE_PREPARATION.md`, cập nhật bộ docs/ocr, `RELEASE_CANDIDATE.md`) | DONE |
+| 8B | Nghiệm thu máy thật — lộ trình nhanh (§3, §4.1–4.3, §5) | §4.3 **FAIL** (4, OSD Tesseract); §5 **40/40 PASS** sau 3 bản sửa |
+| 8B | Nghiệm thu máy thật — đầy đủ 4 engine (§4.3, §4.4, §5 từ production `5e04227`) | §4.3 33/48; §4.4 PASS; §5 53/55 (2 FAIL nội dung OCR) |
+| 8B | Sửa P8B-1 (script), P8B-2 (readiness ProxyError — chặn), P8B-3 (treo 16 phút khi mất mạng — chặn, D-24) | DONE, có test hồi quy |
+| 8B | Sửa P8B-8 (`OCR_RAPIDOCR_PERSISTENT=true` lỗi với backend torch) | DONE, có test hồi quy |
+| 8B | Regression / frontend / lint / bảo mật trực tiếp / review độc lập | DONE (0 lỗi mới; 16/16; 0 High/Medium) |
+| 8B | Benchmark full pipeline (`OCR_BENCHMARK.md` §6) | DONE |
+| 8B | P8B-4 (OSD Tesseract), P8B-5 (ngưỡng EasyOCR) | **OPEN — cần quyết định** (`RELEASE_CANDIDATE.md` §6) |

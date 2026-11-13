@@ -1,7 +1,10 @@
 # OCR Benchmark
 
-> Số liệu dưới đây là **đo thực tế** trong Claude Code Cloud ngày 2026-11-12 bằng
+> Số liệu §1–§4 là **đo thực tế** trong Claude Code Cloud ngày 2026-11-12 bằng
 > `scripts/ocr/benchmark.py`. Không có số liệu ước đoán. Ô "—" = không áp dụng / không đo được.
+>
+> **Phase 8B (2026-11-13): §6 là số đo full pipeline trên máy thật** (Layout Heron + TableFormer
+> accurate + OCR, RapidOCR backend torch). Nhận xét §4 mục 3–4 được điều chỉnh theo §6.
 
 ## 1. Phạm vi và giới hạn — đọc trước khi dùng số liệu
 
@@ -129,3 +132,80 @@ uv run python scripts/ocr/benchmark.py --samples ./data/ocr-samples --mode pipel
 
 `bench.json` chứa văn bản nhận dạng của từng mẫu; `--rescore bench.json` tính lại chỉ số
 từ văn bản đã lưu mà không chạy lại OCR.
+
+## 6. Full pipeline trên máy thật (Phase 8B, 2026-11-13)
+
+- Máy: Linux x86_64, 8 CPU, 30 GB RAM, CPU-only.
+- Python 3.12.16, uv 0.13.8; dependency đúng `uv.lock` (content-core 2.0.7, docling 2.129.0,
+  rapidocr 3.9.2 backend **torch**, easyocr 1.7.2, torch 2.14.0).
+- Tesseract 5.5.0 (cùng bản với image Docker); tessdata 4.1.0 do `cli install-model` cài.
+- Cùng 8 mẫu tổng hợp (`generate_samples.py`, ~200 DPI).
+- Thời gian đo khi máy không chạy việc nặng khác. Lần chạy đầu của RapidOCR gồm cả khởi tạo model
+  (22.4 s), không phải tốc độ ổn định.
+
+| Mẫu | Engine | CER stage | CER pipeline | Tiền/Ngày/Số hiệu (pipeline) | s/trang pipeline |
+|---|---|---|---|---|---|
+| scan_cong_van | rapidocr | 0.118 | 0.211 | 1.000/1.000/0.000 | 22.370 |
+| scan_cong_van | tesseract_fast | 0.004 | 0.004 | 1.000/1.000/0.500 | 5.250 |
+| scan_cong_van | tesseract_best | 0.000 | 0.000 | 1.000/1.000/1.000 | 5.620 |
+| scan_cong_van | easyocr | 0.146 | 0.144 | 1.000/1.000/0.500 | 18.910 |
+| scan_cong_van_pdf | rapidocr | 0.124 | 0.120 | 1.000/1.000/0.000 | 5.560 |
+| scan_cong_van_pdf | tesseract_fast | 0.000 | 0.006 | 1.000/1.000/0.500 | 3.380 |
+| scan_cong_van_pdf | tesseract_best | 0.000 | 0.000 | 1.000/1.000/1.000 | 3.670 |
+| scan_cong_van_pdf | easyocr | 0.028 | 0.051 | 1.000/1.000/1.000 | 8.840 |
+| scan_bang_bieu | rapidocr | 0.093 | 0.098 | 1.000/1.000/– | 13.620 |
+| scan_bang_bieu | tesseract_fast | 0.507 | 0.187 | 1.000/1.000/– | 4.310 |
+| scan_bang_bieu | tesseract_best | 0.507 | 0.164 | 1.000/1.000/– | 4.550 |
+| scan_bang_bieu | easyocr | 0.009 | 0.124 | 1.000/1.000/– | 8.840 |
+| scan_nhieu_trang | rapidocr | 0.114 | 0.113 | 1.000/1.000/0.000 | 8.100 |
+| scan_nhieu_trang | tesseract_fast | 0.159 | 0.063 | 1.000/1.000/0.500 | 2.980 |
+| scan_nhieu_trang | tesseract_best | 0.159 | 0.051 | 1.000/1.000/1.000 | 3.270 |
+| scan_nhieu_trang | easyocr | 0.022 | 0.074 | 1.000/1.000/1.000 | 6.980 |
+| scan_chat_luong_thap | rapidocr | 0.185 | 0.193 | 1.000/1.000/0.000 | 5.810 |
+| scan_chat_luong_thap | tesseract_fast | 0.357 | 0.822 | 0.000/0.000/0.000 | 3.880 |
+| scan_chat_luong_thap | tesseract_best | 0.343 | 0.799 | 0.000/0.000/0.000 | 4.350 |
+| scan_chat_luong_thap | easyocr | 0.986 | 0.982 | 0.000/0.000/0.000 | 8.960 |
+| scan_xoay | rapidocr | 0.195 | 0.469 | 0.000/0.333/0.000 | 11.030 |
+| scan_xoay | tesseract_fast | 0.805 | 0.302 | 0.000/1.000/0.500 | 4.100 |
+| scan_xoay | tesseract_best | 0.805 | 0.296 | 0.000/1.000/1.000 | 4.090 |
+| scan_xoay | easyocr | 0.941 | 0.939 | 0.000/0.000/0.000 | 8.670 |
+| text_native | rapidocr | 0.120 | 0.000 | 1.000/1.000/1.000 | 2.640 |
+| text_native | tesseract_fast | 0.006 | 0.000 | 1.000/1.000/1.000 | 2.190 |
+| text_native | tesseract_best | 0.000 | 0.000 | 1.000/1.000/1.000 | 2.150 |
+| text_native | easyocr | 0.036 | 0.000 | 1.000/1.000/1.000 | 3.920 |
+| hon_hop | rapidocr | 0.141 | 0.062 | 1.000/1.000/1.000 | 6.450 |
+| hon_hop | tesseract_fast | 0.194 | 0.177 | 0.500/0.800/1.000 | 2.670 |
+| hon_hop | tesseract_best | 0.185 | 0.185 | 0.750/0.800/1.000 | 2.710 |
+| hon_hop | easyocr | 0.357 | 0.230 | 0.250/1.000/1.000 | 6.290 |
+
+| Chế độ | Engine | Tổng 8 mẫu | RAM tăng thêm (đỉnh) |
+|---|---|---|---|
+| OCR stage | RapidOCR (torch) / Tesseract Fast / Tesseract Best / EasyOCR | 59.4 s / 21.4 s / 23.7 s / 156.4 s | +1.9 GB / 0 / 0 / +3.2 GB |
+| Pipeline | RapidOCR (torch) / Tesseract Fast / Tesseract Best / EasyOCR | 90.6 s / 34.9 s / 36.9 s / 85.1 s | +4.5 GB / +1.2 GB / +1.4 GB / +2.8 GB |
+
+Đỉnh RSS cả tiến trình: 5.2 GB (OCR stage), 9.9 GB (pipeline, cả 4 engine nạp lần lượt trong một
+tiến trình).
+
+**Nhận xét (pipeline thật):**
+
+1. **Văn bản scan sạch:** Tesseract Best vẫn tốt nhất (CER 0.000, đúng mọi trường khoá) và nhanh
+   (3.7–5.6 s/trang). Tesseract Fast hay đọc sai số hiệu văn bản (`QĐ-MẪU`, 0.5).
+2. **Bảng biểu:** TableFormer cắt vùng bảng nên Tesseract cải thiện mạnh (CER 0.507 → 0.164).
+   RapidOCR thấp nhất ở mẫu này (0.098) nhưng không có dấu tiếng Việt. Riêng EasyOCR kém đi so với
+   OCR stage (0.009 → 0.124).
+3. **Trang xoay 90° — nhận xét §4.4 KHÔNG còn đúng trong pipeline:**
+   - Docling chạy OSD của Tesseract trên **từng vùng crop**, không trên cả trang.
+   - Trên crop, OSD trả hướng sai với độ tin cậy gần 0 (0.02–0.16), và Docling vẫn xoay theo.
+   - Hậu quả: recall số tiền trên trang xoay = 0 ở mọi engine. Với fixture 150 DPI, cả bảng
+     thẳng đứng cũng bị xoay ngược (`OCR_TEST_REPORT.md` §9).
+4. **Scan chất lượng thấp:** mọi engine thất bại (Tesseract CER ~0.8; EasyOCR 0.98).
+5. **RapidOCR backend torch:**
+   - Chạy được; trọng số tải từ modelscope.cn khi online.
+   - Vẫn mất dấu tiếng Việt: số hiệu văn bản 0/2 ở mọi mẫu scan.
+
+**Đề xuất cập nhật:**
+
+- Tesseract Vietnamese Best vẫn là lựa chọn có bằng chứng tốt nhất cho văn bản hành chính scan sạch.
+- Chưa nên dùng cho tài liệu có trang xoay hoặc nhiều bảng scan cho tới khi xử lý OSD
+  (`OCR_TEST_REPORT.md` §9.3).
+- Không đổi engine mặc định.

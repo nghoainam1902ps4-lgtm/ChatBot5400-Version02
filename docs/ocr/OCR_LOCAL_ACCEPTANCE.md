@@ -70,6 +70,12 @@ Kết quả mong đợi: `content-core==2.0.7`, `docling==2.129.0`, `rapidocr==3
 
 ### 4.1 Cài môi trường, runtime và model
 
+Không có `sudo`? Cài Tesseract ở user-space:
+`apt-get download libleptonica6 libtesseract5 tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd`,
+`dpkg -x` từng gói vào một thư mục riêng, rồi đặt một wrapper tên `tesseract` (đặt `LD_LIBRARY_PATH`
+tới `usr/lib/x86_64-linux-gnu` của thư mục đó) lên đầu `PATH`. Đã dùng ở Phase 8B
+(`OCR_TEST_REPORT.md` §9). Cũng có thể trỏ `OCR_TESSERACT_CMD` tới wrapper đó.
+
 ```bash
 cd "$ACCEPT_DIR/src"
 UV_TORCH_BACKEND=cpu uv sync --extra docling --extra ocr-easyocr

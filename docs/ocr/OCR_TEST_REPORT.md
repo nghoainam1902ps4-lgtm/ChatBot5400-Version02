@@ -222,3 +222,87 @@ Agent review cũng xác nhận các phần sau là sạch:
 
 Giới hạn ghi nhận: lock nonce là theo tiến trình (chạy nhiều uvicorn worker không được bảo đảm, như các
 job OCR trước đây).
+
+## 9. Phase 8B — Nghiệm thu trên máy thật
+
+Ngày 2026-11-13. Chạy theo `OCR_LOCAL_ACCEPTANCE.md`, lộ trình nhanh trước, sau đó lộ trình đầy đủ.
+
+**Môi trường:**
+
+- Máy: Ubuntu 26.04, x86_64, 8 CPU, 30 GB RAM, CPU-only.
+- Docker 29.8.2, Compose v5.6.0; Python 3.12.16, uv 0.13.8.
+- Tesseract 5.5.0, cùng bản với image Docker. Không có sudo nên cài ở user-space:
+  `apt-get download` + `dpkg -x` + wrapper; không đổi hệ thống.
+- Mã: branch `local/ocr-phase8b` = `45e2254` + các commit sửa ở §9.3.
+
+**An toàn:**
+
+- Deployment đang chạy (`chatbot5400-version02`, commit `5e04227`) **không bị dừng, sửa hay xoá**.
+  Volume và DB của nó không bị đụng tới.
+- Mọi lần chạy Docker dùng compose project, mạng và thư mục riêng, không publish cổng.
+
+### 9.1 Kết quả
+
+| Hạng mục (mục trong `OCR_LOCAL_ACCEPTANCE.md`) | Kết quả |
+|---|---|
+| §3 Khoá dependency | **PASS** — content-core 2.0.7, docling 2.129.0, rapidocr 3.9.2, easyocr 1.7.2, torch 2.14.0, khớp `compat.py` |
+| §4.1 Runtime + model | **PASS** — cả 4 engine `state=ready`; smoke test của từng model đọc 187–195 ký tự |
+| §4.2 Model Docling | **PASS** — `layout_heron`, `docling_tableformer`, `accurate`; RapidOCR torch tải trọng số từ modelscope.cn |
+| §4.3 Lộ trình nhanh (`-k tesseract_best`, strict) | **FAIL** — 5 PASS / 4 FAIL / 0 NOT VERIFIED |
+| §4.3 Đầy đủ (4 engine × 7 fixture, strict) | **FAIL** — 33 PASS / 15 FAIL / 0 NOT VERIFIED. RapidOCR 1, Tesseract Fast 5, Tesseract Best 4, EasyOCR 5 (§9.3: P8B-4 … P8B-7) |
+| §4.4 Prepare + readiness (ngoài Docker) | Lần 1: **FAIL** — cả 4 engine `not_offline_ready` (P8B-2). Sau khi sửa: **PASS** — 4 engine `offline_ready`, `local_only_verified=True` |
+| `offline_verified` ngoài Docker | **NOT VERIFIED** — không ngắt mạng máy chủ vì sẽ ảnh hưởng deployment đang chạy; `unshare -rn` bị AppArmor chặn. Đã nghiệm thu bằng container bị ngắt mạng thật (§5) |
+| §5 Docker lộ trình nhanh (`tesseract_best`, `OLD_REF=e32eae8`) | Lần 1: script lỗi (P8B-1). Lần 2: `prepare` FAIL (P8B-2). Lần 3: job đầu tiên khi offline treo 16 phút (P8B-3). **Lần 4 (đủ bản sửa): 40/40 PASS, exit 0** |
+| §5 Docker đầy đủ (4 engine, `OLD_REF=5e04227` = production thật) | **FAIL — 53 PASS / 2 FAIL / 0 NOT VERIFIED, exit 1.** Mọi bước hạ tầng PASS: nâng cấp từ production (giữ settings + dữ liệu); 4 engine `offline_ready`; offline thật (`offline_verified`); restart offline; rebuild + recreate; offline lại. Hai FAIL là E2E nội dung: Tesseract Fast thiếu `1234/2024/QĐ-MẪU` (P8B-7); EasyOCR thiếu 2/2 câu kỳ vọng (P8B-5). Tài liệu vẫn xử lý xong và đúng engine. Script loại engine FAIL khỏi các bước offline ⇒ **vận hành offline của Tesseract Fast và EasyOCR chưa được nghiệm thu E2E**; RapidOCR (mặc định) và Tesseract Best: offline E2E PASS ở cả 3 vòng |
+| §5 RapidOCR `OCR_RAPIDOCR_PERSISTENT=true` (`SCENARIOS=rapidocr`) | Lần 1: **FAIL** — `prepare` lỗi `TypeError` ngay ở kiểm tra online (P8B-8). Sau khi sửa (`d9652c0`): **36/36 PASS, exit 0** — trọng số `.pth` được giữ qua rebuild + recreate (checksum không đổi), offline E2E PASS ở cả 3 vòng |
+| Kiểm tra bảo mật trực tiếp trên stack nghiệm thu | **PASS 16/16**. Ẩn danh ⇒ 401. Admin gửi `/api/commands/jobs` (`process_source` với `/etc/passwd`; 3 command OCR với nonce giả) ⇒ 403 "Generic command submission is disabled". User thường ⇒ 403 trên commands, users, install / prepare / activate / config OCR |
+| Test bảo mật + readiness + Hub timeout | 102 passed (thêm 1 test RapidOCR ở `d9652c0`) |
+| Regression backend (mã cuối, sau `d9652c0`) | **1166 passed, 10 failed, 44 skipped**. `main` (`5e04227`, worktree riêng): 894 passed, 10 failed — **cùng đúng 10 lỗi** (`test_models_api` ×9, `test_domain` ×1); 0 lỗi mới |
+| ruff / mypy | ruff: 1 lỗi có sẵn (`tests/test_auth.py`, import order); mypy: 33 lỗi có sẵn, **bằng baseline `45e2254`**; file thay đổi sạch |
+| Frontend (node 22 trong container) | lint 0 error (7 warning có sẵn); tsc 0 lỗi; vitest 404/404; build PASS |
+| §8 Benchmark | Có số đo `--mode ocr-stage` và `--mode pipeline` cho 4 engine (`OCR_BENCHMARK.md` §6) |
+| Review độc lập diff 8B (agent riêng, chỉ đọc) | 0 High, 0 Medium; 2 Low, đã xử lý (§9.4) |
+
+### 9.2 Bằng chứng
+
+Trên máy nghiệm thu (không commit), trong thư mục `$ACCEPT_DIR`:
+
+- `ocr-acceptance-quick.json`, `logs/ocr-acceptance.run1.json`;
+- `readiness.json` và `logs/readiness.run1-proxyerror.json`;
+- `docker-acceptance-quick.log`, `docker-acceptance.log`, `docker-acceptance-rapidocr-persistent.log`,
+  các lần chạy lỗi trong `logs/`, log app của
+  lần treo trong `logs/docker-quick-run3-offline-hang.app.log`;
+- `bench-ocr-stage.json`, `bench-pipeline.json`;
+- `logs/pytest-full-{branch,main}.txt`, `logs/frontend.txt`, `logs/security-live.json`.
+
+### 9.3 Phát hiện và xử lý
+
+| # | Mức | Phát hiện | Nguyên nhân gốc (đã kiểm chứng) | Xử lý |
+|---|---|---|---|---|
+| P8B-1 | Trung bình (công cụ nghiệm thu) | `docker-acceptance.sh` FAIL ngay bước 0; container nghiệm thu bị bỏ lại | `APP_IMAGE=x dc up` chỉ đặt biến cho một lệnh. Các lệnh `dc ps/restart/down` sau đó không parse được compose file (Compose v5.6: "service app has neither an image…") | `5e6522e`: export `APP_IMAGE`; test hồi quy |
+| P8B-2 | **Chặn** | `prepare` / `readiness --check` không bao giờ đạt `offline_ready` / `offline_verified` trên máy thật, cả trong và ngoài Docker, với cả 4 engine | huggingface_hub 0.36 **ném lại `ProxyError`** thay vì dùng cache (`_snapshot_download.py:166`). Proxy chết `127.0.0.1:9` vì vậy không tương đương rút mạng (mất mạng thật cho `ConnectionError` ⇒ dùng cache). Test cũ đều mock nên không thấy | `5cbcb37`: tiến trình con đặt thêm `HF_ENDPOINT` vào cổng chết (nằm trong `NO_PROXY`) ⇒ connection refused ⇒ dùng cache. Thiếu model vẫn FAIL (`LocalEntryNotFoundError`, đã thử với cache rỗng). Có test ghim hành vi của Hub |
+| P8B-3 | **Chặn** | Sau khi mất Internet, job OCR đầu tiên của worker treo ~16 phút; xử lý tài liệu tiếp theo treo lần nữa | `snapshot_download` gọi `repo_info()` **không có timeout**, trên kết nối keep-alive tới CDN của HF còn sót từ pha online. Worker giữ socket `ESTABLISHED` tới `3.162.66.59:443` với 322 byte chưa ACK. Request chờ TCP bỏ cuộc (`tcp_retries2=15`) | `4a0b00f`: timeout có giới hạn cho request Hub (D-24). Test dùng socket thật nhận kết nối mà không trả lời; không có bản sửa thì test treo. Docker lộ trình nhanh lần 4: bước 3–5 PASS, không treo |
+| P8B-4 | **Cao — CHƯA SỬA** | Tesseract (Fast/Best): bảng scan và trang xoay ra chữ lộn ngược; recall 0.00–0.33 trên `bang_gop_scan`, `nhieu_trang_scan`, `vb_xoay_scan` | Docling chạy OSD (`--psm 0`) trên **từng vùng crop**, rồi xoay theo kết quả **bất kể độ tin cậy**. Trên crop sát mép, OSD trả 180° với độ tin cậy 0.16 cho bảng thẳng đứng, và 90° (0.02) cho trang cần 270°. Tesseract 5.5.0 trong image Docker cho kết quả y hệt | Cần quyết định thiết kế (vá hành vi nội bộ Docling). Thử nghiệm what-if (chỉ trong scratch): thêm lề trắng 60 px trước OSD ⇒ `vb_xoay_scan` recall 0.00 → 1.00, bảng 0.00 → 0.75–0.83. Phần còn lại là lỗi đọc số trong ô bảng |
+| P8B-5 | **Cao — CHƯA SỬA** | EasyOCR mất phần lớn nội dung ở fixture 150 DPI (`vb_scan` CER 0.848); E2E Docker thiếu văn bản kỳ vọng | Docling bỏ dòng có `confidence < 0.5` (mặc định `EasyOcrOptions`). Dòng tiếng Việt của latin_g2 có confidence 0.23–0.45 | Cần quyết định + benchmark. What-if với ngưỡng 0.0: CER 0.848 → 0.160, nhưng recall trường khoá vẫn chỉ 0.33–0.50 |
+| P8B-6 | Trung bình — giới hạn đã biết | RapidOCR: `vb_xoay_scan` recall 0.33 < 0.8 | RapidOCR mặc định không xử lý trang xoay 90° (hành vi gốc, không đổi) | Ghi nhận; không đổi ngưỡng test |
+| P8B-7 | Trung bình | Tesseract Fast đọc sai `1234/2024/QĐ-MẪU` ở 150 DPI (recall 0.83 < 0.9; Docker E2E FAIL). Cả hai Tesseract đọc `371.250.000` thành `371250000` trong `hon_hop` | Giới hạn chất lượng model ở độ phân giải này | Ghi nhận số đo; **không** hạ ngưỡng (`OCR_LOCAL_ACCEPTANCE.md` §4.4: ghi số đo trước khi đổi ngưỡng) |
+
+Bổ sung sau review:
+
+| # | Mức | Phát hiện | Nguyên nhân gốc (đã kiểm chứng) | Xử lý |
+|---|---|---|---|---|
+| P8B-8 | Cao (chế độ tuỳ chọn) | `OCR_RAPIDOCR_PERSISTENT=true` không bao giờ chuẩn bị được: mọi kiểm tra pipeline lỗi `TypeError: unsupported operand type(s) for /: 'str' and 'str'` | Loader pytorch của RapidOCR 3.9.2 (`networks/main.py:40`) tính `cfg.model_root_dir / name` mà không bọc `Path()`. Backend onnxruntime có bọc, nên kiểm chứng Phase 8A (overlay onnx) không thấy lỗi. Test cũ ghim đúng giá trị `str` gây lỗi | `d9652c0`: truyền `Path`. Chạy thật: trọng số `.pth` nằm trong `<OCR_DATA_DIR>/models/rapidocr`, OCR chạy. Test ghim `Path` + tripwire trên loader. Chế độ mặc định (tắt) không bị ảnh hưởng, nên kết quả Docker đầy đủ (build trước `d9652c0`) vẫn có giá trị |
+
+### 9.4 Review độc lập diff 8B
+
+Agent riêng, chỉ đọc mã và chạy test.
+
+- Xác nhận sạch:
+  - `HF_ENDPOINT` không gây pass giả hay fail giả: đã thử cả repo có cache và repo không có cache;
+  - wrapper session đúng với mọi cách huggingface_hub gọi `Session.request`;
+  - mọi đường xử lý tài liệu đã được phủ;
+  - `APP_IMAGE` trong script dùng đúng image ở mọi bước;
+  - test mới FAIL khi không có bản sửa.
+- Low (đã xử lý ở `2128587`):
+  - test Hub timeout phụ thuộc biến proxy / `HF_HUB_OFFLINE` của môi trường ⇒ test tự đặt môi trường;
+  - D-24 cần nói rõ phạm vi toàn tiến trình ⇒ đã bổ sung.
