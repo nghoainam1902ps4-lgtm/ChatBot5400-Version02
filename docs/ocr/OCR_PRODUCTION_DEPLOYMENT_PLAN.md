@@ -17,7 +17,7 @@ tin khách hàng. `BACKUP_DIR` là thư mục sao lưu do người vận hành c
 | Thư mục | `/home/admin/ChatBot5400-Version02` | không đổi |
 | Compose project | `chatbot5400-version02` (`docker-compose.yml` + `docker-compose.override.yml`) | không đổi |
 | Commit | `5e042279439302d3ccf39bef4d1d8d402314d194` (v1.0.8) | commit merge của PR #42 vào `claude/practical-wozniak-9s1t6z` (`git rev-parse origin/claude/practical-wozniak-9s1t6z` sau khi merge; ghi trong `OCR_FINAL_ACCEPTANCE.md`) |
-| Image ứng dụng | `chatbot5400:local` | image dựng từ commit merge, có Tesseract; gắn thêm tag `chatbot5400:rc1-<ngày>` |
+| Image ứng dụng | `chatbot5400:local` | image dựng từ commit merge, có Tesseract; gắn thêm tag `chatbot5400:rc1-<ngày>` (đã dựng và xác minh trên stack cô lập: `OCR_FINAL_ACCEPTANCE.md` §4–5) |
 | Image DB | `surrealdb/surrealdb:v2` (đang chạy: bản tạo 2026-09-23) | **đúng image đang chạy** — không pull, không recreate container DB |
 | Dữ liệu | bind mount `./notebook_data` → `/app/data`, `./surreal_data` → `/mydata` | không đổi; không có migration DB |
 | Cổng, mạng, khóa mã hóa, mật khẩu DB, nhà cung cấp LLM / embedding | — | không đổi |
@@ -61,7 +61,7 @@ tin khách hàng. `BACKUP_DIR` là thư mục sao lưu do người vận hành c
 Dựng image từ commit đã merge trong một thư mục **riêng**, tag riêng; không ghi đè `chatbot5400:local`.
 
 ```bash
-MERGE=COMMIT_DA_MERGE                                  # thay bằng commit merge của PR #42 (OCR_FINAL_ACCEPTANCE.md)
+MERGE=3819c2a7068916bf7cd2d5bc9c71cfe73b76dfbc       # commit merge của PR #42
 BUILD=/home/admin/cb5400-rc1-build
 git clone --no-checkout /home/admin/ChatBot5400-Version02 "$BUILD"
 git -C "$BUILD" fetch https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02.git "$MERGE"

@@ -149,13 +149,16 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
   tiến độ ở `chain.progress`, kết thúc khi có `docker-chain.done`).
 - Kết quả nghiệm thu cuối: backend 1435 / 10 (cùng 10 lỗi có sẵn); frontend 411/411; bộ gốc 38/48; Tesseract Best
   có điều kiện 7/7; Docker quick 42/0, full 74/1, persistent 42/0, không Tesseract 50/1 (FAIL: nội dung EasyOCR).
-- Pull Request: #42 (`release/ocr-engine-manager-rc1` → `claude/practical-wozniak-9s1t6z`). Việc còn lại của 9B:
-  chờ `docs-links.yml`, merge bằng merge commit, ghi commit merge vào tài liệu bàn giao (PR tài liệu riêng).
-  Bundle: `phase9b-backup.bundle`.
+- Pull Request #42 (`release/ocr-engine-manager-rc1` → `claude/practical-wozniak-9s1t6z`): **MERGED** bằng merge
+  commit `3819c2a7068916bf7cd2d5bc9c71cfe73b76dfbc` (2026-11-13 18:57 UTC). Bundle: `phase9b-backup.bundle`. **PHASE 9B: COMPLETED.**
 - Phase 9C: kiểm tra chỉ đọc production đã xong — xem `OCR_PRODUCTION_DEPLOYMENT_PLAN.md` §1.1, §13 và
   `evidence/phase9c/preflight/`. Phát hiện chính: container production **không có Docling** từ 2026-11-12
   (`UV_OFFLINE=1` trong override). Công cụ đã sẵn: `evidence/phase9c/tools/db_counts.py` (số đếm),
   `make_restore_compose.py` (stack restore cô lập). Số đếm gốc: `preflight/production-counts-preflight.json`.
-- **Chưa** dừng, sao lưu hay thay đổi production. Bước tiếp theo sau merge: dựng image ở thư mục riêng, xác minh
-  offline trên stack cô lập bằng image đó, rồi **dừng ở Approval Gate**. Benchmark tài liệu thật: chưa có.
+- Image triển khai đã dựng ở `/home/admin/cb5400-rc1-build` từ commit merge: `chatbot5400:rc1-20261114` =
+  `sha256:240bb692922101385c8a4fcb0aaf15451f4ba345ae027e232265e37005d58f56`; đã xác minh trên stack cô lập 42/0 (online → chuẩn bị → offline → restart offline).
+- Script triển khai từng bước (chưa chạy): `evidence/phase9c/exec/deploy-9c.sh` — thứ tự `pre stop backup
+  restore-old restore-rc restore-down update start verify`.
+- **Chưa** dừng, sao lưu hay thay đổi production. Trạng thái: **READY FOR DEPLOYMENT APPROVAL** — chờ chủ dự án
+  phê duyệt kế hoạch (cổng phê duyệt 17 mục) và benchmark tài liệu thật hoặc phạm vi thí điểm phi nghiệp vụ.
 

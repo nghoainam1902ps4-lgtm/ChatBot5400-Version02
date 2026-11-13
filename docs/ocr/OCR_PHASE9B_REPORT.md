@@ -12,8 +12,8 @@ Production **không** bị thay đổi trong Phase 9B.
 | Trạng thái | Kết luận |
 |---|---|
 | Phase 9A | **COMPLETED AND VERIFIED** (mục A) |
-| Phase 9B | **Nghiệm thu hoàn tất, Pull Request #42 đã mở.** Cổng merge: đạt (mục G); một điểm mức Trung bình có sẵn được nêu để chủ dự án quyết định (route podcast, mục B.3 #1) |
-| Merge | Thực hiện sau khi check của PR #42 đạt, bằng merge commit. Commit merge không thể nằm trong chính nội dung được merge: nó được ghi trong `OCR_FINAL_ACCEPTANCE.md` / `CHECKPOINT.md` ở PR tài liệu bàn giao |
+| Phase 9B | **COMPLETED.** Cổng merge: đạt (mục G); một điểm mức Trung bình có sẵn được nêu để chủ dự án quyết định (route podcast, mục B.3 #1) |
+| Merge | **MERGED** — PR #42, merge commit `3819c2a7068916bf7cd2d5bc9c71cfe73b76dfbc` (mục G) |
 | Production | **NOT DEPLOYED** trong Phase 9B. Kiểm tra chỉ đọc đã xong; triển khai chờ phê duyệt ở Phase 9C |
 
 ## A. Xác minh Phase 9A
@@ -199,6 +199,18 @@ protection nào bị bỏ qua.
 | Sau merge | Không xóa branch RC; không tạo tag / release; không triển khai production |
 
 Đối chiếu 13 điều kiện của cổng merge: [RELEASE_CANDIDATE.md](RELEASE_CANDIDATE.md) §10.1.
+
+**Kết quả merge** (ghi bổ sung qua PR tài liệu sau merge):
+
+| | |
+|---|---|
+| Check trên PR | `docs-links.yml` / `check-links`: success trên `6f6b424` và trên commit đầu nhánh `8ba2483` |
+| Trạng thái trước merge | `MERGEABLE`, `CLEAN`; nhánh chính thức vẫn ở `5e04227`; RC đi trước 41, đi sau 0 |
+| Merge | 2026-11-13 18:57 UTC, **merge commit** `3819c2a7068916bf7cd2d5bc9c71cfe73b76dfbc`, cha `5e04227` + `8ba2483` |
+| Nhánh chính thức sau merge | chứa toàn bộ RC và commit production cũ (`git merge-base --is-ancestor`); cây mã của commit merge **giống hệt** `8ba2483` |
+| GitHub Actions sau merge | không workflow nào chạy trên commit merge (0 check run); không deployment; không release / tag mới |
+| Branch RC | còn nguyên trên GitHub (`8ba2483`), không xóa |
+| Production | không đổi: cùng container, `/health` 200, restart 0 |
 
 **Lưu ý cho chủ dự án:** các lỗi phân quyền P1 / P2 có trong bản đang chạy trên production (`5e04227`) và chỉ được
 đóng khi triển khai bản này. Khai thác cần một tài khoản đã đăng nhập trong mạng nội bộ. Cho tới khi triển khai,
