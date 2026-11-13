@@ -480,6 +480,31 @@ def _require_url_ingestion() -> None:
         raise HTTPException(status_code=403, detail=URL_INGESTION_DISABLED_MESSAGE)
 
 
+def _require_admin_for_server_file(
+    source_data: SourceCreate,
+    upload_file: Optional[UploadFile],
+    current_user: TokenUser,
+) -> None:
+    """A source may only be built from a file the request itself uploaded.
+
+    The JSON endpoint still accepts a ``file_path`` that is already inside the
+    uploads folder (kept for administrator scripts). For any other role that
+    would be a way to read - and, with ``delete_source``, remove - a file
+    another user uploaded, including submissions still waiting for approval.
+    """
+    if (
+        source_data.type == "upload"
+        and upload_file is None
+        and source_data.file_path
+        and not current_user.is_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Upload the file with the request; referring to a file "
+            "that is already on the server requires an administrator.",
+        )
+
+
 async def _build_content_state(
     source_data: SourceCreate, file_path: Optional[str]
 ) -> dict[str, Any]:
@@ -748,6 +773,7 @@ async def create_source(
     content directly.
     """
     source_data, upload_file = form_data
+    _require_admin_for_server_file(source_data, upload_file, current_user)
     # A contributor's content must be reviewed before it becomes visible.
     approval_status = "pending" if current_user.requires_approval else "approved"
     submitted_by = current_user.id

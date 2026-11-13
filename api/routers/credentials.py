@@ -20,10 +20,11 @@ NEVER returns actual API key values - only metadata.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import SecretStr
 
+from api.auth import require_admin
 from api.credentials_service import (
     credential_to_response,
     discover_with_config,
@@ -158,7 +159,12 @@ async def list_credentials_by_provider(provider: str):
         raise HTTPException(status_code=500, detail="Failed to list credentials for provider")
 
 
-@router.post("", response_model=CredentialResponse, status_code=201)
+@router.post(
+    "",
+    response_model=CredentialResponse,
+    status_code=201,
+    dependencies=[Depends(require_admin)],
+)
 async def create_credential(request: CreateCredentialRequest):
     """Create a new credential."""
     try:
@@ -223,7 +229,11 @@ async def get_credential(credential_id: str):
         raise HTTPException(status_code=404, detail="Credential not found")
 
 
-@router.put("/{credential_id}", response_model=CredentialResponse)
+@router.put(
+    "/{credential_id}",
+    response_model=CredentialResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def update_credential(credential_id: str, request: UpdateCredentialRequest):
     """Update an existing credential."""
     try:
@@ -302,7 +312,11 @@ async def update_credential(credential_id: str, request: UpdateCredentialRequest
         raise HTTPException(status_code=500, detail="Failed to update credential")
 
 
-@router.delete("/{credential_id}", response_model=CredentialDeleteResponse)
+@router.delete(
+    "/{credential_id}",
+    response_model=CredentialDeleteResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def delete_credential(
     credential_id: str,
     migrate_to: Optional[str] = Query(
@@ -408,13 +422,17 @@ async def delete_credential(
 # =============================================================================
 
 
-@router.post("/{credential_id}/test")
+@router.post("/{credential_id}/test", dependencies=[Depends(require_admin)])
 async def test_credential(credential_id: str):
     """Test connection using this credential's configuration."""
     return await svc_test_credential(credential_id)
 
 
-@router.post("/{credential_id}/discover", response_model=DiscoverModelsResponse)
+@router.post(
+    "/{credential_id}/discover",
+    response_model=DiscoverModelsResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def discover_models_for_credential(credential_id: str):
     """Discover available models using this credential's API key."""
     try:
@@ -446,7 +464,11 @@ async def discover_models_for_credential(credential_id: str):
         raise HTTPException(status_code=500, detail="Failed to discover models")
 
 
-@router.post("/{credential_id}/register-models", response_model=RegisterModelsResponse)
+@router.post(
+    "/{credential_id}/register-models",
+    response_model=RegisterModelsResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def register_models_for_credential(
     credential_id: str, request: RegisterModelsRequest
 ):
@@ -468,7 +490,7 @@ async def register_models_for_credential(
 # =============================================================================
 
 
-@router.post("/migrate-from-provider-config")
+@router.post("/migrate-from-provider-config", dependencies=[Depends(require_admin)])
 async def migrate_from_provider_config():
     """Migrate existing ProviderConfig data to individual credential records."""
     try:
@@ -484,7 +506,7 @@ async def migrate_from_provider_config():
         raise HTTPException(status_code=500, detail="Migration from provider config failed")
 
 
-@router.post("/migrate-from-env")
+@router.post("/migrate-from-env", dependencies=[Depends(require_admin)])
 async def migrate_from_env():
     """Migrate API keys from environment variables to credential records."""
     try:

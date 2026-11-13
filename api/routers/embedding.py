@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
+from api.auth import require_admin
 from api.command_service import CommandService
 from api.models import EmbedRequest, EmbedResponse
 from open_notebook.ai.models import model_manager
@@ -13,7 +14,11 @@ from open_notebook.exceptions import (
 router = APIRouter()
 
 
-@router.post("/embed", response_model=EmbedResponse)
+@router.post(
+    "/embed",
+    response_model=EmbedResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def embed_content(embed_request: EmbedRequest):
     """Embed content for vector search."""
     try:

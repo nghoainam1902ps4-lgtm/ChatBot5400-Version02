@@ -1,8 +1,9 @@
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
+from api.auth import require_admin
 from api.models import (
     DefaultPromptResponse,
     DefaultPromptUpdate,
@@ -55,7 +56,11 @@ async def get_transformations():
         )
 
 
-@router.post("/transformations", response_model=TransformationResponse)
+@router.post(
+    "/transformations",
+    response_model=TransformationResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def create_transformation(transformation_data: TransformationCreate):
     """Create a new transformation."""
     try:
@@ -90,7 +95,11 @@ async def create_transformation(transformation_data: TransformationCreate):
         )
 
 
-@router.post("/transformations/execute", response_model=TransformationExecuteResponse)
+@router.post(
+    "/transformations/execute",
+    response_model=TransformationExecuteResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def execute_transformation(execute_request: TransformationExecuteRequest):
     """Execute a transformation on input text."""
     try:
@@ -157,7 +166,11 @@ async def get_default_prompt():
         )
 
 
-@router.put("/transformations/default-prompt", response_model=DefaultPromptResponse)
+@router.put(
+    "/transformations/default-prompt",
+    response_model=DefaultPromptResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def update_default_prompt(prompt_update: DefaultPromptUpdate):
     """Update the default transformation prompt."""
     try:
@@ -205,7 +218,9 @@ async def get_transformation(transformation_id: str):
 
 
 @router.put(
-    "/transformations/{transformation_id}", response_model=TransformationResponse
+    "/transformations/{transformation_id}",
+    response_model=TransformationResponse,
+    dependencies=[Depends(require_admin)],
 )
 async def update_transformation(
     transformation_id: str, transformation_update: TransformationUpdate
@@ -251,7 +266,10 @@ async def update_transformation(
         )
 
 
-@router.delete("/transformations/{transformation_id}")
+@router.delete(
+    "/transformations/{transformation_id}",
+    dependencies=[Depends(require_admin)],
+)
 async def delete_transformation(transformation_id: str):
     """Delete a transformation."""
     try:
