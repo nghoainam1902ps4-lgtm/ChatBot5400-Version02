@@ -162,3 +162,21 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
 - **Chưa** dừng, sao lưu hay thay đổi production. Trạng thái: **READY FOR DEPLOYMENT APPROVAL** — chờ chủ dự án
   phê duyệt kế hoạch (cổng phê duyệt 17 mục) và benchmark tài liệu thật hoặc phạm vi thí điểm phi nghiệp vụ.
 
+## Phase 9C (cập nhật 2026-11-14)
+
+- Chủ dự án phê duyệt triển khai **thí điểm phi nghiệp vụ** kèm điều kiện: RapidOCR giữ làm engine được chọn; hệ
+  thống chỉ mở lại sau khi kiểm tra bảo mật bắt buộc đạt; rollback chỉ ở chế độ cô lập; giữ nguyên route podcast.
+- Đã làm trên production: sao lưu lạnh (dữ liệu, image, cấu hình; checksum + manifest) → restore trên stack cô lập
+  với image cũ và image triển khai (đạt) → fast-forward mã tới `3ca6428` (5 file cục bộ giữ nguyên) → sửa override
+  (bỏ 3 biến offline; URL ingestion tắt; runtime Tesseract) → khởi động **chế độ bảo trì** (cổng chỉ nghe loopback).
+  DB: cùng container, cùng image. Ứng dụng ngừng hoàn toàn 4 phút 02 giây.
+- Kết quả: Docling 2.129.0 cài được; Tesseract Vietnamese Best cài + `offline_ready` + test đạt; RapidOCR
+  `offline_ready`; smoke test A 23/23 · B 29/29 · C 68/68 · D 15/15; dữ liệu trước / sau bằng nhau; hai tài khoản tạm
+  và mọi dữ liệu thử đã xóa; RapidOCR là engine được chọn.
+- Offline: stack cô lập bằng image triển khai — Tesseract Best 42/0, RapidOCR 42/0. Production: `offline_ready`;
+  `offline_verified` chưa (không ngắt Internet máy chủ).
+- **Còn lại:** (1) mở lại cho người dùng — bị chặn bởi một kiểm tra bảo mật bắt buộc (báo cáo vận hành riêng trên máy
+  chủ); bước mở lại là một lệnh, có tự kiểm tra điều kiện; (2) benchmark tài liệu thật do chủ dự án thực hiện —
+  **OCR REAL-DOCUMENT QUALIFICATION: PENDING**; (3) theo dõi 24 giờ; (4) phê duyệt danh sách dọn tài nguyên nghiệm thu.
+- Báo cáo: `OCR_PHASE9C_REPORT.md` (công khai), báo cáo vận hành riêng và bằng chứng ở `evidence/phase9c/` (ngoài
+  repository).

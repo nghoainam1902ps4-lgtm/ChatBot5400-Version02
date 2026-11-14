@@ -79,4 +79,13 @@
 | 9B | Pull Request #42 vào `claude/practical-wozniak-9s1t6z`, merge commit `3819c2a` | DONE — không workflow build / deploy nào chạy |
 | 9C | Image triển khai dựng trước (`chatbot5400:rc1-20261114`) và xác minh trên stack cô lập | DONE — 42 PASS / 0 FAIL |
 | 9C | Kiểm tra chỉ đọc production; kế hoạch triển khai theo hiện trạng; công cụ đếm bản ghi và stack restore | DONE (chưa thay đổi production) |
-| 9C | Benchmark tài liệu thật; phê duyệt triển khai; sao lưu, restore, triển khai, smoke test | **OPEN — chờ chủ dự án** |
+| 9C | Phê duyệt triển khai thí điểm phi nghiệp vụ | DONE (2026-11-14) |
+| 9C | Sao lưu lạnh + manifest; restore trên stack cô lập (image cũ, image triển khai) | DONE — đạt |
+| 9C | Cập nhật production tới `3ca6428` ở chế độ bảo trì; DB không đổi | DONE — ngừng 4 phút 02 giây; dữ liệu trước / sau bằng nhau |
+| 9C | OCR Engine Manager: Docling, Tesseract Vietnamese Best (cài, chuẩn bị, test), RapidOCR | DONE — cả hai `offline_ready`; RapidOCR là engine được chọn |
+| 9C | Smoke test production bằng tài liệu tổng hợp và 2 tài khoản tạm (đã xóa) | DONE — 135/135 |
+| 9C | Offline trên stack cô lập bằng image triển khai | DONE — Tesseract Best 42/0, RapidOCR 42/0 |
+| 9C | Mở lại cho người dùng | **OPEN — chờ kiểm tra bảo mật bắt buộc (báo cáo vận hành riêng)** |
+| 9C | Benchmark tài liệu thật (thẩm định OCR cho nghiệp vụ) | **OPEN — việc của chủ dự án** |
+| 9C | Offline trên production; theo dõi 24 giờ | **OPEN** |
+| 10 | Dọn tài nguyên nghiệm thu | **OPEN — chờ phê duyệt danh sách** |

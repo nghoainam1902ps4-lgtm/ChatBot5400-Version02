@@ -1,6 +1,12 @@
 # Kế hoạch triển khai production — OCR Engine Manager RC1
 
-Cập nhật: 2026-11-14 (Phase 9B/9C) · **Kế hoạch. Chỉ được thực hiện sau khi chủ dự án phê duyệt (mục 2).**
+Cập nhật: 2026-11-14 (Phase 9B/9C) · **Đã thực hiện ngày 2026-11-14** theo phê duyệt của chủ dự án — kết quả:
+[OCR_PHASE9C_REPORT.md](OCR_PHASE9C_REPORT.md). Giữ làm quy trình cho các lần cập nhật sau.
+
+Điều chỉnh khi thực hiện so với kế hoạch dưới đây: ứng dụng được khởi động ở **chế độ bảo trì** (cổng chỉ nghe
+loopback) và chỉ mở lại sau khi các kiểm tra bảo mật đạt; rollback chỉ đưa bản cũ lên ở chế độ bảo trì; thêm
+`OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true`; lưu thêm bản tar của image ứng dụng và image DB cùng manifest. Xem
+[OCR_OPERATOR_GUIDE.md](OCR_OPERATOR_GUIDE.md) §11.
 
 Bản này thay bản Phase 9A: đã đối chiếu với kết quả kiểm tra **chỉ đọc** trên production (mục 1.1) và điều
 chỉnh các bước cho đúng hiện trạng. Danh sách kiểm tra đi kèm:
