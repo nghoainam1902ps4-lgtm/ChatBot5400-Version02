@@ -21,8 +21,9 @@ bảo mật bắt buộc đạt, rollback (nếu cần) chỉ ở chế độ c�
 | Sẵn sàng offline | **OFFLINE READY** — cả hai engine đạt `offline_ready` trên production (kiểm tra chặn mạng trong tiến trình con) |
 | Offline đã xác minh — stack cô lập | **PASS** — bằng chính image triển khai (mục 9) |
 | Offline đã xác minh — production | **NOT VERIFIED** — không ngắt Internet máy chủ |
-| Mở lại cho người dùng | **CHƯA** — hệ thống đang ở chế độ bảo trì theo quyết định của chủ dự án, cho tới khi kiểm tra bảo mật bắt buộc trước khi mở lại hoàn tất (báo cáo vận hành riêng). Vì vậy **PHASE 9C: BLOCKED ở bước mở lại**; mọi bước khác đã xong |
-| Bàn giao | **PENDING** — chờ bước mở lại và theo dõi 24 giờ của người vận hành |
+| Phase 9C — triển khai và nghiệm thu kỹ thuật | **COMPLETED** (sao lưu, restore, cập nhật, OCR Engine Manager, smoke test, offline trên stack cô lập, sẵn sàng rollback) |
+| Mở cho người dùng | Trạng thái truy cập của hệ thống (bảo trì hay đã mở cho người dùng) và các điều kiện đi kèm là thông tin vận hành: ghi trong báo cáo vận hành riêng, không ghi trong tài liệu công khai |
+| Bàn giao | Tài liệu bàn giao: báo cáo này, [OCR_OPERATOR_GUIDE.md](OCR_OPERATOR_GUIDE.md), [OCR_FINAL_ACCEPTANCE.md](OCR_FINAL_ACCEPTANCE.md). Theo dõi 24 giờ sau triển khai do người vận hành thực hiện — **chưa** thực hiện trong phiên triển khai |
 
 Ba trạng thái sau **không** đồng nghĩa: *phần mềm production đã cập nhật* (đạt), *thí điểm OCR đã xác minh* (đạt,
 dữ liệu tổng hợp), *OCR đủ điều kiện cho tài liệu nghiệp vụ thật* (chưa — chờ benchmark do chủ dự án thực hiện).
@@ -38,7 +39,7 @@ dữ liệu tổng hợp), *OCR đủ điều kiện cho tài liệu nghiệp v�
 | Mount và volume | 2 bind mount dữ liệu; 2 volume ẩn danh của container DB rỗng |
 | Dung lượng | Đủ (nhu cầu sao lưu + restore < 10 GB) |
 | Job nền | 0 job đang chạy (kiểm tra lại ngay trước khi dừng) |
-| Người dùng đang sử dụng | 0 request API trong 60 phút trước bảo trì |
+| Người dùng đang sử dụng | không có hoạt động API trước khi bảo trì |
 | Image DB | Ghi lại ID và phiên bản (SurrealDB 2.7.0); lưu thêm bản tar |
 | Auth, CORS, mức phơi nhiễm API | Đã đánh giá — kết quả trong báo cáo riêng |
 | Image rollback | Gắn tag riêng + lưu bản tar có checksum |
@@ -56,8 +57,7 @@ Sao lưu **lạnh** (ứng dụng và DB đã dừng bằng `docker compose stop
 | Compose, override, diff cục bộ, bản sao `.env` | lưu ở thư mục con quyền hạn chế (file 600) |
 | Checksum | SHA-256 cho mọi archive; `sha256sum -c` đạt sau khi tạo và đạt lại khi kiểm tra sẵn sàng rollback |
 | Manifest | danh sách thành phần, kích thước, checksum, commit, ID container / image, phiên bản DB |
-| Bảo vệ | thư mục 700, file 600, một chủ sở hữu; **không mã hóa** (chưa có quy trình quản lý khóa của đơn vị) |
-| Vị trí | trên máy chủ, vị trí chủ dự án cho phép; **chưa** chép ra ngoài máy chủ (việc của người vận hành được ủy quyền) |
+| Bảo vệ, vị trí, thời hạn giữ | quyền truy cập hạn chế cho một chủ sở hữu; quản lý theo quy định của đơn vị — chi tiết trong báo cáo vận hành riêng |
 
 ## 3. Kiểm tra restore
 
@@ -88,7 +88,7 @@ Không đọc hay in nội dung tài liệu; chỉ số đếm. Stack được g
 | Khởi động | **chế độ bảo trì**: cùng service, cổng chỉ nghe loopback (file override thứ ba dùng `ports: !override`); file compose của production không đổi |
 
 **Thời gian ứng dụng ngừng hoàn toàn: 4 phút 02 giây** (dừng → sao lưu → 2 lượt restore → cập nhật → `/health` 200).
-Từ thời điểm dừng, người dùng chưa truy cập lại được vì hệ thống còn ở chế độ bảo trì.
+Sau đó ứng dụng chạy ở chế độ bảo trì trong suốt thời gian nghiệm thu.
 
 Sau khởi động: `/health` 200; không restart; Docling **2.129.0** cài thành công theo constraints của `uv.lock`
 (trước triển khai production không có Docling); Content Core 2.0.7; RapidOCR 3.9.2; torch 2.14.0 bản CPU; Tesseract
@@ -154,8 +154,7 @@ model, nguồn, file hay tài khoản có sẵn nào bị đụng tới.
 **D — dọn dẹp:** đã xóa đúng 10 nguồn tổng hợp (kèm file), 1 phiên chat, 1 insight, 1 notebook và **2 tài khoản
 tạm**. Sau khi dọn: số bản ghi mọi bảng bằng trước triển khai, trừ nhật ký job (+20 job của tài liệu tổng hợp); số
 tài khoản theo vai trò như cũ; số file upload và tổng byte như cũ. Mật khẩu của tài khoản tạm không được ghi vào
-log, báo cáo hay Git; file chứa chúng đã bị xóa. Token của chúng không thể thu hồi riêng lẻ (JWT không trạng thái)
-và tự hết hạn sau tối đa 12 giờ.
+log, báo cáo hay Git; file chứa chúng đã bị xóa.
 
 ## 7. Dữ liệu trước và sau (chỉ số đếm)
 
@@ -207,15 +206,14 @@ hành, bằng `scripts/ocr/production_health_check.sh` (hướng dẫn: [OCR_OPE
 
 ## 11. Giới hạn còn tồn tại
 
-- Hệ thống chưa mở lại cho người dùng (xem Kết luận). Khi mở lại, container ứng dụng được tạo lại một lần: Docling
-  được cài lại từ cache và RapidOCR cần "Chuẩn bị" lại (bước mở lại đã gồm việc này).
+- Mỗi lần container ứng dụng được tạo lại (ví dụ khi ra khỏi chế độ bảo trì), Docling được cài lại từ cache và
+  RapidOCR cần "Chuẩn bị" lại một lần khi có Internet; Tesseract không bị ảnh hưởng.
 - OCR chưa được thẩm định trên tài liệu nghiệp vụ thật. Số liệu từ tài liệu scan phải đối chiếu bản gốc.
 - Giới hạn OCR đã biết: xem [OCR_RELEASE_NOTES.md](OCR_RELEASE_NOTES.md) §5 (KL-1, lỗi dấu ở tiêu đề in đậm, RapidOCR
   mất dấu tiếng Việt).
 - Route podcast vẫn mở cho mọi tài khoản đăng nhập (giữ nguyên theo quyết định của chủ dự án; đánh giá riêng sau).
 - Token đăng nhập không thu hồi được riêng lẻ; đổi mật khẩu không vô hiệu token đã cấp (tối đa 12 giờ).
 - Tạo nhiều nguồn cùng một thời điểm có thể làm một request lỗi 500 (xung đột ghi của DB, có sẵn).
-- Bản sao lưu nằm trên cùng máy chủ và chưa mã hóa cho tới khi người vận hành xử lý theo quy định.
 - Offline trên production và theo dõi 24 giờ: chưa thực hiện.
 
 ## 12. Tài nguyên chưa dọn

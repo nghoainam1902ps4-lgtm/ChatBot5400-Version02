@@ -175,8 +175,8 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
   và mọi dữ liệu thử đã xóa; RapidOCR là engine được chọn.
 - Offline: stack cô lập bằng image triển khai — Tesseract Best 42/0, RapidOCR 42/0. Production: `offline_ready`;
   `offline_verified` chưa (không ngắt Internet máy chủ).
-- **Còn lại:** (1) mở lại cho người dùng — bị chặn bởi một kiểm tra bảo mật bắt buộc (báo cáo vận hành riêng trên máy
-  chủ); bước mở lại là một lệnh, có tự kiểm tra điều kiện; (2) benchmark tài liệu thật do chủ dự án thực hiện —
+- **Còn lại:** (1) trạng thái truy cập và điều kiện mở cho người dùng: xem báo cáo vận hành riêng trên máy chủ (không
+  ghi trong repository); (2) benchmark tài liệu thật do chủ dự án thực hiện —
   **OCR REAL-DOCUMENT QUALIFICATION: PENDING**; (3) theo dõi 24 giờ; (4) phê duyệt danh sách dọn tài nguyên nghiệm thu.
 - Báo cáo: `OCR_PHASE9C_REPORT.md` (công khai), báo cáo vận hành riêng và bằng chứng ở `evidence/phase9c/` (ngoài
   repository).

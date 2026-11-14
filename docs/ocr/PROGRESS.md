@@ -85,7 +85,7 @@
 | 9C | OCR Engine Manager: Docling, Tesseract Vietnamese Best (cài, chuẩn bị, test), RapidOCR | DONE — cả hai `offline_ready`; RapidOCR là engine được chọn |
 | 9C | Smoke test production bằng tài liệu tổng hợp và 2 tài khoản tạm (đã xóa) | DONE — 135/135 |
 | 9C | Offline trên stack cô lập bằng image triển khai | DONE — Tesseract Best 42/0, RapidOCR 42/0 |
-| 9C | Mở lại cho người dùng | **OPEN — chờ kiểm tra bảo mật bắt buộc (báo cáo vận hành riêng)** |
+| 9C | Trạng thái truy cập / mở cho người dùng | thông tin vận hành — báo cáo vận hành riêng |
 | 9C | Benchmark tài liệu thật (thẩm định OCR cho nghiệp vụ) | **OPEN — việc của chủ dự án** |
 | 9C | Offline trên production; theo dõi 24 giờ | **OPEN** |
 | 10 | Dọn tài nguyên nghiệm thu | **OPEN — chờ phê duyệt danh sách** |
