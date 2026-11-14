@@ -27,6 +27,10 @@ kèm tên service (sẽ kéo bản SurrealDB mới và tạo lại container DB 
 
 Engine mặc định trong mã nguồn là RapidOCR và không tự đổi. Không có chuyển engine tự động.
 
+**Trạng thái trên production (2026-11-14, thí điểm phi nghiệp vụ):** engine được chọn là **RapidOCR**. Tesseract
+Vietnamese Best đã cài, đã "Chuẩn bị" và đã thử bằng tài liệu tổng hợp, nhưng **chưa được phép dùng cho tài liệu
+nghiệp vụ thật** cho tới khi chủ dự án hoàn thành benchmark cục bộ (mục 2) và quyết định kích hoạt.
+
 ## 2. Cảnh báo về số liệu tài chính
 
 - OCR là nhận dạng tự động, **không** phải bản sao có giá trị pháp lý. Số tiền, ngày, số hiệu, số tài khoản lấy
@@ -157,6 +161,7 @@ phân quyền (D-31): áp biện pháp đã được phê duyệt trong kế ho�
 | `OCR_INSTALL_TESSERACT` (trong `.env`) | `true` | Image dựng lại luôn có Tesseract |
 | `UV_TORCH_BACKEND` | `cpu` | torch bản CPU |
 | `OPEN_NOTEBOOK_WORKER_MAX_TASKS` | `1` | mỗi lúc một job nền |
+| `OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT` | `true` | khôi phục runtime Tesseract khi container được tạo lại (binary đã có sẵn trong image) |
 | `OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR` | không đặt | EasyOCR không cài |
 | `OCR_RAPIDOCR_PERSISTENT` | không đặt | xem D-32 |
 | `OCR_OFFLINE`, `HF_HUB_OFFLINE` | không đặt | chỉ đặt khi vận hành ngắt mạng, **sau khi** đã `offline_ready` |
@@ -164,8 +169,48 @@ phân quyền (D-31): áp biện pháp đã được phê duyệt trong kế ho�
 Đầy đủ: [OCR_CONFIGURATION.md](OCR_CONFIGURATION.md). Quyền: mọi thao tác trong OCR Engine Manager, quản lý
 model / credential nhà cung cấp, transformation và dựng lại embedding chỉ dành cho **quản trị viên** (D-31).
 
-## 11. Tài liệu liên quan
+## 11. Chế độ bảo trì và mở lại hệ thống
+
+Chế độ bảo trì = ứng dụng vẫn chạy nhưng cổng web (8502) và API (5055) chỉ nghe trên `127.0.0.1` của máy chủ:
+người dùng trong mạng không truy cập được, người quản trị vẫn làm việc được trên máy chủ hoặc qua SSH tunnel. Dùng
+khi cập nhật, khi cần kiểm tra bảo mật trước khi mở lại, và **bắt buộc** nếu phải chạy lại bản cũ (bản trước tính
+năng OCR có lỗi phân quyền đã biết, không được mở cho người dùng).
+
+File override bảo trì (đặt ngoài thư mục production, không sửa file compose nào):
+
+```yaml
+services:
+  open_notebook:
+    ports: !override
+      - "127.0.0.1:8502:8502"
+      - "127.0.0.1:5055:5055"
+```
+
+```bash
+cd /home/admin/ChatBot5400-Version02
+MAINT=/duong/dan/docker-compose.maintenance.yml
+# vào chế độ bảo trì (tạo lại container ứng dụng; DB không đụng tới)
+docker compose -p chatbot5400-version02 -f docker-compose.yml -f docker-compose.override.yml -f "$MAINT" \
+    up -d --no-deps --no-build open_notebook
+docker compose ps                         # cột PORTS phải là 127.0.0.1:…
+# làm việc từ máy của quản trị viên qua SSH tunnel, rồi mở http://localhost:8502
+#   ssh -L 8502:127.0.0.1:8502 -L 5055:127.0.0.1:5055 <tài khoản>@<máy chủ>
+# mở lại cho người dùng
+docker compose up -d --no-deps --no-build open_notebook
+docker compose exec open_notebook /app/.venv/bin/python -m open_notebook.ocr.cli prepare --engines rapidocr
+```
+
+Trước khi mở lại, kiểm tra: các hạng mục bảo mật ở `OCR_PRODUCTION_DEPLOYMENT_PLAN.md` §13 đã đạt; `/health` 200;
+OCR Engine Manager không có cảnh báo. Mỗi lần container ứng dụng được tạo lại (vào / ra chế độ bảo trì, cập nhật), RapidOCR cần
+"Chuẩn bị" lại một lần khi có Internet; Tesseract không bị ảnh hưởng.
+
+Phiên đăng nhập: token có hiệu lực tối đa 12 giờ và không thu hồi được riêng lẻ; đổi mật khẩu không vô hiệu token đã
+cấp. Muốn buộc mọi người đăng nhập lại, đặt một giá trị riêng cho `OPEN_NOTEBOOK_JWT_SECRET` rồi tạo lại container
+ứng dụng (quyết định của chủ dự án).
+
+## 12. Tài liệu liên quan
 
 [OCR_ENGINE_MANAGER.md](OCR_ENGINE_MANAGER.md) · [OCR_ONLINE_PREPARATION.md](OCR_ONLINE_PREPARATION.md) ·
 [OCR_ROLLBACK.md](OCR_ROLLBACK.md) · [OCR_PRODUCTION_CHECKLIST.md](OCR_PRODUCTION_CHECKLIST.md) ·
-[OCR_FINAL_ACCEPTANCE.md](OCR_FINAL_ACCEPTANCE.md) · [`docs/security/BACKGROUND_JOB_SECURITY.md`](../security/BACKGROUND_JOB_SECURITY.md)
+[OCR_FINAL_ACCEPTANCE.md](OCR_FINAL_ACCEPTANCE.md) · [OCR_PHASE9C_REPORT.md](OCR_PHASE9C_REPORT.md) ·
+[`docs/security/BACKGROUND_JOB_SECURITY.md`](../security/BACKGROUND_JOB_SECURITY.md)
