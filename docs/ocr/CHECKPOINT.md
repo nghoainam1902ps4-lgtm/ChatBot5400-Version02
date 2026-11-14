@@ -180,3 +180,9 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
   **OCR REAL-DOCUMENT QUALIFICATION: PENDING**; (3) theo dõi 24 giờ; (4) phê duyệt danh sách dọn tài nguyên nghiệm thu.
 - Báo cáo: `OCR_PHASE9C_REPORT.md` (công khai), báo cáo vận hành riêng và bằng chứng ở `evidence/phase9c/` (ngoài
   repository).
+- **Cập nhật cuối 2026-11-14:** chế độ bảo trì đã kết thúc theo quyết định của chủ dự án; container ứng dụng tạo lại một
+  lần, RapidOCR "Chuẩn bị" lại; kiểm tra sau đó 48/48; RapidOCR là engine được chọn, Tesseract Vietnamese Best đã cài và
+  `offline_ready`; URL ingestion tắt; dữ liệu không đổi. PR #42, #43, #44 đã merge. **PHASE 9C: COMPLETED · HANDOVER
+  COMPLETED** về tài liệu. Còn mở (không thuộc phát triển): benchmark tài liệu thật — OCR REAL-DOCUMENT QUALIFICATION:
+  PENDING; offline trên production; theo dõi 24 giờ; phê duyệt dọn tài nguyên nghiệm thu. Không còn phase phát triển
+  OCR nào.
