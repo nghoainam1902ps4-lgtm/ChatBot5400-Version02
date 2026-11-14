@@ -24,8 +24,8 @@ Quy ước: **PASS** · **FAIL** · **NOT VERIFIED** (chưa chạy thật) · **
 | Sẵn sàng offline trên production | **OFFLINE READY** — RapidOCR và Tesseract Best đạt `offline_ready` (kiểm tra chặn mạng trong tiến trình con) |
 | Offline đã xác minh — production | **NOT VERIFIED** — cần quy trình ngắt mạng được phê duyệt |
 | Phase 9C — triển khai và nghiệm thu kỹ thuật | **COMPLETED** |
-| Mở cho người dùng | Trạng thái truy cập của hệ thống (bảo trì hay đã mở cho người dùng) và các điều kiện đi kèm là thông tin vận hành: ghi trong báo cáo vận hành riêng, không ghi trong tài liệu công khai |
-| Bàn giao | Tài liệu bàn giao đã có (`OCR_PHASE9C_REPORT.md`, `OCR_OPERATOR_GUIDE.md`); theo dõi 24 giờ: **PENDING** (người vận hành) |
+| Kết thúc chế độ bảo trì | Thực hiện 2026-11-14 theo quyết định của chủ dự án; kiểm tra sau đó 48 / 48 (`OCR_PHASE9C_REPORT.md` §6.1) |
+| Bàn giao | **HANDOVER COMPLETED** về tài liệu và hướng dẫn (mục 6); theo dõi 24 giờ, offline production, benchmark tài liệu thật: **PENDING** (người vận hành / chủ dự án) |
 
 ## 2. Bảng nghiệm thu
 
@@ -46,6 +46,7 @@ Quy ước: **PASS** · **FAIL** · **NOT VERIFIED** (chưa chạy thật) · **
 | Restore | Chưa thực hiện | Stack cô lập, image cũ và image triển khai: `/health` 200, 401 khi không token, số đếm bằng production, credential giải mã được | **PASS** |
 | Production — cập nhật phần mềm | Chưa triển khai | Triển khai `3ca6428`; ngừng hoàn toàn 4 phút 02 giây; dữ liệu trước / sau bằng nhau | **DEPLOYED** |
 | Production — smoke test (tài liệu tổng hợp) | — | A 23/23 · B 29/29 · C 68/68 · D 15/15 | **PASS** |
+| Production — sau khi kết thúc chế độ bảo trì | — | 48 / 48; cả hai engine `offline_ready`; dữ liệu không đổi | **PASS** |
 | Offline production | Chưa xác minh | `offline_ready` trên production; `offline_verified` chưa | **NOT VERIFIED** |
 | Offline — stack cô lập, image triển khai | — | Tesseract Best 42/0 · RapidOCR 42/0 | **PASS** |
 | Theo dõi 24 giờ | — | Chưa (chỉ quan sát trong phiên triển khai) | **PENDING** |

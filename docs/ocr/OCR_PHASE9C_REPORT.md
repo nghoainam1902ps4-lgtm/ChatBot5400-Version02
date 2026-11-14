@@ -22,8 +22,8 @@ bảo mật bắt buộc đạt, rollback (nếu cần) chỉ ở chế độ c�
 | Offline đã xác minh — stack cô lập | **PASS** — bằng chính image triển khai (mục 9) |
 | Offline đã xác minh — production | **NOT VERIFIED** — không ngắt Internet máy chủ |
 | Phase 9C — triển khai và nghiệm thu kỹ thuật | **COMPLETED** (sao lưu, restore, cập nhật, OCR Engine Manager, smoke test, offline trên stack cô lập, sẵn sàng rollback) |
-| Mở cho người dùng | Trạng thái truy cập của hệ thống (bảo trì hay đã mở cho người dùng) và các điều kiện đi kèm là thông tin vận hành: ghi trong báo cáo vận hành riêng, không ghi trong tài liệu công khai |
-| Bàn giao | Tài liệu bàn giao: báo cáo này, [OCR_OPERATOR_GUIDE.md](OCR_OPERATOR_GUIDE.md), [OCR_FINAL_ACCEPTANCE.md](OCR_FINAL_ACCEPTANCE.md). Theo dõi 24 giờ sau triển khai do người vận hành thực hiện — **chưa** thực hiện trong phiên triển khai |
+| Kết thúc chế độ bảo trì | Thực hiện ngày 2026-11-14 theo quyết định của chủ dự án; kiểm tra sau đó **48 / 48** (mục 6.1). Các điều kiện vận hành đi kèm: báo cáo vận hành riêng |
+| Bàn giao | **HANDOVER COMPLETED** về tài liệu và hướng dẫn ([OCR_FINAL_ACCEPTANCE.md](OCR_FINAL_ACCEPTANCE.md) §6). Còn mở, thuộc người vận hành / chủ dự án: benchmark tài liệu thật, offline trên production, theo dõi 24 giờ, phê duyệt dọn tài nguyên nghiệm thu |
 
 Ba trạng thái sau **không** đồng nghĩa: *phần mềm production đã cập nhật* (đạt), *thí điểm OCR đã xác minh* (đạt,
 dữ liệu tổng hợp), *OCR đủ điều kiện cho tài liệu nghiệp vụ thật* (chưa — chờ benchmark do chủ dự án thực hiện).
@@ -156,12 +156,32 @@ tạm**. Sau khi dọn: số bản ghi mọi bảng bằng trước triển khai
 tài khoản theo vai trò như cũ; số file upload và tổng byte như cũ. Mật khẩu của tài khoản tạm không được ghi vào
 log, báo cáo hay Git; file chứa chúng đã bị xóa.
 
+### 6.1 Kiểm tra sau khi kết thúc chế độ bảo trì
+
+Container ứng dụng được tạo lại một lần với cổng như trước triển khai (DB không đụng tới), RapidOCR được "Chuẩn bị"
+lại, rồi chạy 48 kiểm tra bằng hai tài khoản tạm (đã xóa sau đó). Không upload, không xử lý lại tài liệu nào.
+
+| Hạng mục | Kết quả |
+|---|---|
+| Web UI và API trên các địa chỉ của máy chủ; `/health` | 200 |
+| Không đăng nhập | 401 |
+| Đăng nhập quản trị viên và người dùng thường | đạt |
+| Database | cùng container, cùng image, không restart |
+| Dữ liệu cũ | số bản ghi mọi bảng bằng trước triển khai (trừ nhật ký job); file upload và credential không đổi |
+| Worker | chạy một job kiểm tra readiness: hoàn tất |
+| OCR Engine Manager | Docling 2.129.0; Layout Heron; TableFormer accurate; CPU; không cảnh báo tương thích |
+| Engine | RapidOCR được chọn; Tesseract Vietnamese Best đã cài; Fast và EasyOCR không cài |
+| Readiness | RapidOCR và Tesseract Best đều `offline_ready` |
+| URL ingestion | tắt ở backend: quản trị viên thêm nguồn từ URL → 403 |
+| API job tổng quát | 403 |
+| RBAC | người dùng thường: 403 trên 15 route quản trị, 200 trên các route đọc |
+
 ## 7. Dữ liệu trước và sau (chỉ số đếm)
 
 | | Trước | Sau triển khai | Sau khi dọn dữ liệu thử |
 |---|---|---|---|
 | Tổng bản ghi các bảng nghiệp vụ | như nhau | như nhau | như nhau |
-| Nhật ký job | 518 | 518 | 538 |
+| Nhật ký job | 518 | 518 | 538 (539 sau kiểm tra mục 6.1) |
 | Credential giải mã được | 2/2 | 2/2 | 2/2 |
 | File upload | 45 | 45 | 45 (cùng tổng byte) |
 | Thư mục model OCR | chưa có | — | 37 MB (Tesseract best + osd) |
