@@ -17,7 +17,9 @@ So với bản gốc, ChatBot 5400 bổ sung và tùy biến:
 - 🤖 Giữ nguyên năng lực lõi của Open Notebook: hỏi–đáp theo nguồn, tạo podcast,
   tìm kiếm full-text + vector, hỗ trợ nhiều nhà cung cấp AI
 
-> Phiên bản ổn định hiện tại được quản lý bằng tag `v*` và tệp [`VERSION`](VERSION).
+> Phiên bản của mã nguồn được ghi trong tệp [`VERSION`](VERSION) và `frontend/package.json` (số hiển thị
+> trên giao diện), và được gắn tag `v*`. Bản mới nhất: **v1.1.0-rc.1** — Pre-release, OCR Engine Manager
+> ([ghi chú phát hành](docs/ocr/OCR_RELEASE_NOTES.md)). Bản ổn định gần nhất: **v1.0.8**.
 
 ---
 

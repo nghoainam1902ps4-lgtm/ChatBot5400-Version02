@@ -90,3 +90,4 @@
 | 9C | Benchmark tài liệu thật (thẩm định OCR cho nghiệp vụ) | **OPEN — việc của chủ dự án** |
 | 9C | Offline trên production; theo dõi 24 giờ | **OPEN** |
 | 10 | Dọn tài nguyên nghiệm thu | **OPEN — chờ phê duyệt danh sách** |
+| 9D | Đánh số phiên bản `1.1.0-rc.1` (`frontend/package.json`, lockfile, `VERSION`, README, CHANGELOG, ghi chú phát hành); tag `v1.1.0-rc.1`; GitHub Pre-release | DONE — chỉ mã nguồn; không đổi phụ thuộc, logic OCR hay hệ thống đang chạy |
