@@ -1,8 +1,22 @@
-# Ghi chú phát hành — OCR Engine Manager
+# Ghi chú phát hành — ChatBot5400 v1.1.0-rc.1 — OCR Engine Manager
 
-Cập nhật: 2026-11-14 · Branch phát hành: `release/ocr-engine-manager-rc1` → `claude/practical-wozniak-9s1t6z`
+Cập nhật: 2026-11-15 · Tag `v1.1.0-rc.1` trên nhánh `claude/practical-wozniak-9s1t6z` · **Pre-release**
 
-Chưa gắn số phiên bản và chưa tạo tag / GitHub Release: quy ước đánh số cho bản này do chủ dự án quyết định.
+| | |
+|---|---|
+| Phiên bản | `1.1.0-rc.1` (bản trước: `1.0.8`) |
+| Loại phát hành | **Pre-release** (Release Candidate) — không phải bản ổn định, không phải "Latest" |
+| Nền Open Notebook | 1.14.0 — không đổi |
+| Mã đã nghiệm thu | `6f6b424` (Phase 9B); từ đó tới tag chỉ có tài liệu và số phiên bản |
+| Phát hành | chỉ mã nguồn; không kèm Docker image, cơ sở dữ liệu hay model |
+
+Đây là bản phát hành thử nghiệm để đánh giá. Bản này **chưa** được thẩm định cho tài liệu nghiệp vụ thật và
+**không** phải là xác nhận đủ điều kiện sử dụng chính thức; xem mục 5 trước khi dùng.
+
+Bản phát hành trên GitHub và phiên bản đang chạy ở một nơi triển khai là hai trạng thái riêng: gắn tag không
+cập nhật hệ thống nào. Bản triển khai thí điểm ở Phase 9C chạy cùng mã ứng dụng (commit `3ca6428`) nhưng vẫn
+hiển thị số phiên bản 1.0.8 cho tới khi người vận hành cập nhật theo kế hoạch triển khai.
+
 Số liệu nghiệm thu: [OCR_PHASE9B_REPORT.md](OCR_PHASE9B_REPORT.md). Mọi số đo chất lượng là trên tài liệu
 **tổng hợp**.
 
@@ -19,14 +33,24 @@ Số liệu nghiệm thu: [OCR_PHASE9B_REPORT.md](OCR_PHASE9B_REPORT.md). Mọi 
   | RapidOCR – PaddleOCR | Mặc định, tương thích ngược | model và cấu hình không đổi |
   | EasyOCR Vietnamese | Thử nghiệm | hỏi xác nhận trước khi bật |
 
-- **Chất lượng tiếng Việt với Tesseract:** lọc kết quả dò hướng độ tin cậy thấp, tự sửa trang scan nằm ngang
-  hoặc lộn ngược, độ phân giải OCR theo độ phân giải scan.
+- **Quản lý cài đặt và chuẩn bị model:** cài / gỡ từng engine từ giao diện, tải model có kiểm tra kích thước
+  và SHA-256, xem trạng thái từng engine; có lệnh dòng lệnh tương đương cho người vận hành.
+- **OCR tiếng Việt với Tesseract:** model `vie` + `eng`, lọc kết quả dò hướng độ tin cậy thấp, độ phân giải
+  OCR theo độ phân giải scan.
+- **Tự sửa hướng trang scan:** trang nằm ngang hoặc lộn ngược được xoay lại trước khi OCR (khi đã cài
+  Tesseract Fast hoặc Best), có giới hạn số trang và tổng thời gian cho mỗi tài liệu.
+- **Layout Heron và TableFormer Accurate** tiếp tục dùng cho phân tích bố cục và cấu trúc bảng với mọi engine;
+  trạng thái của hai model này hiển thị trong OCR Engine Manager.
 - **Chuẩn bị online, vận hành offline:** "Chuẩn bị" tải phần còn thiếu khi có Internet rồi chạy lại toàn bộ
   pipeline với mạng bị chặn; chỉ khi đó mới báo `offline_ready`. Xử lý tài liệu (OCR, Layout Heron,
   TableFormer, xuất Markdown) chạy được khi không có Internet, kể cả sau restart.
 - **Lưu trữ bền:** model OCR (kiểm SHA-256) và cache Docling nằm trên thư mục dữ liệu, không tải lại sau
   restart, tạo lại container hay cập nhật.
+- **Bảo toàn dữ liệu khi nâng cấp:** không có migration cơ sở dữ liệu; nâng cấp không xử lý lại tài liệu cũ,
+  không OCR lại và không dựng lại embedding; cài đặt OCR, engine đang chọn và model đã tải được giữ qua lần
+  cập nhật (kiểm tra bằng kịch bản nâng cấp từ bản trước trong Docker acceptance).
 - **Công cụ benchmark cục bộ** cho tài liệu của đơn vị, chỉ xuất số liệu tổng hợp.
+- **Hướng dẫn vận hành và rollback:** xem mục 6.
 
 ## 2. Kiến trúc
 
@@ -60,6 +84,20 @@ Số liệu nghiệm thu: [OCR_PHASE9B_REPORT.md](OCR_PHASE9B_REPORT.md). Mọi 
 5. Sau nâng cấp, chạy "Chuẩn bị" một lần cho engine đang dùng.
 
 ## 5. Giới hạn đã biết
+
+Tóm tắt — đọc trước khi dùng:
+
+- **Chưa thẩm định đầy đủ chất lượng OCR trên tài liệu nghiệp vụ thật.** Mọi số đo trong repository là trên
+  tài liệu tổng hợp.
+- **Có thể sai dấu tiếng Việt**, kể cả với engine được khuyến nghị.
+- **Có thể sai chữ số và sai cấu trúc bảng**, nhất là với bảng tài chính phức tạp.
+- **OCR không thay thế việc đối chiếu tài liệu gốc.** Số tiền, ngày, số hiệu lấy từ tài liệu scan phải được
+  đối chiếu với bản gốc trước khi dùng.
+- **Vận hành offline mới được xác minh trên stack cô lập** (Docker acceptance); chưa xác minh bằng cách ngắt
+  mạng trên một hệ thống đang vận hành.
+- **EasyOCR chỉ mang tính thử nghiệm**, không dùng cho tài liệu tài chính.
+
+Chi tiết:
 
 - Bộ nghiệm thu gốc 48 bài: **38 PASS / 10 FAIL** (không phải 48/48). Tesseract Best: 6/9 ở bộ gốc; đạt tiêu
   chí phát hành có điều kiện 7/7 với ngoại lệ duy nhất đã được chấp nhận: mất dấu ở tiêu đề in đậm

@@ -2,10 +2,15 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
-## [Chưa phát hành] — OCR Engine Manager RC1
+## [1.1.0-rc.1] - 2026-11-15 — OCR Engine Manager (Pre-release)
 
-Release Candidate. Chi tiết: `docs/ocr/OCR_PHASE9B_REPORT.md`, `docs/ocr/OCR_RELEASE_NOTES.md`,
+Bản **Pre-release** (Release Candidate), chưa phải bản ổn định; bản ổn định gần nhất vẫn là 1.0.8.
+Chi tiết: `docs/ocr/OCR_RELEASE_NOTES.md`, `docs/ocr/OCR_PHASE9B_REPORT.md`,
 `docs/ocr/RELEASE_CANDIDATE.md`. Không có migration cơ sở dữ liệu.
+
+Số phiên bản riêng của ChatBot 5400 (`frontend/package.json`, `VERSION`) là `1.1.0-rc.1`; phiên bản nền
+Open Notebook trong `pyproject.toml` (1.14.0) không đổi. So với mã đã nghiệm thu ở Phase 9B, bản này chỉ
+khác ở tài liệu và số phiên bản — không đổi phụ thuộc, model hay logic xử lý OCR.
 
 ### Thay đổi hành vi khi nâng cấp — cần đọc
 

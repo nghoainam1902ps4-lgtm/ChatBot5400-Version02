@@ -1,6 +1,7 @@
 # Nghiệm thu cuối — OCR Engine Manager
 
-Cập nhật: 2026-11-14 · Trạng thái **sau khi triển khai production** (thí điểm phi nghiệp vụ).
+Cập nhật: 2026-11-15 · Trạng thái **sau khi triển khai production** (thí điểm phi nghiệp vụ) và sau khi đánh
+số phiên bản `1.1.0-rc.1`.
 
 File này là bảng trạng thái tổng hợp của toàn dự án. Nó được cập nhật sau mỗi mốc (merge, triển khai, bàn
 giao) qua một Pull Request tài liệu; mỗi dòng chỉ được ghi PASS khi đã có bằng chứng chạy thật. Chi tiết:
@@ -15,7 +16,6 @@ Quy ước: **PASS** · **FAIL** · **NOT VERIFIED** (chưa chạy thật) · **
 |---|---|
 | Phase 9A — cổng bảo mật, Release Candidate | **COMPLETED AND VERIFIED** |
 | Phase 9B — review cuối, nghiệm thu cuối, Pull Request | **COMPLETED** — nghiệm thu PASS; PR #42 **MERGED** bằng merge commit `3819c2a` |
-| Phase 9C — triển khai production | **NOT DEPLOYED** — đã chuẩn bị xong phần không gián đoạn; dừng ở cổng phê duyệt (**READY FOR DEPLOYMENT APPROVAL**), còn thiếu benchmark tài liệu thật hoặc phê duyệt phạm vi thí điểm |
 | Phần mềm production | **PRODUCTION SOFTWARE VERIFIED** — smoke test trên chính production 135/135; dữ liệu cũ nguyên vẹn |
 | Thí điểm OCR | **OCR PILOT VERIFIED** — RapidOCR và Tesseract Vietnamese Best trên tài liệu tổng hợp |
 | OCR cho tài liệu nghiệp vụ thật | **OCR REAL-DOCUMENT QUALIFICATION: PENDING** — chưa có benchmark tài liệu thật; RapidOCR giữ làm engine được chọn |
@@ -25,6 +25,7 @@ Quy ước: **PASS** · **FAIL** · **NOT VERIFIED** (chưa chạy thật) · **
 | Offline đã xác minh — production | **NOT VERIFIED** — cần quy trình ngắt mạng được phê duyệt |
 | Phase 9C — triển khai và nghiệm thu kỹ thuật | **COMPLETED** |
 | Kết thúc chế độ bảo trì | Thực hiện 2026-11-14 theo quyết định của chủ dự án; kiểm tra sau đó 48 / 48 (`OCR_PHASE9C_REPORT.md` §6.1) |
+| Phase 9D — phiên bản và GitHub Release | `1.1.0-rc.1`, tag `v1.1.0-rc.1`, **Pre-release** (chỉ mã nguồn; không cập nhật hệ thống đang chạy) — [OCR_RELEASE_NOTES.md](OCR_RELEASE_NOTES.md) |
 | Bàn giao | **HANDOVER COMPLETED** về tài liệu và hướng dẫn (mục 6); theo dõi 24 giờ, offline production, benchmark tài liệu thật: **PENDING** (người vận hành / chủ dự án) |
 
 ## 2. Bảng nghiệm thu

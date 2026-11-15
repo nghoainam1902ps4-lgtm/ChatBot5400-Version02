@@ -35,6 +35,13 @@ describe('compareVersions', () => {
     expect(compareVersions('1.0.0-alpha.1', '1.0.0-alpha')).toBe(1)
   })
 
+  it('ranks a release candidate above the previous stable release and below its own final', () => {
+    // A 1.1.0-rc.1 build must not be offered 1.0.8 (still the "latest" release) as an update.
+    expect(compareVersions('1.0.8', '1.1.0-rc.1')).toBe(-1)
+    expect(compareVersions('1.1.0', '1.1.0-rc.1')).toBe(1)
+    expect(compareVersions('v1.1.0-rc.1', '1.1.0-rc.1')).toBe(0)
+  })
+
   it('throws on unparseable input', () => {
     expect(() => compareVersions('latest', '1.0.0')).toThrow()
   })

@@ -3,6 +3,9 @@
 - **Branch phát hành:** `release/ocr-engine-manager-rc1` (branch phát triển ban đầu: `claude/friendly-mendel-a2b6m5`).
 - **Gốc so sánh:** `5e04227` (trước tính năng) và `e32eae8` (Phase 7).
 - **Không merge main, không triển khai production** trong phiên phát triển.
+- **Phiên bản:** `1.1.0-rc.1`, tag `v1.1.0-rc.1`, phát hành dạng **Pre-release** (Phase 9D, 2026-11-15) —
+  [OCR_RELEASE_NOTES.md](OCR_RELEASE_NOTES.md). Từ mã đã nghiệm thu `6f6b424` tới tag chỉ có tài liệu và số
+  phiên bản.
 
 Trạng thái (sau Phase 9B, 2026-11-14) — chi tiết ở §10:
 
