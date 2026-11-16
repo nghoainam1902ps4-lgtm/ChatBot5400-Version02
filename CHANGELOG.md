@@ -2,6 +2,85 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.1.0-rc.2] - 2026-11-16 — Model Tesseract tùy biến, tự OCR toàn trang (Pre-release)
+
+Bản **Pre-release** (Release Candidate) thứ hai; bản ổn định gần nhất vẫn là 1.0.8. Phát hành dưới dạng
+mã nguồn, không kèm Docker image hay model. Chi tiết: `docs/ocr/OCR_RELEASE_NOTES_RC2.md`, `docs/ocr/OCR_PHASE10H_REPORT.md`,
+`docs/ocr/OCR_RC2_PRODUCTION_UPDATE_PLAN.md`. **Không có migration cơ sở dữ liệu; không đổi phụ thuộc**
+(`uv.lock`, `Dockerfile` giống hệt 1.1.0-rc.1; Open Notebook 1.14.0, Docling 2.129.0, Content Core 2.0.7).
+
+### Thay đổi hành vi khi nâng cấp — cần đọc
+
+- Không có việc bắt buộc nào. Engine OCR đang chọn, Force Full Page và mọi cài đặt được giữ nguyên; engine mặc
+  định vẫn là RapidOCR.
+- OCR Engine Manager có thêm card **Tesseract Vietnamese Agri** (Thử nghiệm) ở trạng thái "Chưa cài đặt".
+- **Trước khi hạ cấp** về 1.1.0-rc.1: nếu Agri đang được chọn, chọn lại một engine khác (bản cũ không biết giá
+  trị `tesseract_agri` và sẽ lặng lẽ dùng RapidOCR).
+- Publish một GitHub Release / Pre-release không còn khởi chạy build và push Docker image (xem "Phát hành").
+
+### Model Tesseract tùy biến (Custom Tesseract Model Manager)
+
+- Engine thứ năm **Tesseract Vietnamese Agri** dùng model Tesseract tự fine-tune do đơn vị cung cấp. Repository
+  và image **không** chứa model.
+- Import bằng CLI trên máy chủ (`ocr custom import --file … --version …`): mỗi lần import là một phiên bản bất
+  biến có manifest, kích thước và SHA-256; file được kiểm tra cấu trúc, nạp thử bằng Tesseract và kiểm tra toàn
+  bộ pipeline. Không upload model qua HTTP, không tải model tùy biến từ Internet.
+- Quản lý phiên bản: `list`, `verify`, `activate`, `rollback`, `status`, `remove`; kích hoạt / rollback / kiểm
+  tra cũng có trên card Agri (chỉ quản trị viên).
+- Thay model **không cần build lại image hay restart**; tài liệu đang xử lý giữ phiên bản lúc bắt đầu; readiness
+  gắn với từng phiên bản.
+- Hướng dẫn: `docs/ocr/OCR_AGRI_MODEL_GUIDE.md`; thiết kế: `docs/ocr/OCR_CUSTOM_MODEL_MANAGER.md`; benchmark trên
+  văn bản pháp lý tổng hợp: `docs/ocr/OCR_AGRI_BENCHMARK.md`.
+
+### Tự OCR toàn trang cho PDF scan nằm dưới watermark chéo (opt-in, mặc định TẮT)
+
+- Biến mới `OCR_AUTO_FULL_PAGE_ON_WATERMARK` (chỉ bật khi là `true` / `1` / `yes` / `on`). Khi bật: PDF scan có
+  một dòng text hiển thị bị nghiêng phủ lên trang — cấu trúc khiến Docling bỏ gần hết chữ OCR — được OCR ở chế
+  độ toàn trang chính thức của Docling, cho riêng tài liệu đó, với mọi engine. Không sửa PDF, không ghi đè tùy
+  chọn Force Full Page đã lưu, không tự bật OCR khi OCR đang tắt.
+- Chỉ đọc hình học và số đếm của PDF; log một dòng `OCR mode:` cho mỗi PDF, không có nội dung hay tên tệp.
+- **PDF hỗn hợp** (trang scan dưới watermark + trang văn bản điện tử) **không** được sửa tự động: giữ chế độ đã
+  cấu hình, ghi `WARNING`.
+- Ngưỡng tinh chỉnh: `OCR_AUTO_FULL_PAGE_MIN_COVERAGE`, `OCR_AUTO_FULL_PAGE_TEXT_PAGE_CHARS`,
+  `OCR_AUTO_FULL_PAGE_MIN_ANGLE` (`docs/ocr/OCR_CONFIGURATION.md`, quyết định D-33).
+
+### Bảo mật và độ bền (sau review độc lập toàn bộ diff)
+
+- File model chỉ được mang **tham số tinh chỉnh nhận dạng** trong thành phần `config` nhúng của nó (danh sách cho
+  phép, giá trị số / boolean): một model không thể bảo Tesseract ghi ra tệp hay nạp thêm model khác. Kiểm tra trước
+  khi Tesseract nạp file lúc import và ở mọi lần xác minh, kể cả với phiên bản đã import trước đó.
+- Import / remove từ chối mọi đường dẫn có liên kết tượng trưng trong kho model; không thay "tại chỗ" file của
+  phiên bản đang hoạt động khi manifest của nó bị mất; file nguồn được mở một lần và chép có giới hạn.
+- Manifest / registry bị hỏng hoặc bị sửa tay không còn làm lỗi trang OCR Engine Manager hay worker: giá trị sai
+  kiểu được coi là "không biết" và phiên bản liên quan không dùng được.
+- Bước đo PDF của cơ chế tự OCR toàn trang có giới hạn (trang, đối tượng, ký tự, thời gian) và đo đúng trên trang
+  xoay (`/Rotate`) và trang có page box không bắt đầu ở (0, 0).
+- Card Agri giữ nút **Thử lại** khi lần cài / kiểm tra trước thất bại; file model bị thiếu được ghi đúng là "Thiếu
+  file"; không gỡ được model tiếng Anh của Tesseract Best khi Agri đang dùng nó (`OCR_AGRI_WITH_ENGLISH=true`);
+  `ocr readiness` không tham số chỉ tính engine tùy biến khi nó đã có phiên bản hoạt động.
+- Bộ test backend được **cô lập khỏi mọi cơ sở dữ liệu thật** theo hướng fail-closed (`tests/db_isolation.py`): các
+  biến `SURREAL_*` thông thường (từ shell hay `.env`) không bao giờ chọn cơ sở dữ liệu của bộ test; mặc định mọi kết
+  nối đi tới một cổng đóng; muốn dùng cơ sở dữ liệu dùng tạm phải chỉ định riêng bằng `OPEN_NOTEBOOK_TEST_SURREAL_*`
+  (loopback, không phải cổng mặc định, tên có `test`, credential riêng) — cấu hình không chứng minh được tính cô lập
+  làm bộ test dừng trước khi chạy. Lúc kết nối, mọi địa chỉ khác địa chỉ đã quyết định đều bị từ chối. Xem
+  `tests/README.md`.
+
+### Phát hành
+
+- Workflow *Build and Release*: trong repository này mọi job build / push bị bỏ qua trừ khi workflow được chạy
+  tay **và** biến repository `CB5400_PUBLISH_IMAGES` bằng `true`. Bản phát hành là mã nguồn; không kèm image.
+- Số phiên bản riêng của ChatBot 5400 (`frontend/package.json`, `VERSION`) là `1.1.0-rc.2`; phiên bản nền Open
+  Notebook trong `pyproject.toml` (1.14.0) không đổi.
+
+### Giới hạn đã biết
+
+- Agri là **Thử nghiệm**: mới đo trên văn bản tổng hợp; chưa có số đo trên tài liệu nghiệp vụ thật và **chưa chứng
+  minh được** là tốt hơn Tesseract Vietnamese Best.
+- Tự OCR toàn trang **mặc định tắt**; một số kiểu watermark không được phát hiện.
+- OCR không thay thế việc đối chiếu tài liệu gốc.
+- PDF hỗn hợp, watermark ngang cỡ lớn và khung bao nghiêng dưới 2% trang: xem
+  `docs/ocr/OCR_PHASE10G_REPORT.md` mục 13.
+
 ## [1.1.0-rc.1] - 2026-11-15 — OCR Engine Manager (Pre-release)
 
 Bản **Pre-release** (Release Candidate), chưa phải bản ổn định; bản ổn định gần nhất vẫn là 1.0.8.

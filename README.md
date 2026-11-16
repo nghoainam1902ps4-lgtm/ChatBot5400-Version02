@@ -18,8 +18,10 @@ So với bản gốc, ChatBot 5400 bổ sung và tùy biến:
   tìm kiếm full-text + vector, hỗ trợ nhiều nhà cung cấp AI
 
 > Phiên bản của mã nguồn được ghi trong tệp [`VERSION`](VERSION) và `frontend/package.json` (số hiển thị
-> trên giao diện), và được gắn tag `v*`. Bản mới nhất: **v1.1.0-rc.1** — Pre-release, OCR Engine Manager
-> ([ghi chú phát hành](docs/ocr/OCR_RELEASE_NOTES.md)). Bản ổn định gần nhất: **v1.0.8**.
+> trên giao diện), và được gắn tag `v*`. Bản mới nhất: **v1.1.0-rc.2** — Pre-release, model Tesseract tùy biến
+> (Agri, thử nghiệm) và tự OCR toàn trang cho scan dưới watermark chéo (mặc định tắt)
+> ([ghi chú phát hành](docs/ocr/OCR_RELEASE_NOTES_RC2.md)); bản Pre-release trước: v1.1.0-rc.1
+> ([ghi chú](docs/ocr/OCR_RELEASE_NOTES.md)). Bản ổn định gần nhất: **v1.0.8**.
 
 ---
 

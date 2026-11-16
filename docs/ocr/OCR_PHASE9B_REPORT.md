@@ -238,9 +238,9 @@ do `UV_OFFLINE=1` trong file override), tức production đang xử lý tài li�
 
 | | Đầu Phase 9B | Sau chuỗi nghiệm thu |
 |---|---|---|
-| `open_notebook` container ID | `4af860cc7335…` | giống hệt |
-| `surrealdb` container ID | `a50b689a4c41…` | giống hệt |
-| Image ứng dụng / DB | `sha256:7d26c1203a65…` / `sha256:e5d7387e3727…` | giống hệt |
+| `open_notebook` container ID | (lược bỏ trong bản công khai) | giống hệt |
+| `surrealdb` container ID | (lược bỏ trong bản công khai) | giống hệt |
+| Image ứng dụng / DB | (mã image lược bỏ trong bản công khai) | giống hệt |
 | Thời điểm start | 2026-11-12 14:41:44 UTC | giống hệt |
 | Restart count | 0 / 0 | 0 / 0 |
 | `/health` | 200 | 200 |
@@ -253,8 +253,8 @@ Tài nguyên nghiệm thu phát sinh trong Phase 9B (chưa xóa gì; danh sách 
 
 | Bundle | Nội dung | Trạng thái |
 |---|---|---|
-| `/home/admin/cb5400-ocr-accept/phase9b-backup.bundle` | `release/ocr-engine-manager-rc1` tại commit tài liệu của Phase 9B — toàn bộ lịch sử Phase 0 → 9B | tạo mới sau commit này, `git bundle verify` |
+| `/srv/example/cb5400-ocr-accept/phase9b-backup.bundle` | `release/ocr-engine-manager-rc1` tại commit tài liệu của Phase 9B — toàn bộ lịch sử Phase 0 → 9B | tạo mới sau commit này, `git bundle verify` |
 | `phase8b`, `phase8c`, `phase8d`, `phase9a-backup.bundle` | các mốc trước | giữ nguyên, không ghi đè |
 
-Bằng chứng: `/home/admin/cb5400-ocr-accept/evidence/phase9b/` (preflight, `runs/` với log pytest, OCR, Docker,
+Bằng chứng: `/srv/example/cb5400-ocr-accept/evidence/phase9b/` (preflight, `runs/` với log pytest, OCR, Docker,
 kiểm tra trực tiếp) — nằm ngoài repository, không đưa lên GitHub.

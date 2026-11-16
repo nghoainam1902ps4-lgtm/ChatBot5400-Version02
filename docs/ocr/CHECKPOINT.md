@@ -104,7 +104,7 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
   CER 0,394 → 0,023; regression không lỗi mới.
 - Còn mở (cần chủ dự án): tiêu chí §3.1 với 3 FAIL do giới hạn model; ranh giới `tesseract_gate.py`;
   tự xoay trang cho RapidOCR/EasyOCR; vị trí của EasyOCR. Xem `OCR_PHASE8C_REPORT.md` §9.
-- Bằng chứng: `/home/admin/cb5400-ocr-accept/evidence/phase8c/`.
+- Bằng chứng: `/srv/example/cb5400-ocr-accept/evidence/phase8c/`.
 - Trạng thái: chưa merge, chưa push, chưa triển khai.
 
 ## Phase 8D
@@ -119,7 +119,7 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
 - Trạng thái: READY FOR MERGE (có điều kiện, chờ xác nhận) · READY FOR CONDITIONAL RELEASE (Tesseract Best,
   RapidOCR) · NOT READY FOR PRODUCTION (SSRF qua redirect, benchmark tài liệu thật).
 - Còn mở: `OCR_PHASE8D_REPORT.md` §11 F và §15.
-- Bằng chứng: `/home/admin/cb5400-ocr-accept/evidence/phase8d/`. Chưa push, chưa merge, chưa triển khai.
+- Bằng chứng: `/srv/example/cb5400-ocr-accept/evidence/phase8d/`. Chưa push, chưa merge, chưa triển khai.
 
 ## Phase 9A
 
@@ -135,7 +135,7 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
 - Trạng thái: READY FOR MERGE · READY FOR CONDITIONAL RELEASE (URL ingestion tắt) · NOT READY FOR PRODUCTION.
 - Còn thiếu trước production: benchmark tài liệu thật, backup + restore, kiểm tra môi trường đích, phê duyệt.
 - Push: xem `OCR_PHASE9A_REPORT.md` §K.
-- Bằng chứng: `/home/admin/cb5400-ocr-accept/evidence/phase9a/`. Chưa merge, chưa triển khai.
+- Bằng chứng: `/srv/example/cb5400-ocr-accept/evidence/phase9a/`. Chưa merge, chưa triển khai.
 
 ## Phase 9B (cập nhật 2026-11-14)
 
@@ -155,8 +155,8 @@ Xem `OCR_TEST_REPORT.md` §1 và §6 (OCR backend 128 test PASS + 4 skip full-pi
   `evidence/phase9c/preflight/`. Phát hiện chính: container production **không có Docling** từ 2026-11-12
   (`UV_OFFLINE=1` trong override). Công cụ đã sẵn: `evidence/phase9c/tools/db_counts.py` (số đếm),
   `make_restore_compose.py` (stack restore cô lập). Số đếm gốc: `preflight/production-counts-preflight.json`.
-- Image triển khai đã dựng ở `/home/admin/cb5400-rc1-build` từ commit merge: `chatbot5400:rc1-20261114` =
-  `sha256:240bb692922101385c8a4fcb0aaf15451f4ba345ae027e232265e37005d58f56`; đã xác minh trên stack cô lập 42/0 (online → chuẩn bị → offline → restart offline).
+- Image triển khai đã dựng ở `/srv/example/cb5400-rc1-build` từ commit merge: `chatbot5400:rc1-20261114` =
+  (mã image lược bỏ trong bản công khai); đã xác minh trên stack cô lập 42/0 (online → chuẩn bị → offline → restart offline).
 - Script triển khai từng bước (chưa chạy): `evidence/phase9c/exec/deploy-9c.sh` — thứ tự `pre stop backup
   restore-old restore-rc restore-down update start verify`.
 - **Chưa** dừng, sao lưu hay thay đổi production. Trạng thái: **READY FOR DEPLOYMENT APPROVAL** — chờ chủ dự án

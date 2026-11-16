@@ -19,8 +19,22 @@ env:
   GHCR_IMAGE: ghcr.io/lfnovo/open-notebook
   DOCKERHUB_IMAGE: lfnovo/open_notebook
 
+# ChatBot5400 publish guard
+# -------------------------
+# Publishing a GitHub Release or Pre-release of ChatBot5400 is a SOURCE release:
+# it must never build or push a Docker image by itself. In this repository every
+# job below is skipped unless BOTH hold:
+#   1. the workflow was started by hand (workflow_dispatch), and
+#   2. the repository variable CB5400_PUBLISH_IMAGES is exactly "true"
+#      (Settings -> Secrets and variables -> Actions -> Variables; unset by default).
+# A `release: published` event therefore produces a run whose jobs are all
+# "skipped". The upstream repository keeps its original behaviour.
+# The image names above still point at the upstream project: change them before
+# the variable is ever switched on. See docs/ocr/OCR_RELEASE_NOTES_RC2.md, section 7.
+
 jobs:
   extract-version:
+    if: ${{ github.repository == 'lfnovo/open-notebook' || (github.event_name == 'workflow_dispatch' && vars.CB5400_PUBLISH_IMAGES == 'true') }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -52,6 +66,7 @@ jobs:
 
   build-regular:
     needs: extract-version
+    if: ${{ github.repository == 'lfnovo/open-notebook' || (github.event_name == 'workflow_dispatch' && vars.CB5400_PUBLISH_IMAGES == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -144,6 +159,7 @@ jobs:
 
   build-single:
     needs: extract-version
+    if: ${{ github.repository == 'lfnovo/open-notebook' || (github.event_name == 'workflow_dispatch' && vars.CB5400_PUBLISH_IMAGES == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -237,7 +253,8 @@ jobs:
   summary:
     needs: [extract-version, build-regular, build-single]
     runs-on: ubuntu-latest
-    if: always()
+    # Not `always()` alone: when the guard skips the build, nothing was built.
+    if: ${{ always() && needs.extract-version.result == 'success' }}
     steps:
       - name: Build Summary
         env:

@@ -279,7 +279,7 @@ Các hạn chế có sẵn, không đổi: CORS mở, xác thực mật khẩu �
   Tesseract của phase này (HEAD của branch; ghi trong `evidence/phase8d/commits.txt`).
 - Toàn bộ commit Phase 8B (`5e6522e` … `f172645`) và Phase 8C (`e6f2bbb`, `755b637`, `6f1c811`, `16fc623`)
   còn nguyên trong lịch sử.
-- Bundle mới: `/home/admin/cb5400-ocr-accept/phase8d-backup.bundle` (chứa `local/ocr-phase8c` và
+- Bundle mới: `/srv/example/cb5400-ocr-accept/phase8d-backup.bundle` (chứa `local/ocr-phase8c` và
   `local/ocr-phase8b`, đã `git bundle verify`). Các bundle cũ `phase8b-backup.bundle`,
   `phase8c-backup.bundle` không bị ghi đè.
 

@@ -223,9 +223,13 @@ def smoke_check(engine_id: str) -> dict[str, Any]:
         return {"ok": None, "detail": f"runtime {rt.status}: {rt.detail}"}
     sample = Path(__file__).parent / "assets" / "sample_vi.png"
     if spec.runtime == "tesseract":
+        from open_notebook.ocr.options import engine_langs
+
         cmd = runtime.tesseract_cmd()
-        langs = catalog.DOCLING_LANGS[engine_id]
+        langs = engine_langs(engine_id)
         assert cmd
+        if spec.custom is not None and not langs:
+            return {"ok": None, "detail": "no custom model version is activated"}
         runtime.ensure_tessdata_layout()
         listed = subprocess.run(
             [cmd, "--list-langs"],
@@ -337,7 +341,8 @@ def install_models(
             emit(progress={"bytes_done": done_before, "bytes_total": total})
 
         emit(state=store.INSTALLING)
-        ms = store.model_status(engine_id)
+        # Custom engines: only the official prerequisites are installed here.
+        ms = store.model_status(engine_id, include_custom=False)
         if not ms.installed:
             raise InstallError(f"Model verification failed: {ms.to_dict()}")
         smoke = smoke_check(engine_id)
@@ -365,10 +370,34 @@ def delete_models(engine_id: str, active_engine: str | None) -> list[str]:
     spec = catalog.get_engine(engine_id)
     if not spec.files:
         raise InstallError("The built-in RapidOCR model cannot be removed.")
+    if spec.custom is not None:
+        raise InstallError(
+            f"{spec.display_name} versions are managed with the admin CLI "
+            "(python -m open_notebook.ocr.cli custom ...); nothing was removed."
+        )
     if active_engine == engine_id:
         raise InstallError("This engine is in use. Activate another engine first.")
     if store.job_is_active(store.read_state(engine_id)):
         raise InstallError("An installation of this engine is in progress.")
+    # A custom engine may read one of these files as its second language
+    # (e.g. OCR_AGRI_WITH_ENGLISH=true uses best/eng): removing it would make
+    # every following document of that engine fail.
+    from open_notebook.ocr import custom_models
+
+    for other_id in catalog.CUSTOM_ENGINE_IDS:
+        other = catalog.get_engine(other_id)
+        family = other.custom
+        if (
+            family is not None
+            and any(mf.rel_path == family.english_rel_path for mf in spec.files)
+            and custom_models.with_english(other_id)
+            and custom_models.active_version(other_id)
+        ):
+            raise InstallError(
+                f"{other.display_name} reads {family.english_rel_path} as its second "
+                f"language ({family.english_env}=true). Switch that setting off (or "
+                f"remove its model versions) before removing {spec.display_name}."
+            )
     removed: list[str] = []
     with store.file_lock(f"install-{engine_id}"):
         for mf in spec.files:

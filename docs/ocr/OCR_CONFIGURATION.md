@@ -40,6 +40,10 @@ cũ. Không ghi gì vào DB cho tới khi admin lưu.
 | `OCR_PAGE_OSD_MAX_PAGES` | `200` | Số trang scan tối đa được dò hướng trong một tài liệu (D-25) |
 | `OCR_PAGE_OSD_BUDGET_SECONDS` | `600` | Tổng thời gian tối đa (giây) cho bước dò hướng của một tài liệu; hết thời gian thì các trang còn lại được chuyển đổi nguyên trạng, tài liệu không lỗi. Giá trị sai, `nan`, `inf`, ≤ 0 ⇒ 600; tối đa 6000 (D-30) |
 | `OCR_EASYOCR_CONFIDENCE` | `0.2` | Ngưỡng confidence dòng của EasyOCR, 0–1 (D-26) |
+| `OCR_AUTO_FULL_PAGE_ON_WATERMARK` | **tắt** | `true` = PDF scan có khung bao text hiển thị bị nghiêng (watermark chéo) phủ lên ảnh scan được OCR ở chế độ toàn trang **cho riêng tài liệu đó**; giá trị Force Full Page đã lưu không đổi. Tắt (mặc định) ⇒ hành vi như các phiên bản trước (D-33) |
+| `OCR_AUTO_FULL_PAGE_MIN_COVERAGE` | `0.02` | Phần diện tích trang mà các khung bao nghiêng phải chiếm trên ảnh scan, ngoài mọi ký tự hiển thị, 0,001–1 (D-33) |
+| `OCR_AUTO_FULL_PAGE_TEXT_PAGE_CHARS` | `400` | Trang có từ chừng này ký tự hiển thị thông thường (và nhiều hơn số ký tự ẩn) là trang văn bản điện tử: không bị coi là có nguy cơ, và làm tài liệu thành "hỗn hợp" (D-33) |
+| `OCR_AUTO_FULL_PAGE_MIN_ANGLE` | `1` | Độ nghiêng tối thiểu (độ, tính từ trục gần nhất) để một khung bao được xét, 0,1–45 (D-33) |
 | Build arg `OCR_INSTALL_TESSERACT` | `false` | Nướng Tesseract vào image. Hai file compose đọc giá trị này từ `.env` (`OCR_INSTALL_TESSERACT=true`) nên mọi lần `up -d --build` về sau đều giữ Tesseract (D-32) |
 
 Các biến Phase 8C là cấu hình toàn deployment (đọc khi dựng OCR options), không đổi theo từng job.
@@ -57,6 +61,21 @@ Cơ sở chọn mặc định: [OCR_QUALITY_OPTIMIZATION.md](OCR_QUALITY_OPTIMIZ
 
 Đổi biến chất lượng nào (hoặc cài/gỡ `osd.traineddata`) cũng làm kết quả readiness cũ hết hiệu lực
 (fingerprint `quality`); chạy lại "Chuẩn bị" hoặc "Kiểm tra offline".
+
+Ngoại lệ: các biến `OCR_AUTO_FULL_PAGE_*` (D-33) **không** nằm trong fingerprint — chúng chỉ chọn giữa hai chế độ
+OCR chính thức của Docling cho một tài liệu, không thêm model, runtime hay lượt tải nào; bật / tắt chúng không
+làm mất hiệu lực kết quả readiness.
+
+Khi `OCR_AUTO_FULL_PAGE_ON_WATERMARK=true`, metadata của nguồn có thêm `ocr_mode_configured`,
+`ocr_mode_effective`, `auto_full_page`, `auto_full_page_reason` và các số đo (`auto_full_page_risk_pages`,
+`auto_full_page_max_coverage`, `auto_full_page_max_box`, `auto_full_page_max_inflation`, `auto_full_page_angles`);
+log worker có một dòng `OCR mode: engine=… configured=… effective=… auto_full_page=… reason=…` cho mỗi PDF.
+Không dòng nào chứa nội dung văn bản, tên file hay nội dung watermark.
+
+Bước đo của D-33 có giới hạn cố định (không cấu hình): 2.000 trang mỗi tài liệu, 20.000 đối tượng và 100.000 ký tự mỗi
+trang, 20 giây cho cả tài liệu. Vượt giới hạn ⇒ log `OCR overlay check stopped: …` (chỉ gồm số) và tài liệu được
+chuyển đổi với chế độ đã cấu hình (`auto_full_page_reason=check_failed`). Giá trị không hợp lệ hoặc ngoài khoảng của
+ba biến ngưỡng được **bỏ qua** (dùng mặc định) và được ghi log một lần.
 
 ## 3. Ánh xạ engine → Docling (đã xác minh trên Docling 2.129.0)
 

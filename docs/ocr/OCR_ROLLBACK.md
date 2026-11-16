@@ -60,3 +60,62 @@ An toàn vì:
   vào tag `chatbot5400:local` (bị ghi đè khi triển khai).
 - Ngân sách thời gian dò hướng và cảnh báo chuyển đổi một phần (D-30, D-32) không tạo dữ liệu mới; không cần
   hoàn tác.
+
+## Ghi chú Phase 10 — Tesseract Vietnamese Agri (model custom)
+
+Ba mức rollback, từ nhẹ đến nặng. Không mức nào cần xoá volume, database hay model.
+
+**1. Rollback phiên bản model** (vẫn dùng engine Agri):
+
+```bash
+ocr() { docker compose exec open_notebook /app/.venv/bin/python -m open_notebook.ocr.cli "$@"; }
+ocr custom rollback
+ocr custom status
+```
+
+Hoặc nút **Rollback về …** trên card Agri. Có hiệu lực cho tài liệu kế tiếp, không restart.
+
+**2. Bỏ engine Agri** (giữ bản ứng dụng mới): bấm **Sử dụng** trên *Tesseract Vietnamese Best* hoặc *RapidOCR*
+(`POST /api/ocr/engines/tesseract_best/activate`). Các phiên bản Agri vẫn nằm trên volume; model Best gốc không
+bị Agri ghi đè nên dùng lại ngay.
+
+**3. Hạ cấp image ứng dụng về bản chưa có Agri** (`v1.1.0-rc.1`, commit `ad1894e`):
+
+1. **Trước tiên:** thực hiện mức 2 — chọn một engine mà bản cũ hỗ trợ. Bản cũ chỉ biết bốn giá trị `rapidocr`,
+   `tesseract_fast`, `tesseract_best`, `easyocr` cho `docling_ocr_engine`. Kiểm thử thực tế (Phase 10F): nếu cơ sở
+   dữ liệu còn giữ `tesseract_agri`, bản cũ **không lỗi** nhưng không card nào được đánh dấu "Đang dùng" và tài
+   liệu mới được xử lý **âm thầm bằng RapidOCR** (mặc định — mất dấu tiếng Việt trên trang scan) cho tới khi quản
+   trị viên bấm **Sử dụng** trên một engine. Khắc phục ngay trên bản cũ: bấm **Sử dụng** trên Tesseract Vietnamese
+   Best. Chi tiết: [OCR_PHASE10_REPORT.md](OCR_PHASE10_REPORT.md) mục 7.
+2. Đổi image về tag rollback đã gắn trước khi triển khai, tạo lại **riêng** container ứng dụng
+   (`docker compose up -d --no-deps --no-build open_notebook`). Không tạo lại container SurrealDB.
+3. Kiểm tra `/health`, đăng nhập, mở một sổ tay và một nguồn đã có, OCR Engine Manager hiện bốn engine.
+
+An toàn vì: không có migration cơ sở dữ liệu ở Phase 10 (giá trị `tesseract_agri` chỉ là một chuỗi của trường
+schemaless sẵn có); thư mục `ocr/models/tesseract/custom` và `ocr/manifests/custom` bị bản cũ bỏ qua và được giữ
+nguyên để dùng lại khi nâng cấp trở lại; biến `OCR_AGRI_WITH_ENGLISH` bị bản cũ bỏ qua.
+
+Lưu ý: `tesseract --list-langs` ở bản cũ vẫn liệt kê các ngôn ngữ `custom/agri/…` (chúng nằm dưới TESSDATA_PREFIX)
+nhưng không engine nào của bản cũ dùng chúng.
+
+
+## Ghi chú Phase 10G — tự dùng Full Page OCR cho scan dưới watermark chéo
+
+Tính năng là **opt-in** (`OCR_AUTO_FULL_PAGE_ON_WATERMARK`, mặc định tắt) nên có hai mức rollback, đều không đụng tới
+dữ liệu:
+
+1. **Tắt cờ** — đủ để trở về đúng hành vi trước Phase 10G; không cần image khác. Xoá (hoặc đổi thành `false`)
+   dòng `OCR_AUTO_FULL_PAGE_ON_WATERMARK=true` ở nơi đã bật nó — file override trên production, `.env` của stack
+   thử nghiệm — rồi:
+
+   ```bash
+   docker compose up -d --no-deps open_notebook
+   docker compose exec open_notebook sh -c 'echo "OCR_AUTO_FULL_PAGE_ON_WATERMARK=$OCR_AUTO_FULL_PAGE_ON_WATERMARK"'
+   ```
+
+   Sau đó không tệp nào được phân tích, không có dòng log `OCR mode:`, metadata nguồn không có trường mới.
+2. **Hạ image** về bản trước Phase 10G: như các bước ở trên. Bản cũ bỏ qua các biến `OCR_AUTO_FULL_PAGE_*`.
+
+Không có migration, không có dữ liệu mới trong `/app/data`, tùy chọn Force Full Page đã lưu không bị thay đổi. Nguồn đã
+xử lý khi cờ bật giữ nội dung đã trích; các trường `auto_full_page*` / `ocr_mode_*` trong metadata của chúng là dữ liệu
+thông tin, bản cũ không đọc. Chi tiết: [OCR_PHASE10G_REPORT.md](OCR_PHASE10G_REPORT.md) mục 12.

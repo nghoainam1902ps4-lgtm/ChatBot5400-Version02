@@ -8,7 +8,7 @@ tài liệu được dẫn; ở đây là việc cần làm, theo từng tình h
 Quy ước lệnh — chạy trên máy chủ, trong thư mục production:
 
 ```bash
-cd /home/admin/ChatBot5400-Version02
+cd /srv/example/chatbot5400
 ocr() { docker compose exec open_notebook /app/.venv/bin/python -m open_notebook.ocr.cli "$@"; }
 ```
 
@@ -26,6 +26,11 @@ kèm tên service (sẽ kéo bản SurrealDB mới và tạo lại container DB 
 | EasyOCR Vietnamese | Chỉ để thử nghiệm | Không dùng cho tài liệu tài chính. Không cài trên production nếu không có yêu cầu |
 
 Engine mặc định trong mã nguồn là RapidOCR và không tự đổi. Không có chuyển engine tự động.
+
+**Lựa chọn thứ năm (Phase 10, chưa triển khai production): Tesseract Vietnamese Agri** — model Tesseract tự
+fine-tune cho văn bản pháp lý, xếp loại **Thử nghiệm**, quản lý theo phiên bản và import bằng CLI. Bốn lựa chọn
+trên không thay đổi. Thao tác: [OCR_AGRI_MODEL_GUIDE.md](OCR_AGRI_MODEL_GUIDE.md); thiết kế:
+[OCR_CUSTOM_MODEL_MANAGER.md](OCR_CUSTOM_MODEL_MANAGER.md); kết quả đo: [OCR_AGRI_BENCHMARK.md](OCR_AGRI_BENCHMARK.md).
 
 **Trạng thái trên production (2026-11-14, thí điểm phi nghiệp vụ):** engine được chọn là **RapidOCR**. Tesseract
 Vietnamese Best đã cài, đã "Chuẩn bị" và đã thử bằng tài liệu tổng hợp, nhưng **chưa được phép dùng cho tài liệu
@@ -104,7 +109,7 @@ chỉ được ghi là đạt sau khi thực hiện theo quy trình mạng đư�
 ## 6. Kiểm tra nhanh tình trạng hệ thống
 
 ```bash
-cd /home/admin/ChatBot5400-Version02
+cd /srv/example/chatbot5400
 bash scripts/ocr/production_health_check.sh           # container, restart, /health, RAM, đĩa, số dòng lỗi
 docker compose ps
 docker compose logs --tail 100 open_notebook | grep -E "Docling OCR finished|WARNING|ERROR" | tail -20
@@ -165,6 +170,7 @@ phân quyền (D-31): áp biện pháp đã được phê duyệt trong kế ho�
 | `OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR` | không đặt | EasyOCR không cài |
 | `OCR_RAPIDOCR_PERSISTENT` | không đặt | xem D-32 |
 | `OCR_OFFLINE`, `HF_HUB_OFFLINE` | không đặt | chỉ đặt khi vận hành ngắt mạng, **sau khi** đã `offline_ready` |
+| `OCR_AUTO_FULL_PAGE_ON_WATERMARK` | **không đặt** (tắt) | Phase 10G: tự OCR toàn trang cho PDF scan nằm dưới watermark chéo. Mặc định tắt trong bản phát hành; bật trên production cần phê duyệt của chủ dự án (xem Phụ lục Phase 10G) |
 
 Đầy đủ: [OCR_CONFIGURATION.md](OCR_CONFIGURATION.md). Quyền: mọi thao tác trong OCR Engine Manager, quản lý
 model / credential nhà cung cấp, transformation và dựng lại embedding chỉ dành cho **quản trị viên** (D-31).
@@ -187,7 +193,7 @@ services:
 ```
 
 ```bash
-cd /home/admin/ChatBot5400-Version02
+cd /srv/example/chatbot5400
 MAINT=/duong/dan/docker-compose.maintenance.yml
 # vào chế độ bảo trì (tạo lại container ứng dụng; DB không đụng tới)
 docker compose -p chatbot5400-version02 -f docker-compose.yml -f docker-compose.override.yml -f "$MAINT" \
@@ -214,3 +220,82 @@ cấp. Muốn buộc mọi người đăng nhập lại, đặt một giá trị
 [OCR_ROLLBACK.md](OCR_ROLLBACK.md) · [OCR_PRODUCTION_CHECKLIST.md](OCR_PRODUCTION_CHECKLIST.md) ·
 [OCR_FINAL_ACCEPTANCE.md](OCR_FINAL_ACCEPTANCE.md) · [OCR_PHASE9C_REPORT.md](OCR_PHASE9C_REPORT.md) ·
 [`docs/security/BACKGROUND_JOB_SECURITY.md`](../security/BACKGROUND_JOB_SECURITY.md)
+
+## Phụ lục Phase 10 — Model custom Tesseract Vietnamese Agri
+
+Tóm tắt cho người vận hành (chi tiết ở [OCR_AGRI_MODEL_GUIDE.md](OCR_AGRI_MODEL_GUIDE.md)):
+
+| Việc | Lệnh / thao tác |
+|---|---|
+| Import model lần đầu hoặc bản fine-tune mới | `ocr custom import --file /import/vie_agri.traineddata --version v2` — không kích hoạt, không cần build image |
+| Xem các phiên bản | `ocr custom list` · `ocr custom status` · card Agri trong OCR Engine Manager |
+| Kích hoạt phiên bản | `ocr custom activate --version v2` hoặc nút **Chuyển sang phiên bản này** |
+| Rollback phiên bản model | `ocr custom rollback` hoặc nút **Rollback về …** |
+| Kiểm tra toàn vẹn | `ocr custom verify` |
+| Chọn / bỏ engine Agri | nút **Sử dụng** trên card Agri / trên card Tesseract Vietnamese Best |
+| Sao lưu model + manifest | `tar` hai thư mục `ocr/models/tesseract/custom` và `ocr/manifests/custom` |
+
+- Model custom **không bao giờ** được tải từ Internet và **không** upload qua trình duyệt: file chỉ vào hệ thống
+  qua lệnh import chạy trên máy chủ.
+- Tài liệu đang xử lý giữ nguyên phiên bản model lúc bắt đầu; chuyển phiên bản chỉ áp dụng cho tài liệu sau đó.
+- Đổi phiên bản làm kết quả "Sẵn sàng offline" của phiên bản khác không còn được tính: chạy
+  `ocr readiness --engines tesseract_agri --check`.
+- **Trước khi hạ cấp** image về bản chưa có Agri (`v1.1.0-rc.1`), chọn lại Tesseract Vietnamese Best hoặc RapidOCR
+  (xem [OCR_ROLLBACK.md](OCR_ROLLBACK.md), "Ghi chú Phase 10"); nếu quên, bản cũ âm thầm dùng RapidOCR.
+
+## Phụ lục Phase 10G — PDF scan có watermark chéo
+
+**Hiện tượng.** Một PDF scan sau khi xử lý chỉ còn tiêu đề, vài dòng, chuỗi watermark lặp lại và các chỗ giữ ảnh,
+dù OCR đang bật. Xảy ra với **mọi** engine.
+
+**Nguyên nhân.** Trang là ảnh scan, bên trên có một dòng watermark chéo dạng *text hiển thị*. Docling giữ dòng text
+đó và bỏ mọi chữ OCR nằm trong khung bao của nó — với dòng chéo, khung bao là gần hết trang
+([OCR_PHASE10G_REPORT.md](OCR_PHASE10G_REPORT.md), mục 2).
+
+**Cơ chế tự động (opt-in).** Với `OCR_AUTO_FULL_PAGE_ON_WATERMARK=true`, trước khi OCR hệ thống đo hình học từng
+trang (không đọc nội dung chữ) và dùng chế độ OCR toàn trang cho **riêng** tài liệu có nguy cơ.
+
+| Điều người vận hành cần biết | |
+|---|---|
+| Mặc định | **Tắt.** Tắt ⇒ hành vi giống hệt các phiên bản trước |
+| Tùy chọn Force Full Page đã lưu | Không bao giờ bị thay đổi; bật thủ công thì được giữ nguyên |
+| OCR đang tắt | Cơ chế không làm gì, không tự bật OCR |
+| PDF thường (scan không watermark, văn bản điện tử, header / footer, dấu nhỏ) | Không bị ảnh hưởng — kết quả giống hệt từng byte |
+| PDF hỗn hợp (trang scan dưới watermark + trang văn bản điện tử) | **Không** được sửa tự động; log có `WARNING … reason=mixed_document`. Nếu các trang scan quan trọng hơn: bật Force Full Page OCR, xử lý lại nguồn đó, rồi tắt lại |
+| Tài liệu đã xử lý trước khi bật | Không tự đổi; xử lý lại nguồn để có nội dung đầy đủ |
+
+**Xem hệ thống đã quyết định gì** (dòng log chỉ có số đo, không có tên file hay nội dung):
+
+```bash
+docker compose logs --since 1h open_notebook | grep "OCR mode:"
+```
+
+| `reason=` | Ý nghĩa |
+|---|---|
+| `tilted_text_box_over_scan` | Đã tự OCR toàn trang cho tài liệu này |
+| `no_risk` | Tài liệu thường, xử lý như trước |
+| `mixed_document` | Tài liệu hỗn hợp, giữ chế độ đã cấu hình (kèm cảnh báo) |
+| `manual_full_page` | Force Full Page đang bật thủ công |
+| `check_failed` | Không đo được tệp; xử lý như trước |
+
+**Bật / tắt** (không cần build lại image; chỉ tạo lại container ứng dụng). Biến chỉ có hiệu lực khi nó thực sự
+được truyền vào container, tức là có trong mục `environment` của dịch vụ `open_notebook`:
+
+- **Production** (`docker-compose.yml` + `docker-compose.override.yml`): thêm vào mục `environment` của
+  `open_notebook` trong file **override** dòng `- OCR_AUTO_FULL_PAGE_ON_WATERMARK=true`; tắt = xoá dòng đó hoặc đổi
+  thành `false`. Compose mẫu ở gốc kho mã và `deploy/docker-compose.prod.yml` có sẵn dòng chú thích tương ứng.
+- **Stack thử nghiệm** (`deploy/agri-test/docker-compose.yml` đã khai báo `${OCR_AUTO_FULL_PAGE_ON_WATERMARK:-false}`):
+  đặt giá trị trong `.env` của stack.
+
+```bash
+# sau khi sửa file override (production) hoặc .env (stack thử nghiệm):
+docker compose up -d --no-deps open_notebook
+docker compose exec open_notebook sh -c 'echo "OCR_AUTO_FULL_PAGE_ON_WATERMARK=$OCR_AUTO_FULL_PAGE_ON_WATERMARK"'
+```
+
+Dòng thứ hai phải in đúng giá trị vừa đặt; in ra rỗng nghĩa là biến chưa tới container và tính năng đang **tắt**.
+Luôn kèm `--no-deps open_notebook`: lệnh `up -d` không có tên dịch vụ sẽ tạo lại cả container cơ sở dữ liệu.
+
+Giới hạn và ngưỡng: [OCR_PHASE10G_REPORT.md](OCR_PHASE10G_REPORT.md), mục 4 và 13; quyết định thiết kế:
+[DECISIONS.md](DECISIONS.md) D-33.
+

@@ -23,6 +23,13 @@ export const ocrApi = {
     (await apiClient.post<OcrJobResponse>(`/ocr/engines/${id}/readiness-check`)).data,
   removeModel: async (id: OcrEngineId) =>
     (await apiClient.delete<{ engine_id: string; removed: string[] }>(`/ocr/engines/${id}/model`)).data,
+  // Custom engines: versions are imported with the server CLI (never uploaded here).
+  activateCustomVersion: async (id: OcrEngineId, version: string) =>
+    (await apiClient.post<OcrEngineStatus>(`/ocr/engines/${id}/custom/activate`, { version })).data,
+  rollbackCustomVersion: async (id: OcrEngineId) =>
+    (await apiClient.post<OcrEngineStatus>(`/ocr/engines/${id}/custom/rollback`)).data,
+  verifyCustomVersion: async (id: OcrEngineId, version: string) =>
+    (await apiClient.post<OcrEngineStatus>(`/ocr/engines/${id}/custom/verify`, { version })).data,
   job: async (jobId: string) =>
     (await apiClient.get<OcrJobStatus>(`/ocr/jobs/${encodeURIComponent(jobId)}`)).data,
   updateConfig: async (data: Partial<Pick<OcrConfig, 'docling_ocr' | 'docling_ocr_force_full_page'>> & {

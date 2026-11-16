@@ -197,11 +197,24 @@ class ModelStatus:
         }
 
 
-def model_status(engine_id: str) -> ModelStatus:
+def model_status(
+    engine_id: str, custom_version: str | None = None, include_custom: bool = True
+) -> ModelStatus:
+    """Verified state of an engine's model files.
+
+    Custom engines (Phase 10) add the ACTIVE version of their model — or
+    ``custom_version``, the version a running document was started with — to
+    the official prerequisite files; ``include_custom=False`` looks at the
+    prerequisites only.
+    """
     spec = catalog.get_engine(engine_id)
-    if not spec.files:
+    if not spec.files and spec.custom is None:
         return ModelStatus("builtin", [])
     checks = [check_file(f) for f in spec.files]
+    if spec.custom is not None and include_custom:
+        from open_notebook.ocr import custom_models
+
+        checks += custom_models.file_checks(engine_id, custom_version)
     if all(c.verified for c in checks):
         return ModelStatus("installed", checks)
     if any(c.present and not c.verified for c in checks):

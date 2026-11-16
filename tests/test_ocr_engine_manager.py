@@ -718,11 +718,15 @@ class TestOcrApi:
         c, _ = client
         self._rt(monkeypatch)
         body = c.get("/api/ocr/engines").json()
-        assert [e["id"] for e in body["engines"]] == list(catalog.ENGINE_IDS)
+        # Phase 10: the four official choices, unchanged and in the same order,
+        # followed by the custom engine (tests/test_ocr_custom_models.py).
+        assert [e["id"] for e in body["engines"]][:4] == list(catalog.ENGINE_IDS)
+        assert [e["id"] for e in body["engines"]] == list(catalog.ALL_ENGINE_IDS)
         assert body["general"]["layout_model"] == "layout_heron"
         assert body["general"]["ocr_device"] == "cpu"
         assert body["config"]["docling_ocr_engine"] == "rapidocr"
-        assert [e["active"] for e in body["engines"]] == [True, False, False, False]
+        assert [e["active"] for e in body["engines"]][:4] == [True, False, False, False]
+        assert body["engines"][4]["active"] is False
 
     def test_activate_refuses_not_ready_engine_and_keeps_current(
         self, client, monkeypatch

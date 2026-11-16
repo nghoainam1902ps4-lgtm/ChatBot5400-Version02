@@ -317,3 +317,39 @@ Báo cáo: [OCR_PHASE9B_REPORT.md](OCR_PHASE9B_REPORT.md). Quyết định: D-30
 Benchmark tài liệu thật (hoặc phạm vi thí điểm phi nghiệp vụ được phê duyệt), phê duyệt kế hoạch
 [OCR_PRODUCTION_DEPLOYMENT_PLAN.md](OCR_PRODUCTION_DEPLOYMENT_PLAN.md), sao lưu lạnh và kiểm tra restore, biện pháp
 kiểm soát khi rollback. Hiện trạng production đáng chú ý: container đang chạy không có Docling (kế hoạch §1.1).
+
+## 11. Phase 10 → 10I — Release Candidate 2 (`1.1.0-rc.2`)
+
+Báo cáo: [OCR_PHASE10_REPORT.md](OCR_PHASE10_REPORT.md), [OCR_PHASE10G_REPORT.md](OCR_PHASE10G_REPORT.md),
+[OCR_PHASE10H_REPORT.md](OCR_PHASE10H_REPORT.md). Quyết định: D-33. Ghi chú phát hành:
+[OCR_RELEASE_NOTES_RC2.md](OCR_RELEASE_NOTES_RC2.md). Nhánh phát triển tạo từ tag
+`v1.1.0-rc.1`, được gộp thành lịch sử sạch ở Phase 10I rồi merge. **Đã phát hành GitHub Pre-release `v1.1.0-rc.2` (chỉ mã
+nguồn); chưa cập nhật production.**
+
+### 11.1 Phạm vi
+
+Custom Tesseract Model Manager; engine thứ năm Tesseract Vietnamese Agri (**Thử nghiệm**); quản lý phiên bản model; thay
+model không cần rebuild / restart; rollback model; tự OCR toàn trang cho PDF scan dưới watermark chéo (opt-in, **mặc
+định tắt**). Engine mặc định vẫn là RapidOCR; phạm vi engine đã chốt ở §9.1 không đổi.
+
+### 11.2 Đối chiếu cổng merge (cùng các điều kiện của §10.1)
+
+| # | Điều kiện | Kết quả |
+|---|---|---|
+| 1 | Đã review toàn bộ diff | **ĐẠT** — hai reviewer độc lập trên `v1.1.0-rc.1..f1cdbe3`; kịch bản tái hiện của họ được chạy lại sau khi sửa |
+| 2 | Không còn lỗi Cao / Trung bình chưa xử lý | **ĐẠT** — 0 Cao; cả 5 phát hiện mức Trung bình của hai reviewer (một trùng với một phát hiện mức Thấp của reviewer kia) đã sửa kèm test; mức Thấp: đã sửa, trừ một giới hạn được ghi nhận (watermark ghi mỗi ký tự một đối tượng) |
+| 3 | Không có regression mới | **ĐẠT** — backend cùng đúng 10 lỗi có sẵn; frontend 423 / 423 |
+| 4 | Bốn engine cũ và cấu hình mặc định không đổi | **ĐẠT** — benchmark pháp lý tổng hợp chạy lại giống hệt từng byte; checksum model chính thức được test khóa |
+| 5 | Docker acceptance không có lỗi mới | **ĐẠT** — nâng cấp từ `v1.1.0-rc.1`, `rapidocr` + `tesseract_best`: 53 PASS / 0 FAIL |
+| 6 | Tính năng mới mặc định tắt / không tự kích hoạt | **ĐẠT** — cờ tắt trong ứng dụng và mọi tệp cấu hình; Agri không bao giờ được chọn tự động |
+| 7 | GitHub Actions không gây phát hành ngoài ý muốn | **ĐẠT sau khi sửa** — *Build and Release* từng chạy và thất bại ở mỗi lần publish Release; nay có chốt chặn (chạy tay + biến repository) |
+| 8 | Không conflict; nhánh kế thừa nhánh chính thức | **ĐẠT** — nhánh chính thức vẫn ở `v1.1.0-rc.1`; nhánh phát hành là một commit gộp ngay trên nó |
+| 9 | Không có dữ liệu nhạy cảm trong commit | **ĐẠT sau khi làm sạch (Phase 10I)** — nhánh cục bộ còn đường dẫn máy chủ và tên tài khoản thử nghiệm trong tài liệu; chúng được lược bỏ và lịch sử được gộp lại trước khi push. Quét lại toàn bộ commit, diff, thông điệp và đối tượng Git của nhánh phát hành: không model, không tài liệu, không nội dung watermark, không credential, không địa chỉ IP nội bộ, không đường dẫn máy chủ hay tài khoản thật |
+| 10 | Bộ test không chạm vào cơ sở dữ liệu thật | **ĐẠT (Phase 10I)** — cô lập fail-closed (`tests/db_isolation.py`), 59 regression test; lượt chạy cuối không có kết nối nào tới cổng cơ sở dữ liệu mặc định |
+
+### 11.3 Trước production
+
+Phê duyệt [OCR_RC2_PRODUCTION_UPDATE_PLAN.md](OCR_RC2_PRODUCTION_UPDATE_PLAN.md); sao lưu lạnh và kiểm tra restore như
+lần rc.1. Import model Agri và bật `OCR_AUTO_FULL_PAGE_ON_WATERMARK` là hai quyết định riêng, không nằm trong đợt cập
+nhật mã. Các việc còn mở của rc.1 (benchmark tài liệu thật, offline trên production) không thay đổi.
+

@@ -41,7 +41,9 @@ class ContentSettings(RecordModel):
     # The engine is changed only through POST /api/ocr/engines/{id}/activate,
     # which refuses engines that are not ready.
     docling_ocr_engine: Optional[
-        Literal["rapidocr", "tesseract_fast", "tesseract_best", "easyocr"]
+        Literal[
+            "rapidocr", "tesseract_fast", "tesseract_best", "easyocr", "tesseract_agri"
+        ]
     ] = Field(
         "rapidocr",
         description="OCR engine Docling uses for scanned PDFs and images.",

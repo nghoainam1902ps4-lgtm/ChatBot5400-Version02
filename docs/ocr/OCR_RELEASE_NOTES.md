@@ -2,6 +2,9 @@
 
 Cập nhật: 2026-11-15 · Tag `v1.1.0-rc.1` trên nhánh `claude/practical-wozniak-9s1t6z` · **Pre-release**
 
+> Bản Pre-release tiếp theo: **v1.1.0-rc.2** — [OCR_RELEASE_NOTES_RC2.md](OCR_RELEASE_NOTES_RC2.md). Nội dung dưới đây mô tả
+> v1.1.0-rc.1 và được giữ nguyên.
+
 | | |
 |---|---|
 | Phiên bản | `1.1.0-rc.1` (bản trước: `1.0.8`) |

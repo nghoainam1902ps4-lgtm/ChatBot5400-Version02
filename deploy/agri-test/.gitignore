@@ -1,0 +1,6 @@
+# Runtime data and credentials of the isolated test stack: never committed.
+.env
+notebook_data/
+surreal_data/
+import/
+TEST_ACCOUNT.txt

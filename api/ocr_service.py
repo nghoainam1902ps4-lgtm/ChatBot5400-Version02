@@ -22,6 +22,7 @@ from open_notebook.exceptions import InvalidInputError, NotFoundError
 from open_notebook.ocr import (
     catalog,
     compat,
+    custom_models,
     installer,
     paths,
     pdf_prep,
@@ -168,7 +169,9 @@ async def list_engines() -> OcrEnginesResponse:
             lambda: pdf_prep.orientation_status(runtime.tesseract_cmd())
         ),
     )
-    engines = [await _status(e, config.docling_ocr_engine) for e in catalog.ENGINE_IDS]
+    engines = [
+        await _status(e, config.docling_ocr_engine) for e in catalog.ALL_ENGINE_IDS
+    ]
     return OcrEnginesResponse(general=general, config=config, engines=engines)
 
 
@@ -309,6 +312,11 @@ async def delete_model(engine_id: str) -> list[str]:
     spec = _require_engine(engine_id)
     if spec.runtime == "builtin":
         raise InvalidInputError("The built-in RapidOCR model cannot be removed.")
+    if spec.custom is not None:
+        raise InvalidInputError(
+            f"{spec.display_name} versions are managed with the admin CLI; "
+            "nothing was removed."
+        )
     async with _lock:
         await _reconcile_job(engine_id)
         if store.read_state(engine_id).get("test_nonce"):
@@ -335,6 +343,74 @@ async def delete_model(engine_id: str) -> list[str]:
             raise InvalidInputError(str(e)) from e
         except store.LockBusy as e:
             raise InvalidInputError(str(e)) from e
+
+
+def _require_custom(engine_id: str) -> catalog.EngineSpec:
+    spec = _require_engine(engine_id)
+    if spec.custom is None:
+        raise InvalidInputError(f"{spec.display_name} has no custom model versions.")
+    return spec
+
+
+async def _custom_call(fn: Any, *args: Any) -> Any:
+    """Run a custom-model operation off the event loop, mapping its errors."""
+    try:
+        return await asyncio.to_thread(fn, *args)
+    except custom_models.CustomModelError as e:
+        raise InvalidInputError(str(e)) from e
+    except store.LockBusy as e:
+        raise InvalidInputError(
+            "Another model operation is running; try again in a moment."
+        ) from e
+
+
+async def custom_activate_version(
+    engine_id: str, version: str, actor: str
+) -> OcrEngineStatus:
+    """Switch the active version of a custom engine (already imported, verified).
+
+    Documents being processed keep the version they started with (it is frozen
+    in their OCR settings), so no job is interrupted or mixed.
+    """
+    _require_custom(engine_id)
+    async with _lock:
+        if (
+            await asyncio.to_thread(custom_models.read_version, engine_id, version)
+            is None
+        ):
+            raise NotFoundError(f"Unknown version: {version}")
+        registry = await _custom_call(
+            custom_models.activate_version, engine_id, version, actor
+        )
+        logger.info(
+            f"OCR custom model switched: {engine_id} -> {registry['active_version']} "
+            f"(previous {registry['previous_version']}) by {actor}"
+        )
+    return await get_engine(engine_id)
+
+
+async def custom_rollback(engine_id: str, actor: str) -> OcrEngineStatus:
+    _require_custom(engine_id)
+    async with _lock:
+        registry = await _custom_call(custom_models.rollback, engine_id, actor)
+        logger.info(
+            f"OCR custom model rolled back: {engine_id} -> "
+            f"{registry['active_version']} by {actor}"
+        )
+    return await get_engine(engine_id)
+
+
+async def custom_verify_version(engine_id: str, version: str) -> OcrEngineStatus:
+    """Re-check one version against its manifest (full hash + Tesseract load)."""
+    _require_custom(engine_id)
+    async with _lock:
+        if (
+            await asyncio.to_thread(custom_models.read_version, engine_id, version)
+            is None
+        ):
+            raise NotFoundError(f"Unknown version: {version}")
+        await _custom_call(custom_models.verify_version, engine_id, version)
+    return await get_engine(engine_id)
 
 
 async def _running_source_jobs() -> int | None:
@@ -381,7 +457,7 @@ async def job_status(job_id: str) -> dict[str, Any]:
     # Only OCR jobs are reported here (the generic commands API covers the rest).
     known = {
         v
-        for e in catalog.ENGINE_IDS
+        for e in catalog.ALL_ENGINE_IDS
         for k, v in store.read_state(e).items()
         if k in ("job_id", "test_job_id", "prepare_job_id", "readiness_job_id") and v
     }

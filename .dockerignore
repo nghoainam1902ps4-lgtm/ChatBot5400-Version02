@@ -56,6 +56,12 @@ deploy/.env
 **/caddy_config
 **/.cache
 
+# Isolated test stack (deploy/agri-test): its credentials, data and model drop
+# folder are never part of an image.
+deploy/agri-test/.env
+deploy/agri-test/import
+deploy/agri-test/TEST_ACCOUNT.txt
+
 # Documentation & CI (not needed in image)
 docs
 .github

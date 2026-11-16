@@ -1,7 +1,8 @@
 # Nghiệm thu cuối — OCR Engine Manager
 
 Cập nhật: 2026-11-15 · Trạng thái **sau khi triển khai production** (thí điểm phi nghiệp vụ) và sau khi đánh
-số phiên bản `1.1.0-rc.1`.
+số phiên bản `1.1.0-rc.1`. Dòng Phase 10A–10I được thêm khi phát hành `1.1.0-rc.2`; các dòng khác
+mô tả hệ thống production đang chạy và **không đổi**.
 
 File này là bảng trạng thái tổng hợp của toàn dự án. Nó được cập nhật sau mỗi mốc (merge, triển khai, bàn
 giao) qua một Pull Request tài liệu; mỗi dòng chỉ được ghi PASS khi đã có bằng chứng chạy thật. Chi tiết:
@@ -26,6 +27,7 @@ Quy ước: **PASS** · **FAIL** · **NOT VERIFIED** (chưa chạy thật) · **
 | Phase 9C — triển khai và nghiệm thu kỹ thuật | **COMPLETED** |
 | Kết thúc chế độ bảo trì | Thực hiện 2026-11-14 theo quyết định của chủ dự án; kiểm tra sau đó 48 / 48 (`OCR_PHASE9C_REPORT.md` §6.1) |
 | Phase 9D — phiên bản và GitHub Release | `1.1.0-rc.1`, tag `v1.1.0-rc.1`, **Pre-release** (chỉ mã nguồn; không cập nhật hệ thống đang chạy) — [OCR_RELEASE_NOTES.md](OCR_RELEASE_NOTES.md) |
+| Phase 10A–10I — `1.1.0-rc.2` (model Tesseract tùy biến, Agri thử nghiệm, tự OCR toàn trang mặc định tắt) | **ĐÃ MERGE, PHÁT HÀNH GITHUB PRE-RELEASE (chỉ mã nguồn)** — nghiệm thu trên stack thử nghiệm cô lập; **production chưa cập nhật** và vẫn chạy mã của `1.1.0-rc.1`, chờ chủ dự án phê duyệt riêng — [OCR_PHASE10H_REPORT.md](OCR_PHASE10H_REPORT.md), [OCR_RELEASE_NOTES_RC2.md](OCR_RELEASE_NOTES_RC2.md) |
 | Bàn giao | **HANDOVER COMPLETED** về tài liệu và hướng dẫn (mục 6); theo dõi 24 giờ, offline production, benchmark tài liệu thật: **PENDING** (người vận hành / chủ dự án) |
 
 ## 2. Bảng nghiệm thu
@@ -69,7 +71,7 @@ Quy ước: **PASS** · **FAIL** · **NOT VERIFIED** (chưa chạy thật) · **
 | Mã được nghiệm thu | `6f6b42429da3b0a48eee6044a2cc7d12cadecdfc` |
 | Pull Request | [#42](https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02/pull/42) |
 | Commit merge trên nhánh chính thức | `3819c2a7068916bf7cd2d5bc9c71cfe73b76dfbc` (2026-11-13 18:57 UTC; cha: `5e04227` + `8ba2483`; cây mã giống hệt `8ba2483`) |
-| Image triển khai đã dựng (chưa triển khai) | `chatbot5400:rc1-20261114` = `sha256:240bb692922101385c8a4fcb0aaf15451f4ba345ae027e232265e37005d58f56`, dựng từ commit merge ở thư mục riêng, có Tesseract 5.5.0 |
+| Image triển khai đã dựng (chưa triển khai) | `chatbot5400:rc1-20261114` (mã image lược bỏ trong bản công khai), dựng từ commit merge ở thư mục riêng, có Tesseract 5.5.0 |
 | Commit và image đang chạy trên production | `3ca6428d188319660fe1da40f34da2d4cc7f38ce` (khác `3819c2a` chỉ trong `docs/`); image `chatbot5400:rc1-20261114` gắn làm `chatbot5400:local` |
 | Image rollback | giữ dưới tag riêng `chatbot5400:rollback-pre-ocr-<thời điểm>` và một bản tar có checksum |
 | Image DB | không đổi (SurrealDB 2.7.0; cùng container) |

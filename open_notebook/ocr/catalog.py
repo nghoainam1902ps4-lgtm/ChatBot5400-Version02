@@ -5,6 +5,12 @@ pinned here by URL, size and SHA-256: the installer never accepts a URL from a
 request, so there is no SSRF or "download anything" surface. Bumping a model
 means editing this file (reviewed in Git), never a runtime input.
 
+Phase 10 adds ONE custom engine next to the four official choices
+(``CUSTOM_ENGINE_IDS``): a locally fine-tuned Tesseract model that is never
+downloaded and whose checksum is deliberately NOT pinned here — its versions
+are imported by the admin CLI and tracked in manifests on the data volume
+(``custom_models.py``, docs/ocr/OCR_CUSTOM_MODEL_MANAGER.md).
+
 Checksums were computed from the official upstream artifacts:
 - tessdata_fast / tessdata_best, tag 4.1.0 (github.com/tesseract-ocr)
 - EasyOCR release assets pre-v1.1.6 (craft_mlt_25k) and v1.3 (latin_g2); the
@@ -24,6 +30,10 @@ ENGINE_IDS: tuple[str, ...] = (
     "easyocr",
 )
 DEFAULT_ENGINE: EngineId = "rapidocr"
+# Custom (locally fine-tuned, versioned) engines; never the default.
+CUSTOM_ENGINE_IDS: tuple[str, ...] = ("tesseract_agri",)
+# Everything the manager lists: the official choices first, unchanged.
+ALL_ENGINE_IDS: tuple[str, ...] = ENGINE_IDS + CUSTOM_ENGINE_IDS
 
 RuntimeKind = Literal["builtin", "tesseract", "easyocr"]
 
@@ -75,6 +85,27 @@ class ModelFile:
 
 
 @dataclass(frozen=True)
+class CustomModelSpec:
+    """A versioned, operator-supplied Tesseract model (no URL, no pinned hash).
+
+    Versions live under ``<tessdata>/custom/<family>/<version>/<filename>``, so
+    each one is its own immutable Tesseract language
+    (``custom/<family>/<version>/<lang_stem>``) under the single TESSDATA_PREFIX
+    (D-04) and never overwrites an official model.
+    """
+
+    family: str  # directory name; [a-z0-9_]+
+    filename: str  # e.g. vie_agri.traineddata
+    lang_stem: str  # e.g. vie_agri
+    # Optional official companion language (pinned in this catalog), added only
+    # when ``english_env`` is switched on. Default off: measured in Phase 10E.
+    english_env: str
+    english_lang: str
+    english_rel_path: str
+    max_size: int = 512 * 1024 * 1024
+
+
+@dataclass(frozen=True)
 class EngineSpec:
     id: str
     display_name: str
@@ -91,6 +122,9 @@ class EngineSpec:
     # Vietnamese business documents. Independent of "installed / ready" and of
     # "offline verified" — an engine can run offline and still not qualify.
     quality: str = "compatibility"
+    # Set only for custom engines; ``files`` then lists the official
+    # prerequisites (orientation data), never the custom model itself.
+    custom: CustomModelSpec | None = None
 
     @property
     def total_size(self) -> int:
@@ -220,6 +254,32 @@ ENGINES: dict[str, EngineSpec] = {
             ),
         ),
     ),
+    "tesseract_agri": EngineSpec(
+        id="tesseract_agri",
+        display_name="Tesseract Vietnamese Agri",
+        description=(
+            "Model Tesseract tiếng Việt tự fine-tune cho văn bản pháp lý Agribank "
+            "(custom, thử nghiệm). Import bằng CLI, quản lý theo phiên bản."
+        ),
+        languages=("vie_agri",),
+        docling_kind="tesseract",
+        model_name="vie_agri (custom fine-tuned)",
+        model_version="managed versions",
+        runtime="tesseract",
+        quality="experimental",
+        license="Internal (fine-tuned from tessdata_best, Apache-2.0)",
+        source_url="",
+        # Same orientation data the other Tesseract engines use (shared file).
+        files=(_OSD,),
+        custom=CustomModelSpec(
+            family="agri",
+            filename="vie_agri.traineddata",
+            lang_stem="vie_agri",
+            english_env="OCR_AGRI_WITH_ENGLISH",
+            english_lang="best/eng",
+            english_rel_path="tesseract/best/eng.traineddata",
+        ),
+    ),
 }
 
 # Docling-native language codes per engine (D-04: Tesseract uses sub-directory
@@ -230,6 +290,17 @@ DOCLING_LANGS: dict[str, list[str]] = {
     "tesseract_best": ["best/vie", "best/eng"],
     "easyocr": ["vi", "en"],
 }
+# Custom engines have no static entry: their language is the ACTIVE version
+# (``options.engine_langs``), resolved once per job.
+
+
+def pinned_file(rel_path: str) -> ModelFile | None:
+    """The official (checksummed) catalog entry for ``rel_path``, if any."""
+    for spec in ENGINES.values():
+        for mf in spec.files:
+            if mf.rel_path == rel_path:
+                return mf
+    return None
 
 
 def get_engine(engine_id: str) -> EngineSpec:

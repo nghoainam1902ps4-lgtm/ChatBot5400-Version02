@@ -58,6 +58,18 @@ export const usePrepareOcrEngine = () =>
 export const useOcrReadinessCheck = () =>
   useOcrMutation((id: OcrEngineId) => ocrApi.readinessCheck(id), 'ocr.readiness.checkQueued')
 export const useTestOcrEngine = () => useOcrMutation((id: OcrEngineId) => ocrApi.test(id))
+export const useActivateOcrCustomVersion = () =>
+  useOcrMutation(
+    ({ id, version }: { id: OcrEngineId; version: string }) => ocrApi.activateCustomVersion(id, version),
+    'ocr.custom.switched',
+  )
+export const useRollbackOcrCustomVersion = () =>
+  useOcrMutation((id: OcrEngineId) => ocrApi.rollbackCustomVersion(id), 'ocr.custom.rolledBack')
+export const useVerifyOcrCustomVersion = () =>
+  useOcrMutation(
+    ({ id, version }: { id: OcrEngineId; version: string }) => ocrApi.verifyCustomVersion(id, version),
+    'ocr.custom.verifyDone',
+  )
 export const useUpdateOcrConfig = () =>
   useOcrMutation((data: Parameters<typeof ocrApi.updateConfig>[0]) => ocrApi.updateConfig(data), 'common.saveSuccess')
 
