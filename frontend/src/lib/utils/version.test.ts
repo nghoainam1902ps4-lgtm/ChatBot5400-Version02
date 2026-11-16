@@ -42,6 +42,13 @@ describe('compareVersions', () => {
     expect(compareVersions('v1.1.0-rc.1', '1.1.0-rc.1')).toBe(0)
   })
 
+  it('ranks the second release candidate above the first', () => {
+    expect(compareVersions('1.1.0-rc.1', '1.1.0-rc.2')).toBe(-1)
+    expect(compareVersions('1.1.0-rc.2', '1.0.8')).toBe(1)
+    expect(compareVersions('1.1.0', '1.1.0-rc.2')).toBe(1)
+    expect(compareVersions('v1.1.0-rc.2', '1.1.0-rc.2')).toBe(0)
+  })
+
   it('throws on unparseable input', () => {
     expect(() => compareVersions('latest', '1.0.0')).toThrow()
   })

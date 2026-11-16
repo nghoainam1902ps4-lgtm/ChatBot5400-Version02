@@ -60,8 +60,8 @@ có được đọc đúng không.
 và model; không đụng tới production). Mở một phiên SSH thường — không phải phiên trợ lý AI — rồi chạy:
 
 ```bash
-source /home/admin/cb5400-ocr-accept/env.sh
-cd /home/admin/cb5400-ocr-accept/src
+source /srv/example/cb5400-ocr-accept/env.sh
+cd /srv/example/cb5400-ocr-accept/src
 DOCS=/duong/dan/rieng/tai-lieu-benchmark   # thư mục ngoài repository, quyền 700
 OUT=/duong/dan/rieng/ket-qua; mkdir -p "$OUT"; chmod 700 "$OUT"
 HF_HUB_OFFLINE=1 uv run --no-sync python scripts/ocr/local_document_benchmark.py --dir "$DOCS" \
@@ -73,7 +73,7 @@ cat "$OUT/benchmark.md"
 **Cách B — sau khi triển khai, trong container ứng dụng** (engine đã cài và đã "Chuẩn bị"):
 
 ```bash
-cd /home/admin/ChatBot5400-Version02
+cd /srv/example/chatbot5400
 docker compose cp /duong/dan/rieng/tai-lieu-benchmark open_notebook:/tmp/bench-docs
 docker compose exec -e HF_HUB_OFFLINE=1 open_notebook /app/.venv/bin/python \
     scripts/ocr/local_document_benchmark.py --dir /tmp/bench-docs \

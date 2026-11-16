@@ -86,6 +86,7 @@ services:
       # - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true  # Tesseract Vietnamese Fast/Best (apt package)
       # - OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=true    # EasyOCR Vietnamese (needs Docling)
       # - OCR_OFFLINE=true                         # air-gapped: never download, use offline bundles
+      # - OCR_AUTO_FULL_PAGE_ON_WATERMARK=true     # opt-in: scans under a diagonal watermark are read in full-page OCR mode (docs/ocr D-33)
 
       # OPTIONAL: max concurrent background tasks the worker processes at once
       # (default 5). Set to 1 for sequential processing on single-GPU / local

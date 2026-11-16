@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from open_notebook.ocr import catalog, compat, runtime, store
+from open_notebook.ocr import catalog, compat, custom_models, runtime, store
 
 
 def dependency_problems(
@@ -72,6 +72,12 @@ def engine_status(
         error = (
             f"Model files failed verification: {', '.join(bad)}. Reinstall to repair."
         )
+        if spec.custom is not None:
+            error = (
+                f"Model files failed verification: {', '.join(bad)}. Import a valid "
+                "file as a new version or roll back with the admin CLI "
+                "(custom rollback); official files: reinstall."
+            )
     elif lifecycle == store.FAILED and not error:
         error = (
             "The previous installation stopped unexpectedly. Retry the installation."
@@ -127,7 +133,16 @@ def engine_status(
         "readiness_job": "prepare"
         if st.get("prepare_nonce")
         else ("check" if st.get("readiness_nonce") else None),
+        # Versions of a custom engine (None for the four official choices).
+        "custom": _safe_custom(engine_id) if spec.custom is not None else None,
     }
+
+
+def _safe_custom(engine_id: str) -> dict[str, Any]:
+    try:
+        return custom_models.status(engine_id)
+    except Exception as e:  # pragma: no cover - status must always render
+        return {"error": str(e), "versions": []}
 
 
 def _safe_readiness(
@@ -150,8 +165,13 @@ def _safe_describe(engine_id: str) -> dict[str, Any]:
         return {"error": str(e)}
 
 
-def assert_engine_ready(engine_id: str) -> None:
-    """Raise ValueError (permanent, user-readable) unless the engine can run now."""
+def assert_engine_ready(engine_id: str, custom_version: str | None = None) -> None:
+    """Raise ValueError (permanent, user-readable) unless the engine can run now.
+
+    ``custom_version``: the model version a document was started with (custom
+    engines); it is verified against its import manifest, like official files
+    are verified against the catalog.
+    """
     spec = catalog.get_engine(engine_id)
     compat.ensure_compatible(engine_id)  # worker: includes Docling fingerprints
     rt = runtime.probe_runtime(engine_id)
@@ -160,8 +180,32 @@ def assert_engine_ready(engine_id: str) -> None:
             f"OCR engine '{spec.display_name}' is selected but its runtime is "
             f"{rt.status}: {rt.detail or ''} Open Settings → OCR Engine Manager."
         )
-    ms = store.model_status(engine_id)
+    ms = store.model_status(engine_id, custom_version)
+    if ms.installed and spec.custom is not None:
+        # The manifest is the only trust anchor of a custom model, and every
+        # fine-tune of one base model has the same size: re-read the whole file
+        # for each document instead of trusting the (size, mtime) hash cache.
+        version = custom_version or custom_models.active_version(engine_id)
+        deep = (
+            custom_models.check_version(engine_id, version, deep=True)
+            if version
+            else None
+        )
+        if deep is None or not deep.verified:
+            raise ValueError(
+                f"OCR engine '{spec.display_name}' is selected but its model is "
+                f"corrupted ({deep.detail if deep else 'no active version'}). Import / "
+                "activate a valid version with the admin CLI, or select another "
+                "engine in Settings → OCR Engine Manager."
+            )
     if not ms.installed:
+        if spec.custom is not None:
+            why = "; ".join(f.detail or f.rel_path for f in ms.files if not f.verified)
+            raise ValueError(
+                f"OCR engine '{spec.display_name}' is selected but its model is "
+                f"{ms.status} ({why}). Import / activate a valid version with the "
+                "admin CLI, or select another engine in Settings → OCR Engine Manager."
+            )
         raise ValueError(
             f"OCR engine '{spec.display_name}' is selected but its model is "
             f"{ms.status}. Reinstall it in Settings → OCR Engine Manager."

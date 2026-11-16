@@ -193,9 +193,9 @@ entrypoint, mã Docling / Content Core.
 
 | | Trước | Sau |
 |---|---|---|
-| `open_notebook` container ID | `4af860cc7335…` | giống hệt |
-| `surrealdb` container ID | `a50b689a4c41…` | giống hệt |
-| Image ứng dụng | `sha256:7d26c1203a65…` (`chatbot5400:local`) | giống hệt |
+| `open_notebook` container ID | (lược bỏ trong bản công khai) | giống hệt |
+| `surrealdb` container ID | (lược bỏ trong bản công khai) | giống hệt |
+| Image ứng dụng | `chatbot5400:local` (mã image lược bỏ) | giống hệt |
 | Thời điểm start | 2026-11-12 14:41 UTC | giống hệt |
 | Restart count | 0 / 0 | 0 / 0 |
 | `/health` | 200 | 200 |
@@ -214,7 +214,7 @@ không đọc giá trị bí mật.
 
 | Thành phần | Hiện có | Ghi chú |
 |---|---|---|
-| Thư mục `/home/admin/cb5400-ocr-accept/work/` | 20 thư mục, 41 GB (dữ liệu thuộc root) | mỗi lượt Docker acceptance một thư mục; Phase 9A thêm 2 |
+| Thư mục `/srv/example/cb5400-ocr-accept/work/` | 20 thư mục, 41 GB (dữ liệu thuộc root) | mỗi lượt Docker acceptance một thư mục; Phase 9A thêm 2 |
 | Image `chatbot5400:ocr-accept` / `-old` / `-notess` | 2,6 + 2,5 + 2,5 GB | image nghiệm thu |
 | Image `node:22-slim` | 0,3 GB | chạy test frontend |
 | Volume ẩn danh do nghiệm thu tạo | 36 (8B: 14, 8C: 2, 8D: 16, 9A: 4) | danh sách: `acceptance-anonymous-volumes.txt`, `evidence/phase8c…9a/preflight/anonymous-volumes-created-in-*.txt` |
@@ -228,7 +228,7 @@ Image `chatbot5400:local` và `chatbot5400:rollback-pre-v1.0.4-…` là của pr
 
 | Bundle | Nội dung | Trạng thái |
 |---|---|---|
-| `/home/admin/cb5400-ocr-accept/phase9a-backup.bundle` | `release/ocr-engine-manager-rc1`, `local/ocr-phase8c`, `local/ocr-phase8b` — toàn bộ lịch sử Phase 0 → 9A | tạo mới, đã `git bundle verify` |
+| `/srv/example/cb5400-ocr-accept/phase9a-backup.bundle` | `release/ocr-engine-manager-rc1`, `local/ocr-phase8c`, `local/ocr-phase8b` — toàn bộ lịch sử Phase 0 → 9A | tạo mới, đã `git bundle verify` |
 | `phase8b-backup.bundle`, `phase8c-backup.bundle`, `phase8d-backup.bundle` | các mốc trước | giữ nguyên, không ghi đè |
 
 Khôi phục từ bundle trên máy khác: `git clone phase9a-backup.bundle -b release/ocr-engine-manager-rc1 <thư mục>`.
@@ -254,7 +254,7 @@ không an toàn. Branch đã sẵn sàng cục bộ và nằm trong bundle.
 
 ```bash
 # (a) trên máy chủ này, sau khi tự đăng nhập GitHub theo cách của đơn vị (credential helper / SSH key / gh):
-cd /home/admin/cb5400-ocr-accept/src
+cd /srv/example/cb5400-ocr-accept/src
 git push origin release/ocr-engine-manager-rc1:refs/heads/release/ocr-engine-manager-rc1
 
 # (b) trên máy đã có quyền: sao chép phase9a-backup.bundle sang, rồi

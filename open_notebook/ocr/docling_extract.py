@@ -19,8 +19,10 @@ Remove this module once content-core accepts OCR options upstream.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
+from dataclasses import replace
 from typing import Any
 
 from loguru import logger
@@ -92,13 +94,58 @@ def _docling_routes(mime: str, document_engine: str) -> bool:
 async def should_use_native_ocr(
     file_path: str, document_engine: str, ocr: OcrSettings
 ) -> bool:
-    # Cheap pre-check (is_image=True is the most permissive case).
-    if not file_path or not native_path_required(ocr, is_image=True):
+    if not file_path:
         return False
     from content_core.content.identification import get_file_type
 
+    # Cheap pre-check (is_image=True is the most permissive case).
+    if native_path_required(ocr, is_image=True):
+        mime = await get_file_type(file_path)
+        return _decide(mime, document_engine, ocr)
+    # Default configuration: content-core's own path, with ONE exception (D-33).
+    # content-core cannot be given an OCR mode, so a PDF that the opt-in rule
+    # wants read in full-page mode is converted here, with the same engine.
+    if not (ocr.enabled and _auto_full_page_enabled()):
+        return False
+    decision = await asyncio.to_thread(_decide_ocr_mode, file_path, ocr)
+    if not decision.triggered:
+        _log_ocr_mode(ocr.engine, decision)
+        return False
     mime = await get_file_type(file_path)
-    return _decide(mime, document_engine, ocr)
+    return _decide(mime, document_engine, replace(ocr, force_full_page=True))
+
+
+def _auto_full_page_enabled() -> bool:
+    from open_notebook.ocr import pdf_prep
+
+    return pdf_prep.auto_full_page_enabled()
+
+
+def _decide_ocr_mode(path: str, ocr: OcrSettings) -> Any:
+    from open_notebook.ocr import pdf_prep
+
+    return pdf_prep.decide_ocr_mode(path, ocr.enabled, ocr.force_full_page)
+
+
+def _log_ocr_mode(engine: str, decision: Any) -> None:
+    """Engine, configured / effective mode, reason and ratios — never any text."""
+    from open_notebook.ocr import pdf_prep
+
+    if decision.reason == pdf_prep.REASON_MIXED:
+        logger.warning(
+            decision.describe(engine)
+            + " — the document mixes scanned pages under tilted visible text with "
+            "pages of ordinary PDF text. Docling has one OCR mode per document, so "
+            "the configured mode is kept; text under the tilted boxes may be "
+            "missing. Process such a file with Force Full Page OCR if the scanned "
+            "pages matter more than the text layer."
+        )
+    elif decision.reason not in (
+        pdf_prep.REASON_FLAG_OFF,
+        pdf_prep.REASON_OCR_DISABLED,
+        pdf_prep.REASON_NOT_A_PDF,
+    ):
+        logger.info(decision.describe(engine))
 
 
 def _decide(mime: str, document_engine: str, ocr: OcrSettings) -> bool:
@@ -171,7 +218,12 @@ def build_pipeline_options(
     from docling.datamodel.pipeline_options import PdfPipelineOptions
 
     kwargs: dict[str, Any] = {
-        "ocr_options": build_ocr_options(ocr.engine, ocr.force_full_page, scale=scale)
+        "ocr_options": build_ocr_options(
+            ocr.engine,
+            ocr.force_full_page,
+            scale=scale,
+            custom_version=ocr.custom_version,
+        )
     }
     if not for_image:
         kwargs.update(
@@ -233,16 +285,25 @@ def convert_document(
     sideways or upside down are corrected in a temporary copy (every engine,
     when Tesseract's orientation data is installed), and with a Tesseract
     engine the OCR render scale follows the scan resolution. Other file types
-    are converted exactly as before.
+    are converted exactly as before. With ``OCR_AUTO_FULL_PAGE_ON_WATERMARK``
+    the OCR mode of the document is decided here too (D-33).
     """
     from open_notebook.ocr import pdf_prep, runtime
 
+    # D-33 (opt-in): a scan under tilted visible text boxes is read in Docling's
+    # full-page OCR mode. Only the mode of THIS conversion changes; the saved
+    # setting, the file and every other document are untouched.
+    decision = _decide_ocr_mode(path, ocr)
+    _log_ocr_mode(ocr.engine, decision)
+    if decision.triggered:
+        ocr = replace(ocr, force_full_page=True)
     prep = pdf_prep.PdfPrep()
     try:
         if ocr.enabled:
             prep = pdf_prep.prepare(path, runtime.tesseract_cmd())
             if catalog.get_engine(ocr.engine).docling_kind != "tesseract":
                 prep.scale = None  # measured for Tesseract only
+        prep.mode = decision
         converter = build_converter(cc_config, ocr, scale=prep.scale)
         result = converter.convert(prep.path or path)
     finally:
@@ -255,6 +316,7 @@ def convert_file(
 ) -> tuple[str, dict[str, Any]]:
     """Synchronous conversion (same blocking behaviour as content-core)."""
     started = time.time()
+    ocr = ocr.pinned()  # a custom engine reads ONE model version for the whole file
     result, converter, prep = convert_document(path, cc_config, ocr)
     doc = result.document
     fmt = getattr(cc_config, "docling_output_format", "markdown")
@@ -269,11 +331,23 @@ def convert_file(
         "ocr_engine": ocr.engine,
         "ocr_models": actual_ocr_models(converter),
         "ocr_seconds": round(time.time() - started, 2),
+        **_custom_meta(ocr),
         **prep.as_meta(),
         **pipeline_identity(converter),
         **conversion_outcome(result, path),
     }
     return output, meta
+
+
+def _custom_meta(ocr: OcrSettings) -> dict[str, Any]:
+    """Which custom model version produced the text (evidence; custom engines only)."""
+    info = describe(ocr.engine, ocr.custom_version).get("custom_model")
+    if not info:
+        return {}
+    return {
+        "ocr_model_version": info.get("version"),
+        "ocr_model_sha256": info.get("sha256"),
+    }
 
 
 def conversion_outcome(result: Any, path: str) -> dict[str, Any]:
@@ -324,15 +398,20 @@ async def extract_with_selected_ocr(
     from content_core.common import ExtractionOutput
     from content_core.content.identification import get_file_type
 
-    if ocr.engine != "rapidocr":
+    ocr = ocr.pinned()
+    if ocr.custom_version is not None:
+        # Custom engine: the frozen version is verified against its manifest.
+        assert_engine_ready(ocr.engine, ocr.custom_version)
+    elif ocr.engine != "rapidocr":
         assert_engine_ready(
             ocr.engine
         )  # explicit error, never a silent fallback (D-07)
     mime = await get_file_type(file_path)
-    info = describe(ocr.engine)
+    info = describe(ocr.engine, ocr.custom_version)
     logger.info(
         f"Extracting document via Docling with OCR engine={ocr.engine} "
-        f"({info['docling_class']}, lang={info['lang']}, device={info['device']}, "
+        f"({info['docling_class']}, model={info['model']}, lang={info['lang']}, "
+        f"device={info['device']}, "
         f"threads={ocr.num_threads or 'docling-default'}, full_page={ocr.force_full_page})"
     )
     content, meta = convert_file(file_path, cc_config, ocr)
@@ -347,6 +426,14 @@ async def extract_with_selected_ocr(
         f"conversion_errors={meta.get('conversion_errors')}, "
         f"orientation_corrected_pages={sorted(meta.get('rotated_pages') or {})})"
     )
+    if ocr.custom_version is not None:
+        # One version from the first page to the last, whatever was activated
+        # meanwhile (evidence for docs/ocr/OCR_CUSTOM_MODEL_MANAGER.md).
+        logger.info(
+            f"OCR custom model used for the whole document: engine={ocr.engine} "
+            f"version={meta.get('ocr_model_version')} "
+            f"sha256={meta.get('ocr_model_sha256')} lang={info['lang']}"
+        )
     expected = {
         "rapidocr": "RapidOcrModel",
         "tesseract": "TesseractOcrCliModel",

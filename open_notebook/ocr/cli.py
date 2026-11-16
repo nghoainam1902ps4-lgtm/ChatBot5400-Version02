@@ -8,6 +8,12 @@
     python -m open_notebook.ocr.cli bundle create --engines E [E...] --out DIR [--models-only]
     python -m open_notebook.ocr.cli bundle verify DIR
     python -m open_notebook.ocr.cli bundle install DIR
+    python -m open_notebook.ocr.cli custom import --file FILE --version v1 [--notes TEXT]
+    python -m open_notebook.ocr.cli custom list | status [--json]
+    python -m open_notebook.ocr.cli custom verify --version v1
+    python -m open_notebook.ocr.cli custom activate --version v1
+    python -m open_notebook.ocr.cli custom rollback
+    python -m open_notebook.ocr.cli custom remove --version v1   # inactive versions only
 
 In Docker:  docker compose exec open_notebook uv run --no-sync python -m open_notebook.ocr.cli status
 
@@ -252,7 +258,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     from open_notebook.ocr.status import engine_status
 
     active = _active_engine() if not args.no_db else None
-    rows = [engine_status(e, active) for e in catalog.ENGINE_IDS]
+    rows = [engine_status(e, active) for e in catalog.ALL_ENGINE_IDS]
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2, default=str))
         return 0
@@ -347,7 +353,17 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 def cmd_readiness(args: argparse.Namespace) -> int:
     from open_notebook.ocr import readiness
 
-    engines = args.engines or list(catalog.ENGINE_IDS)
+    if args.engines:
+        engines = args.engines
+    else:
+        # A deployment that never imported a custom model must still be able to
+        # get exit code 0 here: a custom engine counts once it has a version.
+        from open_notebook.ocr import custom_models
+
+        engines = [
+            *catalog.ENGINE_IDS,
+            *(c for c in catalog.CUSTOM_ENGINE_IDS if custom_models.active_version(c)),
+        ]
     rows = []
     for engine_id in engines:
         if args.check:
@@ -396,6 +412,229 @@ def cmd_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- custom (fine-tuned, versioned) models ------------------------------------------
+
+
+def _fmt_time(ts: Any) -> str:
+    import time as _time
+
+    try:
+        return _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(float(ts)))
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _print_versions(info: dict[str, Any]) -> None:
+    if not info["versions"]:
+        print("  (no version imported)")
+        return
+    for v in info["versions"]:
+        flag = "ACTIVE" if v["active"] else ("previous" if v["previous"] else "")
+        smoke = v.get("smoke") or {}
+        verification = (v.get("verification") or {}).get("status", "?")
+        print(
+            f"  {v['version']:<12} {flag:<8} size={v['size']:>10} sha256={v['sha256']}"
+        )
+        print(
+            f"  {'':<12} imported={_fmt_time(v['imported_at'])} "
+            f"verification={verification} file={'ok' if v['file_ok'] else 'CHANGED'} "
+            f"smoke={'ok' if smoke.get('ok') else 'FAILED'}"
+            f"{'' if smoke.get('cer') is None else ' (CER ' + format(smoke['cer'], '.1%') + ')'} "
+            f"readiness={v['readiness_state']}"
+        )
+        if not v["file_ok"]:
+            print(f"  {'':<12} PROBLEM: {v['file_detail']}")
+        if v.get("duplicate_of"):
+            print(f"  {'':<12} same content as: {', '.join(v['duplicate_of'])}")
+        if v.get("notes"):
+            print(f"  {'':<12} notes: {v['notes']}")
+
+
+def cmd_custom(args: argparse.Namespace) -> int:
+    from open_notebook.ocr import custom_models as cm
+
+    engine_id = args.engine
+    spec = catalog.get_engine(engine_id)
+    try:
+        if args.action == "import":
+            _log(f"importing {args.file} as {spec.display_name} version {args.version}")
+            manifest = cm.import_model(engine_id, args.file, args.version, args.notes)
+            _log(
+                f"stored {manifest['rel_path']} ({manifest['size']} bytes, "
+                f"sha256 {manifest['sha256']})"
+            )
+            params = (manifest.get("traineddata") or {}).get("config_params") or []
+            _log(
+                "embedded Tesseract parameters (checked against the allow-list): "
+                + (", ".join(f"{p['name']}={p['value']}" for p in params) or "none")
+            )
+            _log(f"tesseract smoke test: {manifest['smoke']['detail']}")
+            if manifest.get("duplicate_of"):
+                _log(
+                    "WARNING: identical content to version(s) "
+                    + ", ".join(manifest["duplicate_of"])
+                )
+            if args.skip_readiness:
+                _log("readiness check skipped (--skip-readiness)")
+            elif not runtime.docling_available():
+                _log("readiness check skipped: Docling is not installed here")
+            else:
+                from open_notebook.ocr import readiness
+
+                _log("readiness check (full Docling pipeline, no network)...")
+                r = readiness.check(engine_id, custom_version=args.version)
+                state = (r.get("readiness") or {}).get("state")
+                _log(f"readiness: {state}")
+                if (r.get("check") or {}).get("error"):
+                    _log(f"readiness error: {r['check']['error']}")
+            active = cm.active_version(engine_id)
+            _log(
+                f"version {args.version} is imported but NOT active "
+                f"(active version: {active or 'none'}). Activate it with: "
+                f"custom activate --version {args.version}"
+            )
+            return 0
+        if args.action in ("list", "status"):
+            info = cm.status(engine_id)
+            if args.json:
+                print(json.dumps(info, ensure_ascii=False, indent=2, default=str))
+                return 0
+            print(f"{spec.display_name} ({engine_id})")
+            if args.action == "status":
+                from open_notebook.ocr.status import engine_status
+
+                engine = None if args.no_db else _active_engine()
+                st = engine_status(engine_id, engine)
+                print(f"  OCR engine in use     : {engine or '? (database not read)'}")
+                print(
+                    f"  engine state          : {st['state']} (runtime "
+                    f"{st['runtime']['status']} {st['runtime'].get('version') or ''}, "
+                    f"model {st['model']['status']})"
+                )
+                print(f"  active version        : {info['active_version'] or 'none'}")
+                print(f"  previous version      : {info['previous_version'] or 'none'}")
+                print(f"  activated at          : {_fmt_time(info['activated_at'])}")
+                print(f"  offline readiness     : {st['readiness'].get('state')}")
+                print(
+                    f"  languages             : {st['options'].get('lang')} "
+                    f"({info['english_env']}={'true' if info['with_english'] else 'false'})"
+                )
+                print(f"  models directory      : {info['models_dir']}")
+                print(f"  manifests directory   : {info['manifests_dir']}")
+                if st.get("error"):
+                    print(f"  error                 : {st['error']}")
+                print("  versions:")
+            _print_versions(info)
+            return 0
+        if args.action == "verify":
+            versions = (
+                [args.version]
+                if args.version
+                else [m["version"] for m in cm.list_versions(engine_id)]
+            )
+            if not versions:
+                _log("no version imported")
+                return 1
+            failed = 0
+            for version in versions:
+                manifest = cm.verify_version(engine_id, version)
+                v = manifest["verification"]
+                _log(
+                    f"{version}: {v['status']}"
+                    + (f" — {v['detail']}" if v.get("detail") else "")
+                    + f" (sha256 in manifest {manifest['sha256']})"
+                )
+                failed += v["status"] != cm.VERIFIED
+            return 1 if failed else 0
+        if args.action == "activate":
+            before = cm.active_version(engine_id)
+            registry = cm.activate_version(engine_id, args.version)
+            _log(
+                f"active version: {registry['active_version']} (was {before or 'none'}). "
+                "Documents already being processed keep the version they started with."
+            )
+            _note_readiness(engine_id)
+            return 0
+        if args.action == "rollback":
+            before = cm.active_version(engine_id)
+            registry = cm.rollback(engine_id)
+            _log(
+                f"rolled back: active version {registry['active_version']} (was {before})"
+            )
+            _note_readiness(engine_id)
+            return 0
+        if args.action == "remove":
+            cm.require_version(engine_id, args.version)
+            if not args.force:
+                running = _running_ocr_jobs()
+                if running is None:
+                    _log(
+                        "ERROR: could not check whether documents are being processed "
+                        "(database unreachable); nothing was removed. Use --force only "
+                        "when the application is stopped."
+                    )
+                    return 1
+                if running:
+                    _log(
+                        f"ERROR: {running} OCR job(s) are running; a running document "
+                        "keeps reading the version it started with. Nothing was "
+                        "removed — try again when processing has finished."
+                    )
+                    return 1
+            registry = cm.remove_version(engine_id, args.version)
+            _log(
+                f"removed version {args.version} (active version: "
+                f"{registry['active_version'] or 'none'}, rollback target: "
+                f"{registry['previous_version'] or 'none'})"
+            )
+            return 0
+    except (cm.CustomModelError, store.LockBusy) as e:
+        _log(f"ERROR: {e}")
+        return 1
+    return 2
+
+
+_OCR_JOB_COMMANDS = (
+    "process_source",
+    "ocr_test_engine",
+    "ocr_prepare_engine",
+    "ocr_check_readiness",
+)
+
+
+def _running_ocr_jobs() -> int | None:
+    """Jobs that may be reading a model file right now (None: database unreachable)."""
+
+    async def _count() -> int:
+        from open_notebook.database.repository import repo_query
+
+        rows = await repo_query(
+            "SELECT count() AS n FROM command WHERE name IN $names "
+            "AND status = 'running' GROUP ALL",
+            {"names": list(_OCR_JOB_COMMANDS)},
+        )
+        return int(rows[0].get("n", 0)) if rows else 0
+
+    try:
+        return asyncio.run(asyncio.wait_for(_count(), timeout=20))
+    except Exception as e:
+        _log(f"could not query running jobs: {e}")
+        return None
+
+
+def _note_readiness(engine_id: str) -> None:
+    from open_notebook.ocr import readiness
+
+    state = readiness.readiness_status(engine_id).get("state")
+    if state != readiness.OFFLINE_READY:
+        _log(
+            f"offline readiness of the active version: {state}. Run "
+            f"'readiness --engines {engine_id} --check' (or 'Check' in Settings)."
+        )
+    else:
+        _log("offline readiness of the active version: offline_ready")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="python -m open_notebook.ocr.cli",
@@ -414,7 +653,8 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("install-model", help="download/verify an engine's model files")
     s.add_argument(
-        "engine", choices=[e for e in catalog.ENGINE_IDS if catalog.ENGINES[e].files]
+        "engine",
+        choices=[e for e in catalog.ALL_ENGINE_IDS if catalog.ENGINES[e].files],
     )
     s.set_defaults(func=cmd_install_model)
 
@@ -431,7 +671,7 @@ def main(argv: list[str] | None = None) -> int:
         help="ONLINE: install missing models, warm Docling/RapidOCR weights, verify offline readiness",
     )
     s.add_argument(
-        "--engines", nargs="+", required=True, choices=list(catalog.ENGINE_IDS)
+        "--engines", nargs="+", required=True, choices=list(catalog.ALL_ENGINE_IDS)
     )
     s.add_argument(
         "--install-runtime",
@@ -447,7 +687,7 @@ def main(argv: list[str] | None = None) -> int:
         "readiness",
         help="offline readiness status (add --check to run the local-only check)",
     )
-    s.add_argument("--engines", nargs="*", choices=list(catalog.ENGINE_IDS))
+    s.add_argument("--engines", nargs="*", choices=list(catalog.ALL_ENGINE_IDS))
     s.add_argument("--check", action="store_true")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_readiness)
@@ -479,6 +719,104 @@ def main(argv: list[str] | None = None) -> int:
     bi = bs.add_parser("install")
     bi.add_argument("dir")
     s.set_defaults(func=cmd_bundle)
+
+    s = sub.add_parser(
+        "custom",
+        help="custom fine-tuned Tesseract model versions (import, verify, switch)",
+        description=(
+            "Manage the versions of a custom fine-tuned Tesseract model "
+            "(Tesseract Vietnamese Agri). Files are only ever read from a local "
+            "path; nothing is downloaded. Importing never activates a version."
+        ),
+    )
+    cs = s.add_subparsers(dest="action", required=True)
+
+    def _engine_arg(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--engine",
+            default=catalog.CUSTOM_ENGINE_IDS[0],
+            choices=list(catalog.CUSTOM_ENGINE_IDS),
+            help="custom engine (default: %(default)s)",
+        )
+
+    ci = cs.add_parser(
+        "import",
+        help="check a .traineddata file and store it as a new, inactive version",
+        description=(
+            "Stage the file, compute its SHA-256, load it with the real Tesseract, "
+            "run a smoke OCR, store it as a new version and run the offline "
+            "readiness check. The active version is not changed."
+        ),
+    )
+    ci.add_argument("--file", required=True, help="local path of the .traineddata file")
+    ci.add_argument(
+        "--version",
+        required=True,
+        help="new version id, e.g. v2 (letters, digits, - _)",
+    )
+    ci.add_argument("--notes", default="", help="free text stored in the manifest")
+    ci.add_argument(
+        "--skip-readiness",
+        action="store_true",
+        help="do not run the Docling pipeline readiness check after the import",
+    )
+    _engine_arg(ci)
+    for name, text in (
+        ("list", "list imported versions"),
+        ("status", "engine state, active / previous version and all versions"),
+    ):
+        cl = cs.add_parser(name, help=text, description=text.capitalize() + ".")
+        cl.add_argument("--json", action="store_true")
+        if name == "status":
+            cl.add_argument(
+                "--no-db",
+                action="store_true",
+                help="do not query the database for the OCR engine in use",
+            )
+        _engine_arg(cl)
+    cv = cs.add_parser(
+        "verify",
+        help="re-check a version against its manifest (full SHA-256 + Tesseract load)",
+        description=(
+            "Re-read the model file, compare size and SHA-256 with the import "
+            "manifest and load it with Tesseract. Without --version: every version."
+        ),
+    )
+    cv.add_argument("--version")
+    _engine_arg(cv)
+    ca = cs.add_parser(
+        "activate",
+        help="make a verified version the one new documents use",
+        description=(
+            "Verify the version, then make it active. Documents already being "
+            "processed keep the version they started with. The previous active "
+            "version becomes the rollback target."
+        ),
+    )
+    ca.add_argument("--version", required=True)
+    _engine_arg(ca)
+    cr = cs.add_parser(
+        "rollback",
+        help="return to the version that was active before the last switch",
+        description="Verify the previous version and make it active again.",
+    )
+    _engine_arg(cr)
+    cx = cs.add_parser(
+        "remove",
+        help="delete an inactive version (its model file and manifest)",
+        description=(
+            "Delete a version that is not active. Refused while documents are "
+            "being processed. Official models are never touched."
+        ),
+    )
+    cx.add_argument("--version", required=True)
+    cx.add_argument(
+        "--force",
+        action="store_true",
+        help="skip the running-document check (only when the application is stopped)",
+    )
+    _engine_arg(cx)
+    s.set_defaults(func=cmd_custom)
 
     args = ap.parse_args(argv)
     return int(args.func(args))

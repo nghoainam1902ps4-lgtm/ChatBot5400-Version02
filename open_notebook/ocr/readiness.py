@@ -179,8 +179,13 @@ def _rapidocr_package_dictionaries() -> list[list[Any]]:
         return []
 
 
-def fingerprint(engine_id: str) -> dict[str, Any]:
-    """Everything a readiness verdict depends on; a change makes it stale."""
+def fingerprint(engine_id: str, custom_version: str | None = None) -> dict[str, Any]:
+    """Everything a readiness verdict depends on; a change makes it stale.
+
+    Custom engines: the verdict belongs to ONE model version — its id and the
+    SHA-256 recorded when it was imported are part of the fingerprint, so a
+    verdict never carries over to another version or to a replaced file.
+    """
     from open_notebook.ocr.options import rapidocr_force_cpu, rapidocr_persistent
 
     spec = catalog.get_engine(engine_id)
@@ -204,6 +209,11 @@ def fingerprint(engine_id: str) -> dict[str, Any]:
     else:
         fp["easyocr"] = runtime._version("easyocr")
     fp["quality"] = quality_config(engine_id)
+    if spec.custom is not None:
+        from open_notebook.ocr import custom_models
+
+        version = custom_version or custom_models.active_version(engine_id)
+        fp["custom_model"] = custom_models.fingerprint_part(engine_id, version)
     return fp
 
 
@@ -249,13 +259,37 @@ def _child_env(local_only: bool) -> dict[str, str]:
     return env
 
 
-def run_pipeline_check(engine_id: str, mode: str) -> dict[str, Any]:
-    """Run the production pipeline on the sample in a child process."""
-    catalog.get_engine(engine_id)
+def run_pipeline_check(
+    engine_id: str, mode: str, custom_version: str | None = None
+) -> dict[str, Any]:
+    """Run the production pipeline on the sample in a child process.
+
+    Custom engines: the model version is resolved HERE, handed to the child
+    explicitly and recorded with the verdict, so a version switched during the
+    check can never be credited with another version's result.
+    """
+    spec = catalog.get_engine(engine_id)
+    child_args = ["_child", engine_id]
+    if spec.custom is not None:
+        from open_notebook.ocr import custom_models
+
+        custom_version = custom_version or custom_models.active_version(engine_id)
+        if custom_version is None:
+            return {
+                "success": False,
+                "pipeline_ok": False,
+                "error": "no model version is activated",
+                "mode": mode,
+                "checked_at": time.time(),
+                "seconds": 0.0,
+                "custom_version": None,
+                "fingerprint": fingerprint(engine_id),
+            }
+        child_args.append(custom_version)
     started = time.time()
     try:
         proc = subprocess.run(
-            [sys.executable, "-m", "open_notebook.ocr.readiness", "_child", engine_id],
+            [sys.executable, "-m", "open_notebook.ocr.readiness", *child_args],
             # The network is blocked for every check except "online": an
             # "offline" verdict must not depend on the Internet probe being right.
             env=_child_env(mode != "online"),
@@ -282,11 +316,26 @@ def run_pipeline_check(engine_id: str, mode: str) -> dict[str, Any]:
         and result.get("table_model") == "docling_tableformer"
         and result.get("table_mode") == "accurate"
     )
-    result["fingerprint"] = fingerprint(engine_id)
+    if spec.custom is not None:
+        result["custom_version"] = custom_version
+        used = (result.get("custom_model") or {}).get("version")
+        if result.get("success") and used != custom_version:
+            result.update(
+                success=False,
+                pipeline_ok=False,
+                error=f"the check ran version {used!r}, not {custom_version!r}",
+            )
+    result["fingerprint"] = fingerprint(engine_id, custom_version)
     return result
 
 
 def record(engine_id: str, check: dict[str, Any]) -> None:
+    if catalog.get_engine(engine_id).custom is not None:
+        from open_notebook.ocr import custom_models
+
+        if check.get("custom_version"):
+            custom_models.record_readiness(engine_id, check["custom_version"], check)
+        return
     st = store.read_state(engine_id)
     checks = dict(st.get("readiness") or {})
     checks[check["mode"]] = {k: v for k, v in check.items() if k != "text"}
@@ -294,14 +343,37 @@ def record(engine_id: str, check: dict[str, Any]) -> None:
 
 
 def readiness_status(
-    engine_id: str, rt_status: str | None = None, model_status: str | None = None
+    engine_id: str,
+    rt_status: str | None = None,
+    model_status: str | None = None,
+    custom_version: str | None = None,
+    base_fingerprint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Computed readiness of one engine (cheap: reads manifests + probes)."""
+    """Computed readiness of one engine (cheap: reads manifests + probes).
+
+    Custom engines: of ``custom_version`` (default: the active version); the
+    checks come from that version's manifest. ``base_fingerprint`` lets a
+    caller that lists several versions compute the shared part once.
+    """
     spec = catalog.get_engine(engine_id)
     rt_status = rt_status or runtime.probe_runtime(engine_id).status
-    model_status = model_status or store.model_status(engine_id).status
-    checks: dict[str, Any] = store.read_state(engine_id).get("readiness") or {}
-    current = fingerprint(engine_id)
+    checks: dict[str, Any]
+    if spec.custom is not None:
+        from open_notebook.ocr import custom_models
+
+        custom_version = custom_version or custom_models.active_version(engine_id)
+        model_status = (
+            model_status or store.model_status(engine_id, custom_version).status
+        )
+        checks = custom_models.readiness_checks(engine_id, custom_version)
+        current = dict(
+            base_fingerprint or fingerprint(engine_id, custom_version),
+            custom_model=custom_models.fingerprint_part(engine_id, custom_version),
+        )
+    else:
+        model_status = model_status or store.model_status(engine_id).status
+        checks = store.read_state(engine_id).get("readiness") or {}
+        current = fingerprint(engine_id)
 
     def fresh(c: dict[str, Any] | None) -> bool:
         return c is not None and bool(c) and c.get("fingerprint") == current
@@ -316,6 +388,7 @@ def readiness_status(
     best = max(fresh_no_network, key=lambda c: c.get("checked_at", 0), default=None)
     info = {
         "engine": engine_id,
+        **({"custom_version": custom_version} if spec.custom is not None else {}),
         "ocr_ok": any(
             bool(c and c.get("success")) for c in (online, local, offline) if fresh(c)
         ),
@@ -341,9 +414,9 @@ def readiness_status(
         state = RUNTIME_MISSING
     elif rt_status == runtime.RUNTIME_INCOMPATIBLE:
         state = INCOMPATIBLE
-    elif spec.files and model_status == "not_installed":
+    elif (spec.files or spec.custom) and model_status == "not_installed":
         state = MODEL_MISSING
-    elif spec.files and model_status in ("partial", "corrupted"):
+    elif (spec.files or spec.custom) and model_status in ("partial", "corrupted"):
         state = MODEL_INCOMPLETE
     elif best and best.get("pipeline_ok"):
         state = OFFLINE_READY
@@ -380,7 +453,25 @@ def prepare(engine_id: str, allow_download: bool = True, log=print) -> dict[str,
         return out
     online = internet_reachable()
     steps["internet"] = online
-    if spec.files and not store.model_status(engine_id).installed:
+    if spec.custom is not None and store.model_status(engine_id).status != "installed":
+        # A custom model is never downloaded: only its official prerequisite
+        # (orientation data) can be fetched here.
+        official = store.model_status(engine_id, include_custom=False)
+        if not official.installed and online and allow_download:
+            log(f"[{engine_id}] downloading prerequisite files")
+            steps["model_install"] = installer.install_models(engine_id).get("sources")
+        current = store.model_status(engine_id)
+        if not current.installed:
+            steps["model"] = current.status
+            out["error"] = (
+                "custom model not ready ("
+                + "; ".join(
+                    f.detail or f.rel_path for f in current.files if not f.verified
+                )
+                + "): import and activate a version with the admin CLI"
+            )
+            return out
+    elif spec.files and not store.model_status(engine_id).installed:
         if not (online and allow_download):
             missing = [
                 f.rel_path
@@ -416,15 +507,24 @@ def prepare(engine_id: str, allow_download: bool = True, log=print) -> dict[str,
     return out
 
 
-def check(engine_id: str) -> dict[str, Any]:
-    """Readiness check only (never downloads): offline if no Internet, else local_only."""
+def check(engine_id: str, custom_version: str | None = None) -> dict[str, Any]:
+    """Readiness check only (never downloads): offline if no Internet, else local_only.
+
+    ``custom_version``: check that version of a custom engine instead of the
+    active one (used right after an import, before anything is activated).
+    """
     mode = "local_only" if internet_reachable() else "offline"
-    result = run_pipeline_check(engine_id, mode)
+    if catalog.get_engine(engine_id).custom is not None:
+        result = run_pipeline_check(engine_id, mode, custom_version)
+    else:
+        result = run_pipeline_check(engine_id, mode)
     record(engine_id, result)
     return {
         "engine": engine_id,
         "check": {k: v for k, v in result.items() if k != "text"},
-        "readiness": readiness_status(engine_id),
+        "readiness": readiness_status(
+            engine_id, custom_version=result.get("custom_version")
+        ),
     }
 
 
@@ -458,17 +558,17 @@ def explain_offline_failure(exc: BaseException) -> str | None:
     return None
 
 
-def _child(engine_id: str) -> int:
+def _child(engine_id: str, custom_version: str | None = None) -> int:
     """Child-process entry: run the production pipeline test, print JSON."""
     from open_notebook.ocr.tester import run_engine_test
 
-    result = run_engine_test(engine_id)
+    result = run_engine_test(engine_id, custom_version=custom_version)
     result.pop("text", None)
     print(json.dumps(result, ensure_ascii=False, default=str))
     return 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 3 and sys.argv[1] == "_child":
-        sys.exit(_child(sys.argv[2]))
+    if len(sys.argv) in (3, 4) and sys.argv[1] == "_child":
+        sys.exit(_child(*sys.argv[2:]))
     sys.exit(2)

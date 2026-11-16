@@ -724,6 +724,19 @@ class OcrEngineStatus(BaseModel):
     # Offline readiness (docs/ocr/OCR_ONLINE_PREPARATION.md)
     readiness: Dict[str, Any] = Field(default_factory=dict)
     readiness_job: Optional[str] = None
+    # Custom engines only (docs/ocr/OCR_CUSTOM_MODEL_MANAGER.md): the imported
+    # model versions, the active / previous one and import instructions.
+    custom: Optional[Dict[str, Any]] = None
+
+
+class OcrCustomVersionRequest(BaseModel):
+    version: str = Field(
+        ...,
+        min_length=1,
+        max_length=32,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+        description="Id of an already imported version (import is CLI only).",
+    )
 
 
 class OcrConfig(BaseModel):

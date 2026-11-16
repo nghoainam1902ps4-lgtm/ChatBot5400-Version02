@@ -422,3 +422,78 @@ Quyết định của chủ dự án, thực hiện trong Phase 8D:
   sẽ dựng lại image không có Tesseract trong khi engine đang chọn vẫn là Tesseract.
 - `OCR_READINESS_TIMEOUT` sai định dạng không còn làm lỗi lúc import (trước đây làm API và worker không xử lý
   được nguồn); giá trị sai ⇒ 1800 giây.
+
+## D-33. Tự dùng Full Page OCR cho trang scan nằm dưới khung bao text hiển thị bị nghiêng (Phase 10G)
+
+**Vấn đề.** Docling 2.129.0, chế độ OCR mặc định (`BaseOcrModel.post_process_cells` → `_merge_ocr_and_pdf_cells`,
+ưu tiên `PDF_FIRST`): mọi ô text PDF *hiển thị* được giữ, và mọi ô OCR có bbox giao với bbox **thẳng trục** của
+một ô như vậy bị bỏ (mã nguồn tự ghi chú *"The R-tree bbox intersection is a weak criterion"*). Một dòng watermark
+chéo là một ô có bbox thẳng trục phủ gần hết trang, nên toàn bộ chữ OCR bên dưới bị loại; lớp OCR ẩn cũng bị loại
+theo cùng quy tắc. Đo trên PDF tổng hợp tái hiện cấu trúc (scan + lớp OCR ẩn + watermark 55°): giữ 0% ô OCR, 0% nội
+dung. Không phụ thuộc engine.
+
+**Quyết định.** Không sửa Docling, không sửa PDF. `pdf_prep.overlay_scan` đo từng trang bằng pdfium (hình học và
+số đếm, không đọc nội dung chữ); `pdf_prep.decide_ocr_mode` quyết định chế độ OCR **cho riêng tài liệu**;
+`docling_extract.convert_document` áp dụng bằng `OcrOptions.mode = FULL_PAGE` chính thức. Tính năng **opt-in**:
+`OCR_AUTO_FULL_PAGE_ON_WATERMARK=true`; mặc định tắt ⇒ không một dòng mã mới nào ảnh hưởng kết quả.
+
+**Bốn loại lớp được phân biệt**
+
+| Lớp | Nhận biết | Vai trò trong quyết định |
+|---|---|---|
+| Ảnh scan | hợp các ảnh phủ ≥ 50% trang (ngưỡng sẵn có của `pdf_prep`) | điều kiện cần |
+| Lớp OCR ẩn | text render mode 3 / 7 | không bao giờ gây nguy cơ; số ký tự ẩn là bằng chứng "nội dung nằm trong ảnh" |
+| Text hiển thị thông thường | bbox của đối tượng = tổng ô ký tự của chính nó (tỷ lệ 1,00 với mọi chữ song song trục, mọi cỡ chữ). Chữ **nghiêng** cũng là text thông thường khi các khung bao nghiêng của trang chứa ký tự hiển thị nhiều hơn khoảng trống (lớp văn bản hiển thị đi theo một bản scan bị lệch) | ≥ 400 ký tự và nhiều hơn ký tự ẩn ⇒ "trang văn bản điện tử": không có nguy cơ |
+| Khung bao nghiêng (watermark chéo) | bbox ≥ 1,5 lần tổng ô ký tự của chính nó **và** nghiêng ≥ 1° so với trục gần nhất | phần chúng chiếm trên ảnh, ngoài mọi ký tự hiển thị, ≥ 2% trang ⇒ trang có nguy cơ |
+
+**Vì sao không dùng ngưỡng góc cố định, và ngưỡng 50% / 10% ban đầu được thay thế nào.** Đo thực tế: mất nội dung
+tỷ lệ với *diện tích khung bao*, không với góc — một dòng dài nghiêng 2° đã mất 3,9 điểm phần trăm số từ, 5° mất
+11, 85° mất 24,5. Ngưỡng góc 10° dự định ban đầu sẽ bỏ sót các trường hợp này. Góc vì thế chỉ là điều kiện phụ
+(≥ 1°, loại phông chữ có số đo bất thường); đại lượng quyết định là *diện tích bị chiếm mà không có chữ* trên ảnh
+scan. Quan hệ đo được: số từ mất tăng đều theo diện tích đó, bằng 0,6–2,6 lần tùy khung bao nằm trên vùng nhiều
+hay ít chữ (dòng 55°: 1,1% → mất 3,0 điểm; 3,0% → 7,7; 13% → 27; 31% → 61; 56% → 91,5; 93% → 95,6). Ngưỡng 2% tách hai điểm đo gần nhau nhất (1,1% không kích hoạt, 3,0% kích hoạt). Ngưỡng
+scan giữ 50% vì với điều kiện "trên ảnh" phía trên nó không còn là ngưỡng nhạy.
+
+**Quy tắc cấp tài liệu** (Docling chỉ có một chế độ OCR cho cả tài liệu):
+
+- có ≥ 1 trang có nguy cơ và **không** có trang văn bản điện tử ⇒ `FULL_PAGE` cho tài liệu này;
+- có trang có nguy cơ **và** có trang văn bản điện tử ⇒ tài liệu **hỗn hợp**: giữ chế độ đã cấu hình, ghi `WARNING`.
+  Lý do: ép toàn trang làm trang điện tử mất 1,1–1,9 điểm phần trăm số từ (đo), và chưa có API chính thức để đặt
+  chế độ theo từng trang; không xây cơ chế tách / ghép PDF trong phase này;
+- OCR đang tắt ⇒ không làm gì (không tự bật OCR); Force Full Page đã bật thủ công ⇒ giữ nguyên, không phân tích;
+- giá trị Force Full Page trong cơ sở dữ liệu không bao giờ bị ghi.
+
+**Đường RapidOCR mặc định.** Cấu hình mặc định vẫn gọi nguyên `content_core.extract_content` (D-03). Content Core
+không nhận tham số chế độ OCR, nên khi cờ bật và tài liệu được quyết định `FULL_PAGE`, `should_use_native_ocr`
+chuyển **riêng tài liệu đó** sang lớp OCR của dự án với cùng engine RapidOCR — đúng đường đã dùng khi quản trị
+viên tự bật Force Full Page. Mọi tài liệu khác vẫn đi Content Core.
+
+**Chữ nghiêng lấp đầy khung bao.** Rà soát sau hiệu chuẩn cho thấy một trang scan mang lớp văn bản *hiển thị* có các
+dòng nghiêng từ 1,5° (đi theo độ lệch của bản scan) thỏa cả ba điều kiện góc / phình / chiếm trống, và sẽ bị OCR
+toàn trang xuyên qua chính lớp văn bản mà Docling đang giữ. Phân biệt bằng hình học: ở lớp văn bản như vậy phần
+diện tích khung bao **có** ký tự hiển thị lớn hơn phần trống (đo: 22,8% so với 3,1% ở 2°; 23,4% so với 5,2% ở 5°),
+còn ở watermark thì ngược lại dù nhiều ký tự đến đâu (watermark 9 dòng 30°, 486 ký tự: 18,3% so với 59,4%;
+cấu trúc gây lỗi: phần trống gấp hơn 10 lần). Trang "đầy hơn trống" tính các ký tự nghiêng là văn bản của trang.
+Không quyết định nào trên 38 PDF hiệu chuẩn thay đổi.
+
+**Không làm.** Không so khớp nội dung hay tên watermark; không hardcode tên tổ chức; không xoá watermark khỏi PDF;
+không dùng lớp OCR ẩn làm kết quả (đo trên tài liệu thật: chỉ 36–38% số từ trùng với Tesseract).
+
+**Hệ tọa độ và giới hạn đọc (bổ sung ở Phase 10H, sau review độc lập).** Khung bao được đo trong không gian người
+dùng **chưa xoay** của trang, lấy gốc là góc của page box: trang có `/Rotate` và trang có MediaBox không bắt đầu ở
+(0, 0) cho cùng số đo với trang thường (trước đó phần nằm ngoài chiều cao đã hoán đổi bị cắt, khiến quy tắc lặng lẽ
+không áp dụng). Vì bước này đọc một tệp tải lên **chưa tin cậy** trước cả Docling, nó có giới hạn như bước dò hướng
+trang: tối đa 2.000 trang, 20.000 đối tượng và 100.000 ký tự mỗi trang, 20 giây cho cả tài liệu; vượt giới hạn ⇒
+dừng, ghi một dòng cảnh báo chỉ gồm số, và tài liệu được chuyển đổi với chế độ đã cấu hình (`check_failed`). Trang
+không đọc được chỉ được ghi log ba lần đầu rồi một dòng tổng.
+
+**Giới hạn đã biết.** (0) Watermark được ghi **mỗi ký tự một đối tượng text** không tạo ra khung bao nghiêng nào ở
+mức đối tượng nên không được phát hiện, trong khi Docling vẫn ghép chúng thành các ô nghiêng (hướng an toàn: tài
+liệu được xử lý như trước). (1) Watermark **ngang** cỡ lớn có bbox khít chữ nên không được phát hiện; mức mất đo được
+3,3 điểm (chỉ các dòng nằm trong dải chữ watermark). (2) Khung bao nghiêng chiếm < 2% trang: không kích hoạt, mất
+tối đa khoảng 3 điểm. (3) Tài liệu hỗn hợp: không sửa, có cảnh báo. (4) Nguồn từ URL với cấu hình RapidOCR mặc định
+do Content Core tự tải và xử lý, không qua bước này (URL ingestion mặc định tắt, D-29). (5) Các ngưỡng được hiệu
+chuẩn trên PDF tổng hợp và một tài liệu thật; chúng là giá trị khởi điểm, chỉnh được bằng biến môi trường.
+
+Chi tiết số đo: [OCR_PHASE10G_REPORT.md](OCR_PHASE10G_REPORT.md).
+

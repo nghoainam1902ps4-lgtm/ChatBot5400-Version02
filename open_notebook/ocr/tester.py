@@ -20,7 +20,11 @@ SAMPLE = Path(__file__).parent / "assets" / "sample_vi.png"
 SAMPLE_GT = Path(__file__).parent / "assets" / "sample_vi.gt.txt"
 
 
-def run_engine_test(engine_id: str, base: OcrSettings | None = None) -> dict[str, Any]:
+def run_engine_test(
+    engine_id: str,
+    base: OcrSettings | None = None,
+    custom_version: str | None = None,
+) -> dict[str, Any]:
     from content_core import ContentCoreConfig
 
     from open_notebook.ocr.docling_extract import convert_file
@@ -33,8 +37,10 @@ def run_engine_test(engine_id: str, base: OcrSettings | None = None) -> dict[str
         engine=engine_id,
         num_threads=base.num_threads,
         force_full_page=base.force_full_page,
-    )
-    info = describe(engine_id)
+        # ``base`` describes the ACTIVE engine; its version is not ours.
+        custom_version=custom_version,
+    ).pinned()
+    info = describe(engine_id, ocr.custom_version)
     result: dict[str, Any] = {
         "engine": engine_id,
         "display_name": spec.display_name,
@@ -45,9 +51,13 @@ def run_engine_test(engine_id: str, base: OcrSettings | None = None) -> dict[str
         "success": False,
         "tested_at": time.time(),
     }
+    if info.get("custom_model"):
+        result["custom_model"] = info["custom_model"]
     started = time.time()
     try:
-        if engine_id != "rapidocr":
+        if ocr.custom_version is not None:
+            assert_engine_ready(engine_id, ocr.custom_version)
+        elif engine_id != "rapidocr":
             assert_engine_ready(engine_id)
         text, meta = convert_file(
             str(SAMPLE),

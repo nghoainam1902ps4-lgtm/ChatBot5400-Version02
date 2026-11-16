@@ -182,7 +182,7 @@ trình vận hành ở `RELEASE_CANDIDATE.md` §4.
 
 ## 11. Bằng chứng
 
-`/home/admin/cb5400-ocr-accept/evidence/phase8c/`:
+`/srv/example/cb5400-ocr-accept/evidence/phase8c/`:
 
 | Thư mục / file | Nội dung |
 |---|---|

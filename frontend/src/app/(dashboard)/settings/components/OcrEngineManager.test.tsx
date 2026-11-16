@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import type { OcrEngineStatus, OcrEnginesResponse } from '@/lib/types/api'
+import type { OcrCustomVersion, OcrEngineStatus, OcrEnginesResponse } from '@/lib/types/api'
 
 // useTranslation is mocked globally in setup.ts (t returns the key string).
 
@@ -11,6 +11,9 @@ const remove = vi.fn()
 const updateConfig = vi.fn()
 const prepare = vi.fn()
 const readinessCheck = vi.fn()
+const switchVersion = vi.fn()
+const rollbackVersion = vi.fn()
+const verifyVersion = vi.fn()
 
 vi.mock('@/lib/hooks/use-ocr', () => ({
   useOcrEngines: vi.fn(),
@@ -22,6 +25,9 @@ vi.mock('@/lib/hooks/use-ocr', () => ({
   useOcrJob: () => ({ data: undefined }),
   usePrepareOcrEngine: () => ({ mutate: prepare, isPending: false }),
   useOcrReadinessCheck: () => ({ mutate: readinessCheck, isPending: false }),
+  useActivateOcrCustomVersion: () => ({ mutate: switchVersion, isPending: false }),
+  useRollbackOcrCustomVersion: () => ({ mutate: rollbackVersion, isPending: false }),
+  useVerifyOcrCustomVersion: () => ({ mutate: verifyVersion, isPending: false }),
 }))
 
 import { useOcrEngines } from '@/lib/hooks/use-ocr'
@@ -298,4 +304,217 @@ describe('OcrEngineManager', () => {
     expect(screen.getByTestId('ocr-page-orientation')).toHaveTextContent('ocr.pageOrientation.osd_data_missing')
   })
 
+
+  // --- Phase 10: custom fine-tuned model (Tesseract Vietnamese Agri) --------------
+
+  // Made-up values: no checksum or size of a real model belongs in the source tree.
+  const SHA1 = '0123456789abcdef'.repeat(4)
+  const SHA2 = 'fedcba9876543210'.repeat(4)
+
+  function version(over: Partial<OcrCustomVersion>): OcrCustomVersion {
+    return {
+      version: 'v1',
+      active: false,
+      previous: false,
+      sha256: SHA1,
+      size: 12_300_000,
+      imported_at: 1_794_000_000,
+      notes: '',
+      smoke: { ok: true, cer: 0.005 },
+      verification: { status: 'verified' },
+      file_ok: true,
+      readiness_state: 'offline_ready',
+      ...over,
+    }
+  }
+
+  function agri(over: Partial<OcrEngineStatus> = {}, versions: OcrCustomVersion[] = []): OcrEngineStatus {
+    const active = versions.find((v) => v.active)
+    const previous = versions.find((v) => v.previous)
+    return engine({
+      id: 'tesseract_agri',
+      display_name: 'Tesseract Vietnamese Agri',
+      model_name: 'vie_agri (custom fine-tuned)',
+      model_version: 'managed versions',
+      quality: 'experimental',
+      state: active ? 'ready' : 'not_installed',
+      ready: !!active,
+      model: { status: active ? 'installed' : 'not_installed', installed_bytes: 0, files: [] },
+      custom: {
+        family: 'agri',
+        filename: 'vie_agri.traineddata',
+        active_version: active?.version ?? null,
+        previous_version: previous?.version ?? null,
+        versions,
+        with_english: false,
+        english_ok: null,
+        english_env: 'OCR_AGRI_WITH_ENGLISH',
+        prerequisites_ok: true,
+        models_dir: '/app/data/ocr/models/tesseract/custom/agri',
+        manifests_dir: '/app/data/ocr/manifests/custom/agri',
+        import_cli:
+          'python -m open_notebook.ocr.cli custom import --file /app/data/ocr-import/vie_agri.traineddata --version <id>',
+      },
+      ...over,
+    })
+  }
+
+  const agriRow = () => within(row('tesseract_agri'))
+
+  it('Agri card: fifth engine, shows the active version, size, SHA-256, import date and states', () => {
+    mockEngines([rapid, engine({}), agri({}, [version({ active: true })])])
+    render(<OcrEngineManager />)
+    expect(document.querySelectorAll('[data-engine]')).toHaveLength(3)
+    const r = agriRow()
+    expect(r.getByText('Tesseract Vietnamese Agri')).toBeInTheDocument()
+    expect(r.getByText('ocr.custom.badge')).toBeInTheDocument()
+    expect(r.getByTestId('custom-active-sha')).toHaveTextContent(SHA1)
+    const activeBlock = within(row('tesseract_agri').querySelector('[data-slot="custom-active"]') as HTMLElement)
+    expect(activeBlock.getByText('v1')).toBeInTheDocument()
+    expect(activeBlock.getByText('12 MB')).toBeInTheDocument()
+    expect(activeBlock.getByText('ocr.custom.verifyStatus.verified')).toBeInTheDocument()
+    expect(activeBlock.getByText('ocr.readiness.state.offlineReady')).toBeInTheDocument()
+    expect(activeBlock.getByText(new Date(1_794_000_000 * 1000).toLocaleString())).toBeInTheDocument()
+    // Use / test come from the ordinary engine actions; no remove, no install.
+    expect(r.getByRole('button', { name: /ocr.use/ })).toBeInTheDocument()
+    expect(r.getByRole('button', { name: /ocr.test/ })).toBeInTheDocument()
+    expect(r.queryByRole('button', { name: /ocr.removeModel/ })).toBeNull()
+    expect(r.queryByRole('button', { name: /ocr.install/ })).toBeNull()
+  })
+
+  it('Agri card: without any version it cannot be used and explains the CLI import', () => {
+    mockEngines([rapid, agri()])
+    render(<OcrEngineManager />)
+    const r = agriRow()
+    expect(r.getByText('ocr.custom.noVersions')).toBeInTheDocument()
+    expect(r.queryByRole('button', { name: /ocr.use/ })).toBeNull()
+    expect(r.queryByRole('button', { name: /ocr.test/ })).toBeNull()
+    const guide = row('tesseract_agri').querySelector('[data-slot="custom-cli-guide"]') as HTMLElement
+    expect(guide).toHaveTextContent('custom import --file /app/data/ocr-import/vie_agri.traineddata --version <id>')
+    expect(guide).toHaveTextContent('custom activate --version <id>')
+    // No file input anywhere: models are never uploaded over HTTP.
+    expect(document.querySelector('input[type="file"]')).toBeNull()
+  })
+
+  it('Agri card: switches to another verified version after confirmation', () => {
+    mockEngines([
+      rapid,
+      agri({}, [version({ active: true }), version({ version: 'v2', sha256: SHA2, readiness_state: 'pipeline_not_verified' })]),
+    ])
+    render(<OcrEngineManager />)
+    const v2 = within(row('tesseract_agri').querySelector('[data-version="v2"]') as HTMLElement)
+    const v1 = within(row('tesseract_agri').querySelector('[data-version="v1"]') as HTMLElement)
+    expect(v1.getByText('ocr.custom.activeBadge')).toBeInTheDocument()
+    expect(v1.queryByRole('button', { name: /ocr.custom.switchTo/ })).toBeNull()
+    expect(row('tesseract_agri').querySelector('[data-version="v2"]')).toHaveTextContent('ocr.readiness.state.pipelineNotVerified')
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(v2.getByRole('button', { name: /ocr.custom.switchTo/ }))
+    expect(switchVersion).not.toHaveBeenCalled()
+    confirm.mockReturnValue(true)
+    fireEvent.click(v2.getByRole('button', { name: /ocr.custom.switchTo/ }))
+    expect(switchVersion).toHaveBeenCalledWith({ id: 'tesseract_agri', version: 'v2' })
+    confirm.mockRestore()
+  })
+
+  it('Agri card: rollback is offered only when there is a previous version', () => {
+    mockEngines([rapid, agri({}, [version({ active: true })])])
+    const { unmount } = render(<OcrEngineManager />)
+    expect(agriRow().queryByRole('button', { name: /ocr.custom.rollback/ })).toBeNull()
+    unmount()
+    mockEngines([
+      rapid,
+      agri({}, [version({ previous: true }), version({ version: 'v2', sha256: SHA2, active: true })]),
+    ])
+    render(<OcrEngineManager />)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    fireEvent.click(agriRow().getByRole('button', { name: /ocr.custom.rollback/ }))
+    expect(rollbackVersion).toHaveBeenCalledWith('tesseract_agri')
+    confirm.mockRestore()
+  })
+
+  it('Agri card: a changed file is flagged and cannot be switched to; verify calls the backend', () => {
+    mockEngines([
+      rapid,
+      agri({}, [
+        version({ active: true }),
+        version({ version: 'v2', sha256: SHA2, file_ok: false, file_detail: 'sha256 differs from the import manifest' }),
+      ]),
+    ])
+    render(<OcrEngineManager />)
+    const v2 = within(row('tesseract_agri').querySelector('[data-version="v2"]') as HTMLElement)
+    expect(v2.getByText('ocr.custom.verifyStatus.changed')).toBeInTheDocument()
+    expect(v2.getByText('sha256 differs from the import manifest')).toBeInTheDocument()
+    expect(v2.queryByRole('button', { name: /ocr.custom.switchTo/ })).toBeNull()
+    fireEvent.click(v2.getByRole('button', { name: /ocr.custom.verify/ }))
+    expect(verifyVersion).toHaveBeenCalledWith({ id: 'tesseract_agri', version: 'v2' })
+  })
+
+  it('Agri card: a missing file is called missing even while the stored verdict still says verified', () => {
+    mockEngines([
+      rapid,
+      agri({}, [
+        version({ active: true }),
+        version({ version: 'v2', sha256: SHA2, file_ok: false, file_present: false, file_detail: 'model file is missing' }),
+      ]),
+    ])
+    render(<OcrEngineManager />)
+    const v2 = within(row('tesseract_agri').querySelector('[data-version="v2"]') as HTMLElement)
+    expect(v2.getByText('ocr.custom.verifyStatus.missing')).toBeInTheDocument()
+    expect(v2.queryByText('ocr.custom.verifyStatus.changed')).toBeNull()
+    expect(v2.getByText('model file is missing')).toBeInTheDocument()
+  })
+
+  it('Agri card: a failed install / check keeps a Retry, like the official engines', () => {
+    // Prerequisites verify and a version is active, but the engine manifest
+    // still holds the failure of an earlier install job.
+    mockEngines([
+      rapid,
+      agri({ state: 'failed', ready: false, error: 'Download failed for tesseract/osd.traineddata' }, [
+        version({ active: true }),
+      ]),
+    ])
+    render(<OcrEngineManager />)
+    const r = agriRow()
+    expect(r.getByText('Download failed for tesseract/osd.traineddata')).toBeInTheDocument()
+    expect(r.queryByRole('button', { name: /ocr.use/ })).toBeNull()
+    fireEvent.click(r.getByRole('button', { name: /ocr.retry/ }))
+    expect(install).toHaveBeenCalledWith('tesseract_agri')
+  })
+
+  it('Agri card: a ready engine offers no install or retry', () => {
+    mockEngines([rapid, agri({}, [version({ active: true })])])
+    render(<OcrEngineManager />)
+    expect(agriRow().queryByRole('button', { name: /ocr.install|ocr.retry/ })).toBeNull()
+  })
+
+  it('Agri card: activating the engine asks for an informed confirmation; readiness check is real', () => {
+    mockEngines([rapid, agri({}, [version({ active: true })])])
+    render(<OcrEngineManager />)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(agriRow().getByRole('button', { name: /ocr.use/ }))
+    expect(confirm).toHaveBeenCalledWith('ocr.custom.experimentalConfirm')
+    expect(activate).not.toHaveBeenCalled()
+    confirm.mockReturnValue(true)
+    fireEvent.click(agriRow().getByRole('button', { name: /ocr.use/ }))
+    expect(activate).toHaveBeenCalledWith('tesseract_agri')
+    confirm.mockRestore()
+    const panel = within(row('tesseract_agri').querySelector('[data-slot="custom-model"]') as HTMLElement)
+    fireEvent.click(panel.getByRole('button', { name: /ocr.readiness.check/ }))
+    expect(readinessCheck).toHaveBeenCalledWith('tesseract_agri')
+  })
+
+  it('the four official engines get no custom panel and keep their actions', () => {
+    mockEngines([
+      rapid,
+      engine({ state: 'ready', ready: true, model: { status: 'installed', installed_bytes: 1, files: [] } }),
+      agri({}, [version({ active: true })]),
+    ])
+    render(<OcrEngineManager />)
+    expect(row('tesseract_fast').querySelector('[data-slot="custom-model"]')).toBeNull()
+    expect(row('rapidocr').querySelector('[data-slot="custom-model"]')).toBeNull()
+    const fast = within(row('tesseract_fast'))
+    expect(fast.getByRole('button', { name: /ocr.use/ })).toBeInTheDocument()
+    expect(fast.getByRole('button', { name: /ocr.removeModel/ })).toBeInTheDocument()
+    expect(fast.queryByText('ocr.custom.badge')).toBeNull()
+  })
 })

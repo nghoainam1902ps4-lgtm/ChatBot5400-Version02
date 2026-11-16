@@ -20,7 +20,7 @@ tin khách hàng. `BACKUP_DIR` là thư mục sao lưu do người vận hành c
 
 | | Hiện tại (production) | Sau triển khai |
 |---|---|---|
-| Thư mục | `/home/admin/ChatBot5400-Version02` | không đổi |
+| Thư mục | `/srv/example/chatbot5400` | không đổi |
 | Compose project | `chatbot5400-version02` (`docker-compose.yml` + `docker-compose.override.yml`) | không đổi |
 | Commit | `5e042279439302d3ccf39bef4d1d8d402314d194` (v1.0.8) | commit merge của PR #42 vào `claude/practical-wozniak-9s1t6z` (`git rev-parse origin/claude/practical-wozniak-9s1t6z` sau khi merge; ghi trong `OCR_FINAL_ACCEPTANCE.md`) |
 | Image ứng dụng | `chatbot5400:local` | image dựng từ commit merge, có Tesseract; gắn thêm tag `chatbot5400:rc1-<ngày>` (đã dựng và xác minh trên stack cô lập: `OCR_FINAL_ACCEPTANCE.md` §4–5) |
@@ -68,8 +68,8 @@ Dựng image từ commit đã merge trong một thư mục **riêng**, tag riên
 
 ```bash
 MERGE=3819c2a7068916bf7cd2d5bc9c71cfe73b76dfbc       # commit merge của PR #42
-BUILD=/home/admin/cb5400-rc1-build
-git clone --no-checkout /home/admin/ChatBot5400-Version02 "$BUILD"
+BUILD=/srv/example/cb5400-rc1-build
+git clone --no-checkout /srv/example/chatbot5400 "$BUILD"
 git -C "$BUILD" fetch https://github.com/nghoainam1902ps4-lgtm/ChatBot5400-Version02.git "$MERGE"
 git -C "$BUILD" checkout --detach "$MERGE"
 RC_TAG="chatbot5400:rc1-$(date +%Y%m%d)"
@@ -83,7 +83,7 @@ docker run --rm --network none --entrypoint sh "$RC_TAG" -c 'tesseract --version
 SurrealDB ghi liên tục vào `surreal_data`: sao lưu **lạnh**, dừng cả hai container rồi mới sao chép.
 
 ```bash
-cd /home/admin/ChatBot5400-Version02
+cd /srv/example/chatbot5400
 BACKUP_DIR=/duong/dan/sao-luu                          # thay bằng thư mục sao lưu của đơn vị
 TS=$(date +%Y%m%d-%H%M%S); BK=$BACKUP_DIR/cb5400-$TS; mkdir -p "$BK"; chmod 700 "$BK"
 git rev-parse HEAD > "$BK/commit.txt"; git status --short > "$BK/git-status.txt"
@@ -144,7 +144,7 @@ Không đạt ⇒ **dừng**: `docker compose start` trên production (bản cũ
 ## 6. Cập nhật mã và cấu hình
 
 ```bash
-cd /home/admin/ChatBot5400-Version02
+cd /srv/example/chatbot5400
 git fetch origin claude/practical-wozniak-9s1t6z
 git stash push -m "local-before-ocr-rc1-$TS" -- docker-compose.yml      # chỉ file theo dõi đã sửa
 git merge --ff-only "$MERGE" && git rev-parse HEAD                      # phải bằng $MERGE
@@ -171,7 +171,7 @@ Best; xem giới hạn D-32).
 ## 7. Khởi động bản mới
 
 ```bash
-cd /home/admin/ChatBot5400-Version02
+cd /srv/example/chatbot5400
 docker tag "$RC_TAG" chatbot5400:local                       # image cũ vẫn còn dưới tag rollback-pre-ocr-$TS
 docker compose start surrealdb                               # CÙNG container DB, không pull, không recreate
 docker compose up -d --no-deps --no-build open_notebook      # chỉ tạo lại container ứng dụng
@@ -242,7 +242,7 @@ Không có migration cần hoàn tác; bản cũ bỏ qua dữ liệu OCR (`docs
 **Rollback mã (dữ liệu giữ nguyên) — dùng trước tiên:**
 
 ```bash
-cd /home/admin/ChatBot5400-Version02
+cd /srv/example/chatbot5400
 docker compose stop open_notebook
 git stash push -m "rc1-local-$TS" -- docker-compose.yml
 git checkout 5e042279439302d3ccf39bef4d1d8d402314d194

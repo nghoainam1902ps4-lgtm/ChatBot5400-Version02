@@ -12,6 +12,12 @@ worker; requests return immediately with a job id.
 - DELETE /ocr/engines/{engine_id}/model   remove its model (refused while active)
 - GET    /ocr/jobs/{job_id}               status of an OCR job
 - GET/PUT /ocr/config                     enable OCR, threads, full-page
+- POST   /ocr/engines/{engine_id}/custom/activate  switch the active version (custom engines)
+- POST   /ocr/engines/{engine_id}/custom/rollback  back to the previous version
+- POST   /ocr/engines/{engine_id}/custom/verify    re-check a version against its manifest
+
+Custom model FILES are never uploaded over HTTP: versions are imported with the
+admin CLI on the server (docs/ocr/OCR_CUSTOM_MODEL_MANAGER.md).
 """
 
 from fastapi import APIRouter, Depends
@@ -21,6 +27,7 @@ from api.auth import require_admin
 from api.models import (
     OcrConfig,
     OcrConfigUpdate,
+    OcrCustomVersionRequest,
     OcrDeleteResponse,
     OcrEnginesResponse,
     OcrEngineStatus,
@@ -82,6 +89,31 @@ async def readiness_check(engine_id: str):
 async def delete_engine_model(engine_id: str):
     removed = await ocr_service.delete_model(engine_id)
     return OcrDeleteResponse(engine_id=engine_id, removed=removed)
+
+
+@router.post("/engines/{engine_id}/custom/activate", response_model=OcrEngineStatus)
+async def activate_custom_version(
+    engine_id: str, body: OcrCustomVersionRequest, admin=Depends(require_admin)
+):
+    return await ocr_service.custom_activate_version(
+        engine_id, body.version, _actor(admin)
+    )
+
+
+@router.post("/engines/{engine_id}/custom/rollback", response_model=OcrEngineStatus)
+async def rollback_custom_version(engine_id: str, admin=Depends(require_admin)):
+    return await ocr_service.custom_rollback(engine_id, _actor(admin))
+
+
+@router.post("/engines/{engine_id}/custom/verify", response_model=OcrEngineStatus)
+async def verify_custom_version(engine_id: str, body: OcrCustomVersionRequest):
+    return await ocr_service.custom_verify_version(engine_id, body.version)
+
+
+def _actor(admin) -> str:
+    """Who switched a version, for the registry history (never a secret)."""
+    name = getattr(admin, "username", None) or getattr(admin, "id", None)
+    return f"admin:{name}" if name else "admin"
 
 
 @router.get("/jobs/{job_id}", response_model=OcrJobStatusResponse)

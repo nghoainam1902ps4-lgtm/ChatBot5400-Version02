@@ -14,6 +14,14 @@ docs/ocr/OCR_PHASE8C_REPORT.md:
   the official ``OcrOptions.scale`` is lowered to the scan's own resolution
   (never raised above Docling's default).
 
+* Visible text boxes over a scan (D-33, opt-in). Docling drops every OCR cell
+  whose box touches the axis-aligned box of a VISIBLE PDF text cell. A diagonal
+  watermark line is one such cell whose box spans most of the page, so the
+  text recognised under it is discarded. ``overlay_scan`` measures that
+  situation per page (scan image, oblique visible text boxes, ordinary visible
+  text) and ``auto_full_page`` turns it into a per-document decision to use
+  Docling's official full-page OCR mode. Nothing is removed from the PDF.
+
 The uploaded file is never modified. Anything that goes wrong here is logged
 and the document is converted exactly as before.
 """
@@ -28,6 +36,7 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +70,42 @@ OSD_BUDGET_ENV = "OCR_PAGE_OSD_BUDGET_SECONDS"
 DEFAULT_PAGE_MIN_CONFIDENCE = 2.0
 PAGE_MIN_CONFIDENCE_ENV = "OCR_PAGE_OSD_MIN_CONFIDENCE"
 DISABLE_ENV = "OCR_PDF_PREP"
+
+# --- automatic full-page OCR for scans under a visible text box (D-33) --------
+# Opt-in: unset / anything but true keeps the behaviour of earlier versions.
+AUTO_FULL_PAGE_ENV = "OCR_AUTO_FULL_PAGE_ON_WATERMARK"
+# A visible text object is a "tilted box" when its bounding box is at least
+# this many times larger than the cells of its own characters. Text parallel
+# to a page axis measures exactly 1.0 whatever its size; a line tilted by 2
+# degrees already measures 3, a diagonal watermark 10-15.
+OVERLAY_BOX_INFLATION = 1.5
+# ... and its baseline is at least this far (degrees) from both page axes. A
+# guard against odd fonts only: the inflation above is what really decides.
+DEFAULT_OVERLAY_MIN_ANGLE_DEG = 1.0
+OVERLAY_MIN_ANGLE_ENV = "OCR_AUTO_FULL_PAGE_MIN_ANGLE"
+# Share of the page that tilted boxes must claim ON TOP OF an image, outside
+# every visible character, before the page counts as at risk. Measured in
+# Phase 10G: the share of the page text Docling discards is about twice this
+# value (a 3.6% box lost 8% of the words, 14% lost 27%, 58% lost 96%).
+DEFAULT_OVERLAY_MIN_COVERAGE = 0.02
+OVERLAY_MIN_COVERAGE_ENV = "OCR_AUTO_FULL_PAGE_MIN_COVERAGE"
+# A page with at least this many ordinary (not tilted) visible characters, and
+# more of them than hidden ones, carries its content in the PDF text layer:
+# Docling keeps that text, nothing is lost, and re-reading it by OCR would
+# only make it worse (measured: 1-2% of the words of a digital page).
+DEFAULT_OVERLAY_TEXT_PAGE_CHARS = 400
+OVERLAY_TEXT_PAGE_CHARS_ENV = "OCR_AUTO_FULL_PAGE_TEXT_PAGE_CHARS"
+# PDF text render modes that paint nothing (a hidden OCR layer).
+_INVISIBLE_TEXT_MODES = (3, 7)
+_OVERLAY_OBJECT_DEPTH = 8
+# The check reads an UNTRUSTED upload before Docling does. It is bounded like the
+# orientation step: past any of these limits it gives up and the document is
+# converted with its configured mode (reason "check_failed").
+OVERLAY_MAX_PAGES = 2000  # pages of one document
+OVERLAY_MAX_PAGE_OBJECTS = 20_000  # image / text objects enumerated on one page
+OVERLAY_MAX_PAGE_CHARS = 100_000  # characters read on one page
+OVERLAY_BUDGET_SECONDS = 20.0  # wall clock for the whole document
+_OVERLAY_PAGE_WARNINGS = 3  # unreadable pages reported one by one
 
 
 def enabled() -> bool:
@@ -120,6 +165,8 @@ class PdfPrep:
     # were not: None | "max_pages" | "time_budget".
     orientation_checked: int = 0
     orientation_limit: str | None = None
+    # The OCR mode of this document (D-33); set by docling_extract.
+    mode: Any = None
     _tmpdir: str | None = None
 
     def cleanup(self) -> None:
@@ -139,6 +186,8 @@ class PdfPrep:
             "orientation_checked_pages": self.orientation_checked,
             # Set when some scanned pages were left unchecked (page cap / time budget).
             "page_orientation_limit": self.orientation_limit,
+            # Configured / effective OCR mode (nothing while the feature is off).
+            **(self.mode.as_meta() if self.mode is not None else {}),
         }
 
 
@@ -282,6 +331,550 @@ def _pdfium_lock() -> Any:
 
 
 _FALLBACK_LOCK = threading.Lock()
+
+
+# --- visible text boxes over scanned pages (D-33) -----------------------------
+
+
+def auto_full_page_enabled() -> bool:
+    """Off by default; ``OCR_AUTO_FULL_PAGE_ON_WATERMARK=true`` switches it on."""
+    return os.environ.get(AUTO_FULL_PAGE_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+_ignored_env_values: set[tuple[str, str]] = set()
+
+
+def _env_number(name: str, default: float, low: float, high: float) -> float:
+    raw = os.environ.get(name, "")
+    try:
+        value = float(raw or default)
+    except ValueError:
+        value = math.nan
+    if math.isfinite(value) and low <= value <= high:
+        return value
+    if (name, raw) not in _ignored_env_values:  # once, not for every page
+        _ignored_env_values.add((name, raw))
+        logger.warning(
+            f"{name}={raw!r} is not a number between {low:g} and {high:g}; "
+            f"using the default {default:g}"
+        )
+    return default
+
+
+def overlay_min_angle() -> float:
+    return _env_number(OVERLAY_MIN_ANGLE_ENV, DEFAULT_OVERLAY_MIN_ANGLE_DEG, 0.1, 45.0)
+
+
+def overlay_min_coverage() -> float:
+    return _env_number(
+        OVERLAY_MIN_COVERAGE_ENV, DEFAULT_OVERLAY_MIN_COVERAGE, 0.001, 1.0
+    )
+
+
+def overlay_text_page_chars() -> int:
+    return int(
+        _env_number(
+            OVERLAY_TEXT_PAGE_CHARS_ENV, DEFAULT_OVERLAY_TEXT_PAGE_CHARS, 1, 1_000_000
+        )
+    )
+
+
+@dataclass
+class PageOverlay:
+    """Measurements of one page (geometry and counts only, never any text)."""
+
+    page: int  # 1-based
+    image_share: float = 0.0  # share of the page covered by images
+    visible_objects: int = 0  # text objects that paint ink
+    invisible_objects: int = 0  # hidden OCR layer objects
+    # Visible text objects whose box is much larger than their own characters.
+    tilted_boxes: int = 0
+    tilted_chars: int = 0
+    # Share of the page those boxes claim on top of an image where no visible
+    # character lies: there Docling discards OCR text for nothing.
+    conflict_share: float = 0.0
+    # Share of the page they claim on top of an image where visible characters
+    # DO lie. Boxes that are more filled than empty are lines of text.
+    filled_share: float = 0.0
+    max_box_share: float = 0.0  # largest single tilted box
+    max_inflation: float = 0.0  # largest box / own character cells
+    angles: tuple[int, ...] = ()  # distinct tilts, degrees from the nearest axis
+    # Visible characters of ordinary (not tilted) text and characters of the
+    # hidden layer; None = not counted (the page is not a scan and no other
+    # page is at risk).
+    ordinary_chars: int | None = None
+    invisible_chars: int | None = None
+
+    def is_scan(self) -> bool:
+        return self.image_share >= SCAN_AREA_SHARE
+
+    def text_chars(self) -> int:
+        """Visible characters that are the page's own text.
+
+        Tilted text counts too when its boxes are more filled with visible
+        characters than empty: a visible text layer over a skewed scan is the
+        text of the page, not an overlay on top of it.
+        """
+        dense = self.filled_share >= self.conflict_share
+        return (self.ordinary_chars or 0) + (self.tilted_chars if dense else 0)
+
+    def is_text_page(self) -> bool:
+        """The page content is ordinary visible PDF text."""
+        chars = self.text_chars()
+        return chars >= overlay_text_page_chars() and chars > (
+            self.invisible_chars or 0
+        )
+
+    def at_risk(self) -> bool:
+        """A scan whose recognised text Docling would discard under a tilted box."""
+        return (
+            self.is_scan()
+            and self.conflict_share >= overlay_min_coverage()
+            and not self.is_text_page()
+        )
+
+
+@dataclass
+class OverlayScan:
+    """Per-document result of ``overlay_scan`` (safe to log: numbers only)."""
+
+    status: str = "ok"  # ok | not_a_pdf | error
+    pages: int = 0
+    scan_pages: int = 0
+    risk_pages: list[int] = field(default_factory=list)  # 1-based
+    # Pages whose content is ordinary visible PDF text. Only looked for when a
+    # page is at risk, and only until the first one is found.
+    text_pages: list[int] = field(default_factory=list)
+    max_conflict_share: float = 0.0
+    max_box_share: float = 0.0
+    max_inflation: float = 0.0
+    angles: tuple[int, ...] = ()
+    details: list[PageOverlay] = field(default_factory=list)
+
+    @property
+    def decision(self) -> str:
+        """full_page | mixed | none."""
+        if not self.risk_pages:
+            return "none"
+        return "mixed" if self.text_pages else "full_page"
+
+
+Box = tuple[float, float, float, float]  # left, bottom, right, top (PDF points)
+
+
+def _union_share(
+    boxes: list[Box],
+    width: float,
+    height: float,
+    within: list[Box] | None = None,
+    without: list[Box] | None = None,
+) -> float:
+    """Share of the page covered by the union of ``boxes``, optionally only
+    where one of ``within`` also lies and none of ``without`` does."""
+    if not boxes or width <= 0 or height <= 0:
+        return 0.0
+    import numpy as np
+
+    step = max(1.0, max(width, height) / 1000.0)  # at most ~1000 cells per side
+    cols, rows = int(math.ceil(width / step)), int(math.ceil(height / step))
+
+    def raster(items: list[Box]) -> Any:
+        grid = np.zeros((rows, cols), dtype=bool)
+        for left, bottom, right, top in items:
+            x0, x1 = sorted((left, right))
+            y0, y1 = sorted((bottom, top))
+            c0, c1 = max(0, int(x0 / step)), min(cols, int(math.ceil(x1 / step)))
+            r0, r1 = max(0, int(y0 / step)), min(rows, int(math.ceil(y1 / step)))
+            if c1 > c0 and r1 > r0:
+                grid[r0:r1, c0:c1] = True
+        return grid
+
+    covered = raster(boxes)
+    if within is not None:
+        covered &= raster(within)
+    if without:
+        covered &= ~raster(without)
+    return round(float(covered.mean()), 4)
+
+
+class _OverlayLimit(Exception):
+    """A bound of the overlay check was exceeded (the message has numbers only)."""
+
+
+def _check_deadline(deadline: float | None) -> None:
+    if deadline is not None and time.monotonic() > deadline:
+        raise _OverlayLimit(f"more than {OVERLAY_BUDGET_SECONDS:g} s")
+
+
+def _page_overlay(
+    page: Any, number: int, count_text: bool, deadline: float | None = None
+) -> PageOverlay:
+    """Measure one page. ``count_text`` also reads the characters of a page that
+    is not a scan (needed only to recognise a digital text page)."""
+    import ctypes
+
+    import pypdfium2.raw as pdfium_c
+
+    out = PageOverlay(page=number)
+    # Object bounds and character boxes are in the page's own, UNROTATED user
+    # space, whose visible part is the page box — it need not start at (0, 0).
+    # (page.get_size() is the size after /Rotate: wrong frame for these boxes.)
+    left, bottom, right, top = page.get_bbox()
+    width, height = right - left, top - bottom
+    if not (math.isfinite(width) and math.isfinite(height)):
+        return out
+    if width <= 0 or height <= 0:
+        return out
+
+    def local(box: Box) -> Box:
+        return (box[0] - left, box[1] - bottom, box[2] - left, box[3] - bottom)
+
+    images: list[Box] = []
+    for seen, obj in enumerate(
+        page.get_objects(
+            filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE, pdfium_c.FPDF_PAGEOBJ_TEXT],
+            max_depth=_OVERLAY_OBJECT_DEPTH,
+        ),
+        start=1,
+    ):
+        if seen > OVERLAY_MAX_PAGE_OBJECTS:
+            raise _OverlayLimit(
+                f"page {number} has more than {OVERLAY_MAX_PAGE_OBJECTS} objects"
+            )
+        if seen % 512 == 0:
+            _check_deadline(deadline)
+        if obj.type == pdfium_c.FPDF_PAGEOBJ_IMAGE:
+            images.append(local(obj.get_bounds()))
+        elif pdfium_c.FPDFTextObj_GetTextRenderMode(obj.raw) in _INVISIBLE_TEXT_MODES:
+            out.invisible_objects += 1
+        else:
+            out.visible_objects += 1
+    out.image_share = _union_share(images, width, height)
+    if not out.visible_objects:
+        out.ordinary_chars = 0
+        return out  # a hidden layer alone never hides OCR text
+    if not out.is_scan() and not count_text:
+        return out  # geometry only matters on top of a scan
+
+    # Character level: page coordinates, also for text drawn through a form.
+    textpage = page.get_textpage()
+    try:
+        raw_page = textpage.raw
+        # object -> [left, bottom, right, top, characters, cell area, angle]
+        groups: dict[int, list[float]] = {}
+        visible_by_object: dict[int, bool] = {}
+        cells: list[Box] = []  # the cell of every visible character
+        invisible_chars = 0
+        rect = pdfium_c.FS_RECTF()
+        total_chars = pdfium_c.FPDFText_CountChars(raw_page)
+        if total_chars > OVERLAY_MAX_PAGE_CHARS:
+            raise _OverlayLimit(
+                f"page {number} has more than {OVERLAY_MAX_PAGE_CHARS} characters"
+            )
+        for i in range(total_chars):
+            if i % 2048 == 2047:
+                _check_deadline(deadline)
+            obj = pdfium_c.FPDFText_GetTextObject(raw_page, i)
+            if not obj:
+                continue  # a separator pdfium generated, not in the file
+            key = ctypes.cast(obj, ctypes.c_void_p).value or 0
+            visible = visible_by_object.get(key)
+            if visible is None:
+                visible = visible_by_object[key] = (
+                    pdfium_c.FPDFTextObj_GetTextRenderMode(obj)
+                    not in _INVISIBLE_TEXT_MODES
+                )
+            inked = pdfium_c.FPDFText_GetUnicode(raw_page, i) > 32
+            if not visible:
+                invisible_chars += inked
+                continue
+            if not pdfium_c.FPDFText_GetLooseCharBox(raw_page, i, rect):
+                continue
+            cell = local((rect.left, rect.bottom, rect.right, rect.top))
+            area = abs(cell[2] - cell[0]) * abs(cell[3] - cell[1])
+            if area <= 0:
+                continue
+            cells.append(cell)
+            group = groups.get(key)
+            if group is None:
+                angle = pdfium_c.FPDFText_GetCharAngle(raw_page, i)
+                group = groups[key] = [
+                    *cell,
+                    0.0,
+                    0.0,
+                    math.degrees(angle) if angle >= 0 else 0.0,
+                ]
+            group[0] = min(group[0], cell[0])
+            group[1] = min(group[1], cell[1])
+            group[2] = max(group[2], cell[2])
+            group[3] = max(group[3], cell[3])
+            group[4] += inked
+            group[5] += area
+    finally:
+        textpage.close()
+
+    min_angle = overlay_min_angle()
+    tilted: list[Box] = []
+    angles: set[int] = set()
+    ordinary = 0
+    page_area = width * height
+    for x0, y0, x1, y1, chars, cell_area, angle in groups.values():
+        tilt = angle % 90.0
+        tilt = min(tilt, 90.0 - tilt)  # distance from the nearest page axis
+        inflation = (x1 - x0) * (y1 - y0) / cell_area if cell_area > 0 else 1.0
+        if tilt < min_angle or inflation < OVERLAY_BOX_INFLATION or chars < 2:
+            ordinary += int(chars)
+            continue
+        box = (max(0.0, x0), max(0.0, y0), min(width, x1), min(height, y1))
+        if box[2] <= box[0] or box[3] <= box[1]:
+            continue  # entirely off the page
+        tilted.append(box)
+        angles.add(int(round(tilt)))
+        out.tilted_chars += int(chars)
+        out.max_inflation = max(out.max_inflation, round(inflation, 2))
+        out.max_box_share = max(
+            out.max_box_share,
+            round((box[2] - box[0]) * (box[3] - box[1]) / page_area, 4),
+        )
+    out.ordinary_chars = ordinary
+    out.invisible_chars = invisible_chars
+    out.tilted_boxes = len(tilted)
+    out.angles = tuple(sorted(angles))
+    out.conflict_share = _union_share(
+        tilted, width, height, within=images, without=cells
+    )
+    if out.conflict_share > 0:
+        claimed = _union_share(tilted, width, height, within=images)
+        out.filled_share = round(max(0.0, claimed - out.conflict_share), 4)
+    return out
+
+
+def _overlay_scan(path: str) -> OverlayScan:
+    """Measure the document within fixed bounds (pages, objects, characters,
+    time). Past a bound the result is ``status="error"``: the caller keeps the
+    configured OCR mode, exactly as when the file cannot be read."""
+    import pypdfium2 as pdfium
+
+    scan = OverlayScan()
+    lock = _pdfium_lock()
+    deadline = time.monotonic() + OVERLAY_BUDGET_SECONDS
+    unreadable = 0
+    with lock:
+        pdf = pdfium.PdfDocument(path)
+    try:
+        with lock:
+            scan.pages = len(pdf)
+        if scan.pages > OVERLAY_MAX_PAGES:
+            raise _OverlayLimit(f"more than {OVERLAY_MAX_PAGES} pages")
+
+        def measure(index: int, count_text: bool) -> PageOverlay | None:
+            nonlocal unreadable
+            _check_deadline(deadline)
+            try:
+                with lock:  # per page: never held across the whole document
+                    page = pdf[index]
+                    try:
+                        return _page_overlay(page, index + 1, count_text, deadline)
+                    finally:
+                        page.close()
+            except _OverlayLimit:
+                raise
+            except Exception as e:  # one unreadable page must not undo the others
+                unreadable += 1
+                if unreadable <= _OVERLAY_PAGE_WARNINGS:
+                    logger.warning(
+                        f"OCR overlay check skipped page {index + 1}: "
+                        f"{type(e).__name__}"
+                    )
+                return None
+
+        pending: list[int] = []  # digital pages whose characters were not read
+        for index in range(scan.pages):
+            info = measure(index, count_text=False)
+            if info is None:
+                continue
+            scan.details.append(info)
+            if info.is_scan():
+                scan.scan_pages += 1
+            if info.at_risk():
+                scan.risk_pages.append(info.page)
+                scan.max_conflict_share = max(
+                    scan.max_conflict_share, info.conflict_share
+                )
+                scan.max_box_share = max(scan.max_box_share, info.max_box_share)
+                scan.max_inflation = max(scan.max_inflation, info.max_inflation)
+                scan.angles = tuple(sorted(set(scan.angles) | set(info.angles)))
+            elif info.ordinary_chars is None:
+                pending.append(index)
+            elif info.is_text_page():
+                scan.text_pages.append(info.page)
+        if scan.risk_pages and not scan.text_pages:
+            # Is this a mixed document? Stop at the first digital text page.
+            for index in pending:
+                info = measure(index, count_text=True)
+                if info is not None and info.is_text_page():
+                    scan.text_pages.append(info.page)
+                    break
+    except _OverlayLimit as e:
+        # Numbers only. Cached like any result, so the routing decision and the
+        # conversion of one upload do not both pay for it.
+        logger.warning(f"OCR overlay check stopped: {e}")
+        return OverlayScan(status="error", pages=scan.pages)
+    finally:
+        if unreadable > _OVERLAY_PAGE_WARNINGS:
+            logger.warning(
+                f"OCR overlay check skipped {unreadable} unreadable pages in total"
+            )
+        with lock:
+            pdf.close()
+    return scan
+
+
+@lru_cache(maxsize=16)
+def _overlay_scan_cached(
+    path: str, size: int, mtime_ns: int, settings: tuple[float, float, int, float]
+) -> OverlayScan:
+    return _overlay_scan(path)
+
+
+def overlay_scan(path: str) -> OverlayScan:
+    """Measure every page of ``path``; never raises.
+
+    Cached per (file, thresholds): the routing decision and the conversion of
+    one upload ask the same question a moment apart.
+    """
+    if not is_pdf(path):
+        return OverlayScan(status="not_a_pdf")
+    try:
+        st = os.stat(path)
+        return _overlay_scan_cached(
+            path,
+            st.st_size,
+            st.st_mtime_ns,
+            (
+                overlay_min_angle(),
+                overlay_min_coverage(),
+                overlay_text_page_chars(),
+                OVERLAY_BOX_INFLATION,
+            ),
+        )
+    except Exception as e:  # corrupt / encrypted PDF, pdfium missing, …
+        # The type only: an OSError message carries the file path.
+        logger.warning(f"OCR overlay check skipped: {type(e).__name__}")
+        return OverlayScan(status="error")
+
+
+MODE_DEFAULT = "default"
+MODE_FULL_PAGE = "full_page"
+# Why a document got its OCR mode (log / metadata; never contains document text).
+REASON_FLAG_OFF = "flag_off"
+REASON_OCR_DISABLED = "ocr_disabled"
+REASON_MANUAL = "manual_full_page"
+REASON_NOT_A_PDF = "not_a_pdf"
+REASON_CHECK_FAILED = "check_failed"
+REASON_NO_RISK = "no_risk"
+REASON_MIXED = "mixed_document"
+REASON_TILTED_TEXT = "tilted_text_box_over_scan"
+
+
+@dataclass(frozen=True)
+class OcrModeDecision:
+    """The OCR mode one document is converted with, and why (D-33)."""
+
+    configured: str = MODE_DEFAULT  # what the administrator saved
+    effective: str = MODE_DEFAULT  # what this document really gets
+    triggered: bool = False  # the automatic rule switched it to full page
+    reason: str = REASON_FLAG_OFF
+    scan: OverlayScan | None = None  # the measurements, when the check ran
+
+    @property
+    def evaluated(self) -> bool:
+        return self.scan is not None and self.scan.status == "ok"
+
+    def as_meta(self) -> dict[str, Any]:
+        """Numbers only. Empty while the feature is switched off."""
+        if self.reason == REASON_FLAG_OFF:
+            return {}
+        meta: dict[str, Any] = {
+            "ocr_mode_configured": self.configured,
+            "ocr_mode_effective": self.effective,
+            "auto_full_page": self.triggered,
+            "auto_full_page_reason": self.reason,
+        }
+        if self.evaluated and self.scan is not None:
+            meta.update(
+                auto_full_page_pages=self.scan.pages,
+                auto_full_page_scan_pages=self.scan.scan_pages,
+                auto_full_page_risk_pages=len(self.scan.risk_pages),
+                auto_full_page_text_pages=len(self.scan.text_pages),
+                auto_full_page_max_coverage=self.scan.max_conflict_share,
+                auto_full_page_max_box=self.scan.max_box_share,
+                auto_full_page_max_inflation=self.scan.max_inflation,
+                auto_full_page_angles=list(self.scan.angles),
+            )
+        return meta
+
+    def describe(self, engine: str) -> str:
+        """One log line: engine, modes, reason and the ratios behind it."""
+        line = (
+            f"OCR mode: engine={engine} configured={self.configured} "
+            f"effective={self.effective} auto_full_page={self.triggered} "
+            f"reason={self.reason}"
+        )
+        if self.evaluated and self.scan is not None:
+            line += (
+                f" pages={self.scan.pages} scan_pages={self.scan.scan_pages} "
+                f"risk_pages={len(self.scan.risk_pages)} "
+                f"text_pages={len(self.scan.text_pages)} "
+                f"max_coverage={self.scan.max_conflict_share} "
+                f"max_box={self.scan.max_box_share} "
+                f"max_inflation={self.scan.max_inflation} "
+                f"angles={list(self.scan.angles)} "
+                f"(thresholds: scan>={SCAN_AREA_SHARE}, "
+                f"coverage>={overlay_min_coverage()}, "
+                f"box_inflation>={OVERLAY_BOX_INFLATION}, "
+                f"angle>={overlay_min_angle()}, "
+                f"text_page_chars>={overlay_text_page_chars()})"
+            )
+        return line
+
+
+def decide_ocr_mode(
+    path: str, ocr_enabled: bool, force_full_page: bool
+) -> OcrModeDecision:
+    """Which OCR mode ``path`` is converted with. Never raises, never writes.
+
+    The saved Force Full Page setting always wins when it is on. When it is
+    off, the opt-in rule (``OCR_AUTO_FULL_PAGE_ON_WATERMARK``) may use full-page
+    OCR for THIS document only: every page at risk is a scan under tilted
+    visible text boxes, and no page carries its content as ordinary PDF text.
+    A document that mixes both kinds keeps its configured mode (Docling has
+    one OCR mode per document) and a warning is logged by the caller.
+    """
+    configured = MODE_FULL_PAGE if force_full_page else MODE_DEFAULT
+    if not auto_full_page_enabled():
+        # Feature off: nothing is analysed, logged or added to the metadata.
+        return OcrModeDecision(configured, configured, False, REASON_FLAG_OFF)
+    if not ocr_enabled:
+        return OcrModeDecision(configured, configured, False, REASON_OCR_DISABLED)
+    if force_full_page:
+        return OcrModeDecision(configured, MODE_FULL_PAGE, False, REASON_MANUAL)
+    scan = overlay_scan(path)
+    if scan.status == "not_a_pdf":
+        return OcrModeDecision(configured, configured, False, REASON_NOT_A_PDF, scan)
+    if scan.status != "ok":
+        return OcrModeDecision(configured, configured, False, REASON_CHECK_FAILED, scan)
+    if scan.decision == "full_page":
+        return OcrModeDecision(
+            configured, MODE_FULL_PAGE, True, REASON_TILTED_TEXT, scan
+        )
+    reason = REASON_MIXED if scan.decision == "mixed" else REASON_NO_RISK
+    return OcrModeDecision(configured, configured, False, reason, scan)
 
 
 def prepare(path: str, tesseract_cmd: str | None) -> PdfPrep:

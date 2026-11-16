@@ -91,3 +91,7 @@
 | 9C | Offline trên production; theo dõi 24 giờ | **OPEN** |
 | 10 | Dọn tài nguyên nghiệm thu | **OPEN — chờ phê duyệt danh sách** |
 | 9D | Đánh số phiên bản `1.1.0-rc.1` (`frontend/package.json`, lockfile, `VERSION`, README, CHANGELOG, ghi chú phát hành); tag `v1.1.0-rc.1`; GitHub Pre-release | DONE — chỉ mã nguồn; không đổi phụ thuộc, logic OCR hay hệ thống đang chạy |
+| 10A–10F | Custom Tesseract Model Manager; engine thứ năm Tesseract Vietnamese Agri (Thử nghiệm); quản lý phiên bản, thay model không rebuild / restart, rollback; benchmark trên văn bản pháp lý tổng hợp | DONE trên nhánh `feature/tesseract-agri-custom-model` — [OCR_PHASE10_REPORT.md](OCR_PHASE10_REPORT.md); chủ dự án chấp nhận kết quả kỹ thuật |
+| 10G | Chẩn đoán mất nội dung OCR dưới watermark chéo; tự OCR toàn trang (opt-in, mặc định tắt) | DONE — [OCR_PHASE10G_REPORT.md](OCR_PHASE10G_REPORT.md); chủ dự án chấp nhận kết quả kỹ thuật |
+| 10H | Review cuối và chuẩn bị phát hành `1.1.0-rc.2`: review toàn bộ diff, quét lịch sử Git, chốt chặn workflow publish image, cờ mặc định tắt trong mọi tệp cấu hình, tài liệu nâng cấp / rollback, ghi chú phát hành, số phiên bản | DONE — [OCR_PHASE10H_REPORT.md](OCR_PHASE10H_REPORT.md) |
+| 10I | Làm sạch tài liệu và lịch sử Git trước khi công khai (gộp nhánh thành lịch sử sạch); cô lập fail-closed cơ sở dữ liệu của bộ test; merge; GitHub Pre-release `v1.1.0-rc.2` (chỉ mã nguồn) | DONE — [OCR_RELEASE_NOTES_RC2.md](OCR_RELEASE_NOTES_RC2.md). **Production chưa cập nhật — chờ chủ dự án phê duyệt** |

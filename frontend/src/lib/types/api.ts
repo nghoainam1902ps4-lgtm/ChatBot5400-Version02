@@ -342,7 +342,7 @@ export interface AdminFeedbackListParams {
 }
 
 // OCR Engine Manager (docs/ocr/OCR_ENGINE_MANAGER.md)
-export type OcrEngineId = 'rapidocr' | 'tesseract_fast' | 'tesseract_best' | 'easyocr'
+export type OcrEngineId = 'rapidocr' | 'tesseract_fast' | 'tesseract_best' | 'easyocr' | 'tesseract_agri'
 // Quality qualification: independent of installed/ready and of offline-verified.
 export type OcrQualityTier = 'recommended' | 'speed' | 'compatibility' | 'experimental'
 
@@ -380,6 +380,49 @@ export interface OcrTestResult {
   error?: string
   elapsed_seconds?: number
   tested_at?: number
+  // Custom engines: the model version the test really ran.
+  custom_model?: { version: string | null; sha256?: string | null } | null
+}
+
+// Custom (fine-tuned, versioned) model of an engine — docs/ocr/OCR_CUSTOM_MODEL_MANAGER.md
+export interface OcrCustomVersion {
+  version: string
+  active: boolean
+  // The rollback target (the version that was active before the last switch).
+  previous: boolean
+  sha256: string
+  size: number
+  imported_at?: number | null
+  notes?: string
+  source_name?: string | null
+  duplicate_of?: string[]
+  lang?: string | null
+  traineddata_version?: string | null
+  smoke?: { ok: boolean; detail?: string; cer?: number | null } | null
+  verification?: { status: 'verified' | 'corrupted' | 'missing'; checked_at?: number; detail?: string | null } | null
+  // Live comparison of the file with its import manifest.
+  file_ok: boolean
+  /** false = the file is gone (absent on servers older than 1.1.0-rc.2). */
+  file_present?: boolean
+  file_detail?: string | null
+  readiness_state?: OcrReadinessState | 'unknown' | null
+}
+
+export interface OcrCustomModelInfo {
+  family: string
+  filename: string
+  active_version: string | null
+  previous_version: string | null
+  activated_at?: number | null
+  versions: OcrCustomVersion[]
+  with_english: boolean
+  english_ok: boolean | null
+  english_env: string
+  prerequisites_ok: boolean
+  models_dir: string
+  manifests_dir: string
+  import_cli: string
+  error?: string
 }
 
 export interface OcrEngineStatus {
@@ -414,6 +457,8 @@ export interface OcrEngineStatus {
   dependency_problems?: string[]
   readiness?: OcrReadiness
   readiness_job?: 'prepare' | 'check' | null
+  // Only for custom engines; null / absent for the four official choices.
+  custom?: OcrCustomModelInfo | null
 }
 
 export type OcrReadinessState =

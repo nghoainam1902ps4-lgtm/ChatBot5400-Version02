@@ -6,6 +6,7 @@
 | tesseract_fast  | TesseractCliOcrOptions   | lang=[fast/vie, fast/eng], path=tessdata dir  |
 | tesseract_best  | TesseractCliOcrOptions   | lang=[best/vie, best/eng], path=tessdata dir  |
 | easyocr         | EasyOcrOptions           | lang=[vi, en], use_gpu=False, no downloads    |
+| tesseract_agri  | TesseractCliOcrOptions   | lang=[custom/agri/<version>/vie_agri], same   |
 
 Docling is imported lazily: this module is imported by the API process, which
 must not load torch.
@@ -13,7 +14,7 @@ must not load torch.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from open_notebook.ocr import catalog, paths, runtime
@@ -31,6 +32,10 @@ class OcrSettings:
         None  # None = keep Docling's default (4 / OMP_NUM_THREADS)
     )
     force_full_page: bool = False
+    # Custom engines only: the model version this job uses from start to end.
+    # Frozen here so that activating another version while a document is being
+    # processed never changes the model under it (custom_models.py).
+    custom_version: str | None = None
 
     @classmethod
     def from_content_settings(cls, settings: Any) -> "OcrSettings":
@@ -46,14 +51,43 @@ class OcrSettings:
             force_full_page=bool(
                 getattr(settings, "docling_ocr_force_full_page", False)
             ),
-        )
+        ).pinned()
+
+    def pinned(self) -> "OcrSettings":
+        """These settings with the custom model version resolved (once)."""
+        if self.custom_version is not None or not _is_custom(self.engine):
+            return self
+        from open_notebook.ocr import custom_models
+
+        return replace(self, custom_version=custom_models.active_version(self.engine))
 
     @property
     def uses_default_tuning(self) -> bool:
         return self.num_threads is None and not self.force_full_page
 
 
-def describe(engine_id: str) -> dict[str, Any]:
+def _is_custom(engine_id: str) -> bool:
+    spec = catalog.ENGINES.get(engine_id)
+    return spec is not None and spec.custom is not None
+
+
+def engine_langs(engine_id: str, custom_version: str | None = None) -> list[str]:
+    """Docling-native language codes of ``engine_id``.
+
+    Official engines: the static catalog list, unchanged. Custom engines: the
+    language of ``custom_version`` (default: the active version); an empty list
+    when no version is activated — callers must treat that as "not ready",
+    never pass it to Tesseract (an empty list means script auto-detection).
+    """
+    if not _is_custom(engine_id):
+        return list(catalog.DOCLING_LANGS[engine_id])
+    from open_notebook.ocr import custom_models
+
+    version = custom_version or custom_models.active_version(engine_id)
+    return custom_models.langs(engine_id, version) if version else []
+
+
+def describe(engine_id: str, custom_version: str | None = None) -> dict[str, Any]:
     """What the options will be, as plain data (for logs / UI / tests)."""
     spec = catalog.get_engine(engine_id)
     info: dict[str, Any] = {
@@ -63,12 +97,23 @@ def describe(engine_id: str) -> dict[str, Any]:
             "tesseract": "TesseractCliOcrOptions",
             "easyocr": "EasyOcrOptions",
         }[spec.docling_kind],
-        "lang": list(catalog.DOCLING_LANGS[engine_id]),
+        "lang": engine_langs(engine_id, custom_version),
         "device": "cpu"
         if spec.runtime != "builtin" or rapidocr_force_cpu()
         else "docling-auto (CPU when no GPU)",
         "model": f"{spec.model_name} {spec.model_version}",
     }
+    if spec.custom is not None:
+        from open_notebook.ocr import custom_models
+
+        version = custom_version or custom_models.active_version(engine_id)
+        part = custom_models.fingerprint_part(engine_id, version)
+        info["custom_model"] = {"version": version, "sha256": part["sha256"]}
+        info["model"] = (
+            f"{spec.custom.lang_stem} {version} (sha256 {str(part['sha256'])[:12]})"
+            if version
+            else f"{spec.custom.lang_stem} (no active version)"
+        )
     if spec.runtime == "builtin":
         info["backend"] = runtime.rapidocr_backend()
     if spec.runtime == "tesseract":
@@ -230,12 +275,17 @@ def _gate_runs(gate: str, real_cmd: str) -> bool:
 
 
 def build_ocr_options(
-    engine_id: str, force_full_page: bool = False, scale: float | None = None
+    engine_id: str,
+    force_full_page: bool = False,
+    scale: float | None = None,
+    custom_version: str | None = None,
 ) -> Any:
     """Return a Docling ``OcrOptions`` instance for ``engine_id``.
 
     ``scale`` is Docling's official ``OcrOptions.scale`` (72 DPI x scale);
     None keeps Docling's default. Only the Tesseract engines use it (D-25).
+    ``custom_version`` pins the model version of a custom engine (default: the
+    active version).
     """
     from docling.datamodel.pipeline_options import (
         EasyOcrOptions,
@@ -246,7 +296,13 @@ def build_ocr_options(
 
     spec = catalog.get_engine(engine_id)
     mode = OcrMode.FULL_PAGE if force_full_page else OcrMode.DEFAULT
-    lang = list(catalog.DOCLING_LANGS[engine_id])
+    lang = engine_langs(engine_id, custom_version)
+    if spec.custom is not None and not lang:
+        # Never hand Tesseract an empty list: that means "detect the script".
+        raise ValueError(
+            f"OCR engine '{spec.display_name}' has no active model version. Import "
+            "and activate one with the admin CLI (custom import / custom activate)."
+        )
     if spec.docling_kind == "rapidocr":
         extra: dict[str, Any] = {}
         params: dict[str, Any] = {}

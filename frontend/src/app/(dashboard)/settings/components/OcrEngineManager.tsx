@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { CloudDownload, Cpu, Download, FlaskConical, Loader2, PlayCircle, RotateCcw, ShieldCheck, Terminal, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, CloudDownload, Cpu, Download, FlaskConical, Loader2, PlayCircle, RotateCcw, ShieldCheck, Terminal, Trash2, Undo2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +33,7 @@ import { LoadingSkeleton } from '@/components/common/LoadingSkeleton'
 import { ErrorState } from '@/components/common/ErrorState'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import {
+  useActivateOcrCustomVersion,
   useActivateOcrEngine,
   useInstallOcrEngine,
   useOcrEngines,
@@ -40,10 +41,12 @@ import {
   useOcrReadinessCheck,
   usePrepareOcrEngine,
   useRemoveOcrModel,
+  useRollbackOcrCustomVersion,
   useTestOcrEngine,
   useUpdateOcrConfig,
+  useVerifyOcrCustomVersion,
 } from '@/lib/hooks/use-ocr'
-import type { OcrEngineId, OcrEngineStatus, OcrGeneralInfo, OcrTestResult } from '@/lib/types/api'
+import type { OcrCustomVersion, OcrEngineId, OcrEngineStatus, OcrGeneralInfo, OcrTestResult } from '@/lib/types/api'
 
 // Static key maps (the locale test requires literal keys in source).
 const STATE_KEYS: Record<string, string> = {
@@ -74,12 +77,23 @@ const DESC_KEYS: Record<OcrEngineId, string> = {
   tesseract_fast: 'ocr.engineDesc.tesseractFast',
   tesseract_best: 'ocr.engineDesc.tesseractBest',
   easyocr: 'ocr.engineDesc.easyocr',
+  tesseract_agri: 'ocr.engineDesc.tesseractAgri',
 }
 const QUALITY_NOTE_KEYS: Record<OcrEngineId, string> = {
   rapidocr: 'ocr.quality.note.rapidocr',
   tesseract_fast: 'ocr.quality.note.tesseractFast',
   tesseract_best: 'ocr.quality.note.tesseractBest',
   easyocr: 'ocr.quality.note.easyocr',
+  tesseract_agri: 'ocr.quality.note.tesseractAgri',
+}
+// Informed-choice text shown before an experimental engine is activated.
+const EXPERIMENTAL_CONFIRM_KEYS: Partial<Record<OcrEngineId, string>> = {
+  tesseract_agri: 'ocr.custom.experimentalConfirm',
+}
+const VERIFY_KEYS: Record<string, string> = {
+  verified: 'ocr.custom.verifyStatus.verified',
+  corrupted: 'ocr.custom.verifyStatus.corrupted',
+  missing: 'ocr.custom.verifyStatus.missing',
 }
 const QUALITY_TIER_KEYS: Record<string, string> = {
   recommended: 'ocr.quality.tier.recommended',
@@ -311,6 +325,215 @@ function TestDialog({
   )
 }
 
+function formatDate(ts?: number | null): string {
+  return ts ? new Date(ts * 1000).toLocaleString() : '—'
+}
+
+/** Verification of one version: the live file check wins over the stored verdict. */
+function versionVerifyKey(v: OcrCustomVersion): string {
+  if (!v.file_ok) {
+    // "Missing" comes from the live check too; the stored verdict stays
+    // "verified" until someone presses Verify.
+    const missing = v.file_present === false || v.verification?.status === 'missing'
+    return missing ? VERIFY_KEYS.missing : 'ocr.custom.verifyStatus.changed'
+  }
+  return VERIFY_KEYS[v.verification?.status ?? 'verified'] ?? VERIFY_KEYS.verified
+}
+
+function versionUsable(v: OcrCustomVersion): boolean {
+  return v.file_ok && v.verification?.status === 'verified' && v.smoke?.ok === true
+}
+
+/**
+ * Versions of a custom fine-tuned model (Tesseract Vietnamese Agri). Files are
+ * imported on the server with the admin CLI — never uploaded from the browser;
+ * this panel only shows the backend's state and switches between versions that
+ * are already imported and verified.
+ */
+function CustomModelPanel({ engine }: { engine: OcrEngineStatus }) {
+  const { t } = useTranslation()
+  const [guideOpen, setGuideOpen] = useState(false)
+  const switchVersion = useActivateOcrCustomVersion()
+  const rollback = useRollbackOcrCustomVersion()
+  const verify = useVerifyOcrCustomVersion()
+  const check = useOcrReadinessCheck()
+  const custom = engine.custom
+  if (!custom) return null
+  const active = custom.versions.find((v) => v.active)
+  const busy = switchVersion.isPending || rollback.isPending || verify.isPending
+  const exec = 'docker compose exec open_notebook uv run --no-sync'
+
+  return (
+    <section className="space-y-3 rounded-md border bg-muted/20 p-3" data-slot="custom-model" aria-label={t('ocr.custom.title')}>
+      <div>
+        <h5 className="text-sm font-semibold">{t('ocr.custom.title')}</h5>
+        <p className="text-xs text-muted-foreground">{t('ocr.custom.desc')}</p>
+      </div>
+
+      {custom.error && (
+        <Alert variant="destructive"><AlertDescription className="break-words">{custom.error}</AlertDescription></Alert>
+      )}
+
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2" data-slot="custom-active">
+        <div className="flex gap-2">
+          <dt className="text-muted-foreground">{t('ocr.custom.activeVersion')}:</dt>
+          <dd className="font-medium">{custom.active_version ?? t('ocr.custom.none')}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="text-muted-foreground">{t('ocr.custom.previousVersion')}:</dt>
+          <dd>{custom.previous_version ?? t('ocr.custom.none')}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="text-muted-foreground">{t('ocr.size')}:</dt>
+          <dd>{active ? formatBytes(active.size) : '—'}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="text-muted-foreground">{t('ocr.custom.importedAt')}:</dt>
+          <dd>{formatDate(active?.imported_at)}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="text-muted-foreground">{t('ocr.custom.verification')}:</dt>
+          <dd className={active && !versionUsable(active) ? 'text-destructive' : undefined}>
+            {active ? t(versionVerifyKey(active)) : '—'}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="text-muted-foreground">{t('ocr.readiness.title')}:</dt>
+          <dd>{active ? t(READINESS_KEYS[active.readiness_state ?? ''] ?? 'ocr.readiness.state.pipelineNotVerified') : '—'}</dd>
+        </div>
+        <div className="flex gap-2 sm:col-span-2">
+          <dt className="shrink-0 text-muted-foreground">SHA-256:</dt>
+          <dd className="break-all font-mono text-xs" data-testid="custom-active-sha">{active?.sha256 ?? '—'}</dd>
+        </div>
+        <div className="flex gap-2 sm:col-span-2">
+          <dt className="text-muted-foreground">{t('ocr.languages')}:</dt>
+          <dd>{custom.with_english ? t('ocr.custom.languagesWithEnglish') : t('ocr.custom.languagesVieOnly')}</dd>
+        </div>
+      </dl>
+
+      {!custom.prerequisites_ok && (
+        <Alert><AlertDescription>{t('ocr.custom.prerequisitesMissing')}</AlertDescription></Alert>
+      )}
+      {custom.with_english && custom.english_ok === false && (
+        <Alert variant="destructive"><AlertDescription>{t('ocr.custom.englishMissing')}</AlertDescription></Alert>
+      )}
+
+      <div className="space-y-2">
+        <h6 className="text-sm font-medium">{t('ocr.custom.versions')}</h6>
+        {custom.versions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('ocr.custom.noVersions')}</p>
+        ) : (
+          <ul className="space-y-2">
+            {custom.versions.map((v) => (
+              <li key={v.version} className="space-y-1 rounded border bg-background p-2 text-sm" data-version={v.version}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{v.version}</span>
+                  {v.active && <Badge>{t('ocr.custom.activeBadge')}</Badge>}
+                  {v.previous && <Badge variant="outline">{t('ocr.custom.previousBadge')}</Badge>}
+                  <Badge variant={versionUsable(v) ? 'secondary' : 'destructive'}>{t(versionVerifyKey(v))}</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {formatBytes(v.size)} · {formatDate(v.imported_at)} ·{' '}
+                    {t(READINESS_KEYS[v.readiness_state ?? ''] ?? 'ocr.readiness.state.pipelineNotVerified')}
+                  </span>
+                </div>
+                <p className="break-all font-mono text-xs text-muted-foreground">SHA-256: {v.sha256}</p>
+                {v.notes && <p className="text-xs text-muted-foreground">{t('ocr.custom.notes')}: {v.notes}</p>}
+                {(v.duplicate_of?.length ?? 0) > 0 && (
+                  <p className="text-xs text-muted-foreground">{t('ocr.custom.duplicateOf', { versions: (v.duplicate_of ?? []).join(', ') })}</p>
+                )}
+                {!v.file_ok && v.file_detail && <p className="break-words text-xs text-destructive">{v.file_detail}</p>}
+                {v.file_ok && v.verification?.detail && <p className="break-words text-xs text-destructive">{v.verification.detail}</p>}
+                <div className="flex flex-wrap items-center gap-2">
+                  {!v.active && versionUsable(v) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => {
+                        if (!window.confirm(t('ocr.custom.switchConfirm', { version: v.version }))) return
+                        switchVersion.mutate({ id: engine.id, version: v.version })
+                      }}
+                    >
+                      <ArrowLeftRight className="h-4 w-4" aria-hidden />
+                      {t('ocr.custom.switchTo')}
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => verify.mutate({ id: engine.id, version: v.version })}
+                  >
+                    <ShieldCheck className="h-4 w-4" aria-hidden />
+                    {t('ocr.custom.verify')}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {custom.previous_version && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm(t('ocr.custom.rollbackConfirm', { version: custom.previous_version ?? '' }))) return
+              rollback.mutate(engine.id)
+            }}
+          >
+            <Undo2 className="h-4 w-4" aria-hidden />
+            {t('ocr.custom.rollback', { version: custom.previous_version })}
+          </Button>
+        )}
+        {engine.ready && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!!engine.readiness_job || check.isPending}
+            onClick={() => check.mutate(engine.id)}
+          >
+            <ShieldCheck className="h-4 w-4" aria-hidden />
+            {t('ocr.readiness.check')}
+          </Button>
+        )}
+        {engine.readiness_job && (
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            {t('ocr.readiness.checking')}
+          </span>
+        )}
+      </div>
+
+      <Collapsible open={guideOpen || custom.versions.length === 0} onOpenChange={setGuideOpen}>
+        <CollapsibleTrigger asChild>
+          <Button type="button" variant="ghost" size="sm" className="h-8 px-2">
+            <Terminal className="h-4 w-4" aria-hidden />
+            {t('ocr.custom.cliGuide')}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2 space-y-2 rounded-md border bg-muted/40 p-3 text-sm" data-slot="custom-cli-guide">
+          <p className="text-muted-foreground">{t('ocr.custom.cliGuideDesc')}</p>
+          <p className="font-medium">{t('ocr.custom.cliStepCopy')}</p>
+          <code className="block break-all rounded bg-background px-2 py-1 text-xs">{`./notebook_data/ocr-import/${custom.filename}`}</code>
+          <p className="font-medium">{t('ocr.custom.cliStepImport')}</p>
+          <code className="block break-all rounded bg-background px-2 py-1 text-xs">{`${exec} ${custom.import_cli}`}</code>
+          <p className="font-medium">{t('ocr.custom.cliStepActivate')}</p>
+          <code className="block break-all rounded bg-background px-2 py-1 text-xs">{`${exec} python -m open_notebook.ocr.cli custom activate --version <id>`}</code>
+          <p className="text-muted-foreground">{t('ocr.custom.cliGuideNote')}</p>
+        </CollapsibleContent>
+      </Collapsible>
+    </section>
+  )
+}
+
 function EngineRow({
   engine,
   onTest,
@@ -329,14 +552,21 @@ function EngineRow({
     progress?.bytes_total ? Math.min(100, Math.round(((progress.bytes_done ?? 0) / progress.bytes_total) * 100)) : 0
   // Retry is also offered when files verify but the install failed (e.g. smoke
   // check); never when the runtime is incompatible (the API would refuse).
+  // Custom engines: "install" only fetches the official orientation data, and
+  // versions are never removed from the browser (admin CLI only). Like the
+  // official engines they keep a Retry while the last install / check failed —
+  // otherwise a failed card would have no way forward in the browser.
+  const custom = engine.custom ?? null
   const canInstall =
     !engine.builtin &&
     !busy &&
     engine.runtime.status !== 'incompatible' &&
-    (engine.model.status !== 'installed' || engine.state === 'failed')
+    (custom
+      ? !custom.prerequisites_ok || engine.state === 'failed'
+      : engine.model.status !== 'installed' || engine.state === 'failed')
   const canTest = engine.runtime.status === 'ready' && (engine.builtin || engine.ready)
   const canUse = !engine.active && (engine.builtin ? engine.runtime.status === 'ready' : engine.ready)
-  const canRemove = !engine.builtin && !engine.active && !busy && engine.model.status !== 'not_installed'
+  const canRemove = !custom && !engine.builtin && !engine.active && !busy && engine.model.status !== 'not_installed'
 
   return (
     <li className="space-y-3 rounded-lg border p-4" data-engine={engine.id}>
@@ -345,6 +575,7 @@ function EngineRow({
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="font-medium">{engine.display_name}</h4>
             {engine.active && <Badge>{t('ocr.inUse')}</Badge>}
+            {custom && <Badge variant="outline">{t('ocr.custom.badge')}</Badge>}
             <Badge variant={stateVariant(engine.state)}>{t(STATE_KEYS[engine.state] ?? 'ocr.state.notInstalled')}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">{t(DESC_KEYS[engine.id])}</p>
@@ -366,14 +597,18 @@ function EngineRow({
         </div>
         <div className="flex gap-2">
           <dt className="text-muted-foreground">{t('ocr.version')}:</dt>
-          <dd className="break-all">{engine.model_name} · {engine.model_version}</dd>
+          <dd className="break-all">
+            {custom ? `${engine.model_name} · ${custom.active_version ?? t('ocr.custom.none')}` : `${engine.model_name} · ${engine.model_version}`}
+          </dd>
         </div>
         <div className="flex gap-2">
           <dt className="text-muted-foreground">{t('ocr.size')}:</dt>
           <dd>
             {engine.builtin
               ? t('ocr.builtinModel')
-              : `${formatBytes(engine.installed_size_bytes)} / ${formatBytes(engine.size_bytes)}`}
+              : custom
+                ? formatBytes(custom.versions.find((v) => v.active)?.size)
+                : `${formatBytes(engine.installed_size_bytes)} / ${formatBytes(engine.size_bytes)}`}
           </dd>
         </div>
         <div className="flex gap-2">
@@ -415,8 +650,11 @@ function EngineRow({
           {t('ocr.lastTest')}: {engine.last_test.success ? t('ocr.testSuccess') : t('ocr.testFailed')}
           {typeof engine.last_test.cer === 'number' ? ` · CER ${(engine.last_test.cer * 100).toFixed(1)}%` : ''}
           {engine.last_test.elapsed_seconds ? ` · ${engine.last_test.elapsed_seconds}s` : ''}
+          {engine.last_test.custom_model?.version ? ` · ${t('ocr.custom.testedVersion', { version: engine.last_test.custom_model.version })}` : ''}
         </p>
       )}
+
+      {custom && <CustomModelPanel engine={engine} />}
 
       <div className="flex flex-wrap items-center gap-2">
         {canInstall && (
@@ -437,7 +675,11 @@ function EngineRow({
             variant="outline"
             onClick={() => {
               // An experimental engine is never activated without an explicit, informed choice.
-              if (engine.quality === 'experimental' && !window.confirm(t('ocr.quality.experimentalConfirm'))) return
+              if (
+                engine.quality === 'experimental' &&
+                !window.confirm(t(EXPERIMENTAL_CONFIRM_KEYS[engine.id] ?? 'ocr.quality.experimentalConfirm'))
+              )
+                return
               activate.mutate(engine.id)
             }}
             disabled={activate.isPending}

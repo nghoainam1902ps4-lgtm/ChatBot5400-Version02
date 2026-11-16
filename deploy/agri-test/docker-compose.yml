@@ -1,0 +1,77 @@
+# Isolated TEST stack for evaluating a custom Tesseract model (Phase 10,
+# docs/ocr/OCR_AGRI_MODEL_GUIDE.md). It never shares anything with a production
+# stack on the same host:
+#
+#   - its own compose project, network, image tag, database and data folders
+#     (./surreal_data, ./notebook_data next to this file);
+#   - its own credentials (./.env, created by the operator — never committed);
+#   - ports published on the LOOPBACK interface only (reach it through an SSH
+#     tunnel, see the guide), on numbers that do not collide with 8502 / 5055;
+#   - CPU and memory limits, so a benchmark cannot starve another stack.
+#
+#   cd deploy/agri-test
+#   docker compose build            # image chatbot5400:agri-test (from this checkout)
+#   docker compose up -d
+#
+# Never point this file at a production data folder.
+name: chatbot5400-agri-test
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v2
+    # Use the image already on this host as it is: a test stack must not move
+    # the tag another stack was created from.
+    pull_policy: never
+    command: ["start", "--log", "info", "--user", "${SURREAL_USER:?set SURREAL_USER in .env}", "--pass", "${SURREAL_PASSWORD:?set SURREAL_PASSWORD in .env}", "rocksdb:/mydata/mydatabase.db"]
+    user: root
+    volumes:
+      - ./surreal_data:/mydata
+    # No host port: only the test application reaches the test database.
+    cpus: 1.0
+    mem_limit: 2g
+    restart: unless-stopped
+
+  open_notebook:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        OCR_INSTALL_TESSERACT: "true"
+    image: ${AGRI_TEST_IMAGE:-chatbot5400:agri-test}
+    pull_policy: never
+    ports:
+      - "127.0.0.1:${AGRI_TEST_WEB_PORT:-8503}:8502"
+      - "127.0.0.1:${AGRI_TEST_API_PORT:-5056}:5055"
+    environment:
+      - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY:?set OPEN_NOTEBOOK_ENCRYPTION_KEY in .env}
+      - OPEN_NOTEBOOK_JWT_SECRET=${OPEN_NOTEBOOK_JWT_SECRET:?set OPEN_NOTEBOOK_JWT_SECRET in .env}
+      - SURREAL_URL=ws://surrealdb:8000/rpc
+      - SURREAL_USER=${SURREAL_USER}
+      - SURREAL_PASSWORD=${SURREAL_PASSWORD}
+      - SURREAL_NAMESPACE=agri_test
+      - SURREAL_DATABASE=agri_test
+      - OPEN_NOTEBOOK_ENABLE_URL_INGESTION=false
+      # The browser (through the SSH tunnel) calls the API on the tunnelled port.
+      - API_URL=http://localhost:${AGRI_TEST_API_PORT:-5056}
+      - OPEN_NOTEBOOK_ENABLE_DOCLING=true
+      - UV_TORCH_BACKEND=cpu
+      - OPEN_NOTEBOOK_WORKER_MAX_TASKS=1
+      - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true
+      - OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=${OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR:-true}
+      # Agri language set: Vietnamese only (default, measured in Phase 10E).
+      - OCR_AGRI_WITH_ENGLISH=${OCR_AGRI_WITH_ENGLISH:-false}
+      # Phase 10G (D-33): full-page OCR for scans under a tilted visible text box
+      # (diagonal watermark). Opt-in: OFF unless the stack's own .env (never
+      # committed) sets OCR_AUTO_FULL_PAGE_ON_WATERMARK=true.
+      - OCR_AUTO_FULL_PAGE_ON_WATERMARK=${OCR_AUTO_FULL_PAGE_ON_WATERMARK:-false}
+    volumes:
+      - ./notebook_data:/app/data
+      # Read-only drop folder for model files to import with the admin CLI:
+      #   ... python -m open_notebook.ocr.cli custom import --file /import/vie_agri.traineddata --version v2
+      - ${AGRI_IMPORT_DIR:-./import}:/import:ro
+    depends_on:
+      - surrealdb
+    cpus: ${AGRI_TEST_CPUS:-4.0}
+    mem_limit: ${AGRI_TEST_MEMORY:-10g}
+    restart: unless-stopped
