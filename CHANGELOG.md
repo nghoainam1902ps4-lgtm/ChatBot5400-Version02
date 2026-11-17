@@ -2,6 +2,22 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [1.2.0] - 2026-11-17 — Advanced OCR & Custom Model Manager (bản chính thức)
+
+Bản **chính thức** đầu tiên có OCR Engine Manager và Custom Tesseract Model Manager; gom toàn bộ nội dung của
+1.1.0-rc.1 và 1.1.0-rc.2 (các mục bên dưới). Chi tiết: `docs/ocr/OCR_RELEASE_NOTES_V1.2.0.md`; rollback:
+`docs/ocr/OCR_V120_ROLLBACK_GUIDE.md`.
+
+- **Mã ứng dụng giống hệt 1.1.0-rc.2**: chỉ đổi số phiên bản (`VERSION`, `frontend/package.json`,
+  `frontend/package-lock.json`) và tài liệu. Không có tính năng mới, không đổi thuật toán OCR hay pipeline.
+- **Không có migration cơ sở dữ liệu; không đổi phụ thuộc** (`uv.lock`, `pyproject.toml`, `Dockerfile` giống hệt
+  rc.2; Open Notebook 1.14.0, Content Core 2.0.7, Docling 2.129.0).
+- RapidOCR vẫn là engine mặc định; Tesseract Vietnamese Agri vẫn **Thử nghiệm** và bản phát hành không kèm model;
+  `OCR_AUTO_FULL_PAGE_ON_WATERMARK` vẫn mặc định tắt.
+- Nâng cấp từ 1.1.0-rc.2: không có việc bắt buộc; hạ cấp về rc.2 không cần đổi engine hay khôi phục cơ sở dữ liệu.
+- Phát hành dưới dạng mã nguồn, không kèm Docker image hay model. Bản chính thức **không** phải xác nhận an toàn bảo
+  mật cho nghiệp vụ (giới hạn: ghi chú phát hành mục 11–12).
+
 ## [1.1.0-rc.2] - 2026-11-16 — Model Tesseract tùy biến, tự OCR toàn trang (Pre-release)
 
 Bản **Pre-release** (Release Candidate) thứ hai; bản ổn định gần nhất vẫn là 1.0.8. Phát hành dưới dạng

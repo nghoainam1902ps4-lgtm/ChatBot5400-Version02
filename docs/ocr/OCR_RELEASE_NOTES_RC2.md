@@ -2,6 +2,9 @@
 
 Ngày phát hành: 2026-11-16 (Phase 10I) · Tag `v1.1.0-rc.2` · **GitHub Pre-release — không phải bản ổn định.**
 
+> Bản chính thức tiếp theo: **v1.2.0** (cùng mã ứng dụng) — [OCR_RELEASE_NOTES_V1.2.0.md](OCR_RELEASE_NOTES_V1.2.0.md).
+> Nội dung dưới đây mô tả v1.1.0-rc.2 và được giữ nguyên.
+
 | | |
 |---|---|
 | Phiên bản | `1.1.0-rc.2` (bản trước: `1.1.0-rc.1`; bản ổn định gần nhất: `1.0.8`) |
