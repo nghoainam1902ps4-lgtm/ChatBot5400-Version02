@@ -117,7 +117,8 @@ uv run pytest tests/ -q
 uv run pytest tests/review_phase12d2 -q -rxX
 ```
 
-Ghi lại: tổng PASS/FAIL/SKIP; danh sách FAIL theo tên; `tests/test_chunking.py` có chạy xong không (trong Cloud file này treo vì
+Ghi lại: tổng PASS/FAIL/SKIP; danh sách FAIL theo tên; `test_signature_valid_and_invalid` phải **chạy** (cần `ssh-keygen`), không
+được SKIP; `tests/test_chunking.py` có chạy xong không (trong Cloud file này treo vì
 proxy chặn host tải bảng mã tiktoken).
 
 ## 7. Biên bản

@@ -13,7 +13,7 @@ Số test thu thập được (đếm lại trong phiên review, đã cài extra
 | Tổng backend tại v1.2.0 | 1789 + 13 + 64 = 1866 | 1866 thu thập được | Khớp |
 | Test OCR có sẵn | 633 | 697 file `test_ocr_*` tại v1.2.0 | Con số 633 không tái lập được theo cách đếm file; chênh lệch có thể do SKIP |
 | Test OCR mới | 303 | 304 (269 normalizer + 28 pipeline + 7 script) | Lệch 1 |
-| Test offline | 30 | 30 | Khớp; đã chạy lại: 30 PASS |
+| Test offline | 30 | 30 | Khớp về số lượng; chạy lại: **29 PASS + 1 SKIP** (`test_signature_valid_and_invalid`: môi trường review không có `ssh-keygen`) |
 | Frontend | 430/430 | **430/430 PASS**, 63 file, `tsc --noEmit` sạch | Đã chạy lại trong phiên review |
 
 Kết quả chạy lại backend theo từng file và so sánh lỗi theo tên: xem §6.
@@ -90,9 +90,45 @@ Cả 24 fixture đều có trường `ground_truth` nhưng phép đo mất từ 
 ## 6. Chạy lại backend và so sánh lỗi theo tên
 
 Cách chạy trong phiên review: mỗi file test một tiến trình, giới hạn 900 giây mỗi file, tại HEAD (`2ef0074`) và tại `v1.2.0`
-(worktree riêng, cùng môi trường ảo). Kết quả điền ở bảng dưới (xem phần cập nhật cuối file).
+(worktree riêng, cùng môi trường ảo).
 
-<!-- RESULTS -->
+| | HEAD `2ef0074` | `v1.2.0` |
+|---|---|---|
+| File test đã chạy | 85 | 81 |
+| PASS | 2089 | 1757 |
+| FAIL | 11 | 11 |
+| SKIP | 66 | 64 |
+| Hết giờ (không tính vào ba dòng trên) | `tests/test_chunking.py` (34 test) | `tests/test_chunking.py` (34 test) |
+| Tổng đối chiếu | 2089 + 11 + 66 + 34 = 2200 | 1757 + 11 + 64 + 34 = 1866 |
+
+Bốn file test mới của Phase 12 tại HEAD: `test_ocr_legal_normalizer.py` 269 PASS · `test_ocr_legal_pipeline.py` 28 PASS ·
+`test_ocr_phase12_scripts.py` 6 PASS + 1 SKIP (không có Tesseract) · `test_offline_package.py` 29 PASS + 1 SKIP (không có
+`ssh-keygen`).
+
+Hệ quả: trong phiên review, **đường kiểm tra chữ ký `ssh-keygen -Y verify` không được thực thi**; phần này chỉ được xác minh bằng
+đọc mã. Cần chạy lại trên máy có OpenSSH (checklist W-PIPE).
+
+**Tập lỗi tại HEAD và tại v1.2.0 trùng nhau hoàn toàn theo tên** (không có lỗi nào chỉ xuất hiện ở một bên):
+
+| Test | Nguyên nhân (đã đọc thông báo lỗi) | Liên quan Phase 12? |
+|---|---|---|
+| `test_domain.py::TestContentSettings::test_content_settings_defaults` | Test mong `'auto'`, mặc định hiện là `'docling'` | Không (có từ trước) |
+| `test_models_api.py::TestModelsProviderAvailability::` 9 test (`test_blank_anthropic_compatible_env_vars_are_unavailable`, `test_generic_env_var_enables_all_modes`, `test_individual_mode_embedding_only`, `…_llm_only`, `…_stt_only`, `…_tts_only`, `test_mixed_config_generic_and_mode_specific`, `test_mode_specific_env_vars_llm_embedding`, `test_no_env_vars_set`) | Lỗi có từ trước | Không |
+| `test_ocr_engine_manager.py::TestLifecycle::test_assert_ready_raises_value_error` | Môi trường review có Docling nhưng không có EasyOCR ⇒ thông báo lỗi khác mẫu test mong đợi | Không (đặc thù môi trường; giống nhau ở baseline) |
+| `tests/test_chunking.py` (hết giờ 900 s) | `tiktoken.get_encoding("o200k_base")` gọi `requests.get` **không có timeout** tới host tải bảng mã; proxy Cloud chặn host này nên lời gọi treo (đã xác nhận bằng stack của faulthandler: `tiktoken/load.py:17 read_file`) | Không |
+
+So với báo cáo của Opus (2122 PASS / 13 FAIL / 65 SKIP):
+
+- 10 lỗi "đã biết" (1 + 9 ở hai dòng đầu) **khớp theo tên** ở cả hai phía. Đã xác minh.
+- 3 lỗi `test_chunking` do tiktoken: trong môi trường review chúng **treo** chứ không lỗi nhanh, nên không tái lập được dưới dạng
+  FAIL; nguyên nhân (host tải bảng mã bị chặn) được xác nhận và giống nhau ở baseline. File `test_chunking.py` không thay đổi
+  giữa v1.2.0 và HEAD.
+- Chênh lệch còn lại (thêm 1 FAIL do thiếu EasyOCR, 1 SKIP) là khác biệt môi trường, xuất hiện giống hệt ở baseline.
+
+Ảnh hưởng tới máy chủ offline của ba test tiktoken: image nướng sẵn bảng mã `o200k_base` vào `/app/tiktoken-cache` và đặt
+`TIKTOKEN_CACHE_DIR`, nên bình thường không cần mạng. Rủi ro còn lại (có từ trước, không do Phase 12): nếu file cache thiếu hoặc
+hỏng trên máy chủ mà tường lửa DROP gói tin, `tiktoken` sẽ **treo** thay vì ném lỗi, và nhánh fallback đếm từ của `token_count`
+không được kích hoạt. Kiểm tra bằng mục W-OFF-09 của checklist Windows.
 
 ## 7. Test phản ví dụ do review thêm
 

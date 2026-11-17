@@ -8,7 +8,8 @@ Mã định danh finding khớp với [PHASE12D2_FINDINGS.json](PHASE12D2_FINDIN
 | Việc | Trạng thái |
 |---|---|
 | Đọc toàn bộ `offline_package.py` (1784 dòng), 9 wrapper, file cấu hình mẫu, 5 tài liệu `docs/deployment/OFFLINE_UPDATE_*` | Đã làm |
-| Chạy 30 test hiện có và 13 test phản ví dụ mới (docker giả; git, tar, SHA-256 thật) | Đã làm |
+| Chạy 30 test hiện có và 13 test phản ví dụ mới (docker giả; git, tar, SHA-256 thật) | Đã làm: 29 PASS + 1 SKIP |
+| Kiểm tra chữ ký `ssh-keygen -Y verify` | **Chỉ đọc mã**: Cloud không có `ssh-keygen`, test chữ ký bị SKIP |
 | Chạy `git bundle` thật để kiểm tra đường build và đường đồng bộ mã nguồn | Đã làm |
 | Docker daemon thật (`docker load`, Compose merge, tạo lại container, rollback) | **Không thể**: Cloud không có Docker daemon |
 | PowerShell (`build-package.ps1`) | **Không thể**: Cloud không có PowerShell; chỉ đọc mã |
@@ -33,7 +34,8 @@ có mục tương ứng trong [PHASE12D2_WINDOWS_ACCEPTANCE_CHECKLIST.md](PHASE1
 | Mọi đường tạo lại ứng dụng dùng `up -d --no-deps --no-build --pull never --force-recreate <app>` | Đúng ở cả 4 chỗ gọi (`cmd_update` 1335, `cmd_finish` 1528, `cmd_rollback` 1586 và 1626) | `test_verified_every_compose_up_is_app_only_no_deps_no_build_pull_never` (so nguyên đuôi lệnh) |
 | Không có `compose down`, `pull`, `build`, `rm`, `prune`, `-v`, `restart` trong công cụ và wrapper | Đúng | `test_verified_source_repo_scripts_never_call_destructive_docker_commands`; đọc 9 wrapper (chỉ `exec python3 … <lệnh>`) |
 | Gói không ký và không có SHA-256 kênh tin cậy bị từ chối | Đúng | `test_verified_unsigned_package_without_trusted_hash_is_refused` |
-| Chữ ký sai, sai nền tảng, checksum sai, file thừa/thiếu, manifest sai, gói có migration bị từ chối | Đúng | 30 test hiện có (đã chạy lại: PASS) |
+| Sai nền tảng, checksum sai, file thừa/thiếu, manifest sai, gói có migration bị từ chối | Đúng | test hiện có, đã chạy lại: PASS |
+| Chữ ký sai bị từ chối; gói có chữ ký nhưng máy chủ chưa cài khóa bị từ chối | Đúng **theo mã** (`verify_signature` 371-406); chưa thực thi trong phiên review | test chữ ký SKIP vì thiếu `ssh-keygen` |
 | Đường dẫn tuyệt đối, `..`, symlink, hardlink, device, entry ngoài thư mục gói bị từ chối trước khi ghi | Đúng | `_check_member` 245-258; `test_archive_safety` |
 | Giới hạn giải nén: 5000 entry, 64 GiB, tỷ lệ 200× | Có | `inspect_archive` 261-282 |
 | Không gọi shell cho lệnh Docker/git (danh sách đối số) | Đúng, trừ `BACKUP_CMD`/`BACKUP_VERIFY_CMD` chạy qua `/bin/sh -c` theo chủ ý | `run()` 90-116; 1284, 1301 |

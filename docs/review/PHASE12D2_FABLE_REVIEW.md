@@ -45,6 +45,7 @@ component trang Source), cùng mã nguồn Docling/Docling Core đúng phiên b�
 | Không có Docker daemon | Không chạy được build image, `docker load`, Compose thật, cập nhật, rollback ⇒ **OFFLINE ROLLBACK: NOT VERIFIED** |
 | Không tải được Layout Heron/TableFormer; không có model Agri; không dùng PDF thật | Không chạy pipeline OCR thật ⇒ **REAL OCR PIPELINE: NOT VERIFIED**. Tài liệu thử được dựng như test của Phase 12: layout tổng hợp → `ReadingOrderModel` thật của Docling |
 | Không có PowerShell | `build-package.ps1`, `phase12-test.ps1` chỉ được đọc |
+| Không có `ssh-keygen`, không có Tesseract | Test chữ ký gói và một test script chẩn đoán bị SKIP; đường kiểm tra chữ ký chỉ được xác minh bằng đọc mã |
 | Proxy chặn host tải bảng mã tiktoken | `tests/test_chunking.py` treo trong Cloud (xem TEST_GAPS §6) |
 
 Phân loại 60 file thay đổi: A/C runtime backend và OCR (7: `legal_normalizer.py` mới; `docling_extract.py`, `options.py`,
@@ -190,6 +191,27 @@ phụ thuộc chế độ. Một job **retry** đọc lại cài đặt nên có
 Chi tiết: [PHASE12D2_OFFLINE_UPDATE_AUDIT.md](PHASE12D2_OFFLINE_UPDATE_AUDIT.md).
 
 **DESIGN: PARTIAL · IMPLEMENTATION: FAIL · SECURITY: PARTIAL · ROLLBACK: NOT VERIFIED.**
+
+## 8b. Lớp 7 — Chất lượng test
+
+Chi tiết: [PHASE12D2_TEST_GAPS.md](PHASE12D2_TEST_GAPS.md). **TEST QUALITY: PARTIAL.**
+
+Chạy lại trong phiên review (mỗi file một tiến trình, giới hạn 900 giây mỗi file):
+
+| | HEAD `2ef0074` | `v1.2.0` |
+|---|---|---|
+| PASS / FAIL / SKIP | 2089 / 11 / 66 | 1757 / 11 / 64 |
+| Hết giờ | `tests/test_chunking.py` (34 test) | `tests/test_chunking.py` (34 test) |
+| Frontend | 430/430 PASS, `tsc` sạch | — |
+
+- Tập lỗi ở hai phía **trùng nhau hoàn toàn theo tên**: 10 lỗi đã biết (`test_domain` 1, `test_models_api` 9) + 1 lỗi đặc thù môi
+  trường review (thiếu EasyOCR). Không có lỗi nào do Phase 12 gây ra.
+- 3 lỗi `test_chunking` mà Opus báo cáo: trong môi trường review, file này **treo** vì `tiktoken` tải bảng mã không có timeout và
+  proxy chặn host; nguyên nhân giống nhau ở baseline, không tái lập được dưới dạng FAIL.
+- 4 file test mới của Phase 12 đều đạt (2 test SKIP do thiếu `ssh-keygen` và Tesseract).
+- Vấn đề chất lượng: oracle "0 từ mất" vòng tròn (T-01); 101/144 ca tham số hóa không khẳng định gì (T-03); oracle an toàn lệnh
+  Docker luôn đúng (T-02); `sync_source`, wrapper build, lần cập nhật thứ hai, `finish`/`rollback` khi lỗi không có test.
+- Review thêm 32 test phản ví dụ: 14 PASS (tính chất đã xác minh), 18 XFAIL nghiêm ngặt (tái hiện finding).
 
 ## 9. Lớp 8 — Hiệu năng
 
