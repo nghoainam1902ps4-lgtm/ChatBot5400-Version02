@@ -1837,6 +1837,13 @@ def test_completed_update_then_next_version(deployment, fake_docker, repo, tmp_p
     assert fake_docker.app()["env"]["OCR_LEGAL_NORMALIZATION_ENABLED"] == "true"
     assert _rollback(conf) == 0
     assert fake_docker.app()["image_id"] == IMAGE_ID
+    # the rollback keeps the gate of the image it returns to, and so does the
+    # attempt after it (read from the running container, not from the journal)
+    assert fake_docker.app()["env"]["OCR_LEGAL_NORMALIZATION_ENABLED"] == "true"
+    assert _server("update", conf, pkg_dir2, "--apply") == 0
+    assert _backups(marker) == 3
+    assert fake_docker.app()["image_id"] == NEXT_ID
+    assert fake_docker.app()["env"]["OCR_LEGAL_NORMALIZATION_ENABLED"] == "true"
 
 
 def test_failed_attempt_then_retry_takes_a_new_backup(
@@ -1890,6 +1897,38 @@ def test_resume_takes_a_new_backup_when_the_old_one_is_too_old(
     _set_conf(conf, BACKUP_MAX_AGE_MINUTES="0")
     assert _server("update", conf, pkg_dir, "--apply", "--accept-missing-rapidocr") == 0
     assert _backups(marker) == 2
+
+
+def test_closing_an_attempt_that_recreated_nothing_does_not_restart_the_application(
+    deployment, fake_docker, tmp_path
+):
+    conf, pkg_dir, _ = deployment
+    marker = _with_backup_cmd(conf, tmp_path, verify="exit 4")
+    assert _server("update", conf, pkg_dir, "--apply") == OP.EXIT_UPDATE  # stops at J
+    container = fake_docker.app()["id"]
+    assert _rollback(conf, "interrupted") == 0
+    assert (
+        not _ups(fake_docker) and fake_docker.app()["id"] == container
+    )  # not restarted
+    journal = _journal(tmp_path)
+    assert journal["status"] == "rolled_back"
+    assert journal["steps"][-1]["step"] == "ROLLBACK_nothing_recreated"
+    _set_conf(conf, BACKUP_VERIFY_CMD="true")
+    assert _server("update", conf, pkg_dir, "--apply") == 0
+    assert (
+        _backups(marker) == 2
+        and _journal(tmp_path)["attempt_id"] != journal["attempt_id"]
+    )
+
+
+def test_state_directory_and_journal_are_private(deployment, tmp_path):
+    conf, pkg_dir, _ = deployment
+    assert _apply(conf, pkg_dir) == 0
+    state = tmp_path / "state"
+    assert (state.stat().st_mode & 0o077) == 0
+    for name in ("journal.json", "journal.json.bak", "image-override.yml"):
+        assert ((state / name).stat().st_mode & 0o077) == 0, name
+    assert all((p.stat().st_mode & 0o077) == 0 for p in state.glob("artifacts-*.json"))
 
 
 def test_incomplete_backup_stops_the_update(deployment, fake_docker, tmp_path):
@@ -2211,6 +2250,68 @@ def test_schema_or_row_counts_changing_after_the_recreate_fail_the_update(
     assert (
         fake_docker.app()["ports"]["8502/tcp"][0]["HostIp"] == "127.0.0.1"
     )  # stays in maintenance
+
+
+def test_acceptance_uploads_and_a_reboot_before_finish_are_not_reported_as_damage(
+    deployment, fake_docker, tmp_path
+):
+    """The checks compare with the state right before EACH recreate, not with the
+    start of the attempt: during acceptance (maintenance mode) the operator uploads
+    test documents, and the server may be rebooted before `finish` or `rollback`."""
+    conf, pkg_dir, _ = deployment
+    assert _apply(conf, pkg_dir) == 0
+    fake_docker.edit(
+        lambda s: s["counts"].update(source=121, source_embedding=5460)
+    )  # acceptance PDF
+    fake_docker.edit(
+        lambda s: s["containers"]["db1"].update(started_at="2026-11-19T06:00:00Z")
+    )  # reboot
+    assert _finish(conf) == 0
+    journal = _journal(tmp_path)
+    assert journal["status"] == "completed"
+    assert journal["reference"]["counts"]["source"] == 121
+    assert (
+        journal["baseline"]["counts"]["source"] == 120
+    )  # the attempt's own record is kept
+    # weeks later: more data, another reboot, then a rollback
+    fake_docker.edit(lambda s: s["counts"].update(source=300, note=90))
+    fake_docker.edit(
+        lambda s: s["containers"]["db1"].update(started_at="2026-12-01T06:00:00Z")
+    )
+    assert _rollback(conf) == 0
+    assert _journal(tmp_path)["status"] == "rolled_back"
+    assert fake_docker.app()["image_id"] == OLD_ID
+
+
+def test_finish_fails_when_a_table_with_data_is_empty_afterwards(
+    deployment, fake_docker, tmp_path
+):
+    """Normal mode: counts may move (users are back), but a table that had rows
+    and is empty after the recreate means the application sees another database."""
+    conf, pkg_dir, _ = deployment
+    assert _apply(conf, pkg_dir) == 0
+    emptied = dict(fake_docker.get()["counts"], source=0, source_embedding=0)
+    fake_docker.set(on_up={"counts": emptied})
+    assert _finish(conf) == OP.EXIT_UPDATE
+    assert _journal(tmp_path)["status"] == "finish_failed"
+
+
+def test_counts_verdict():
+    before = {"source": 120, "note": 0}
+    assert OP.counts_verdict(before, {"source": 120, "note": 0}, True)[0]
+    assert not OP.counts_verdict(before, {"source": 121, "note": 0}, True)[
+        0
+    ]  # maintenance: exact
+    assert OP.counts_verdict(before, {"source": 125, "note": 3}, False)[
+        0
+    ]  # normal: users work
+    assert OP.counts_verdict(before, {"source": 110, "note": 0}, False)[
+        0
+    ]  # a user deleted some
+    assert not OP.counts_verdict(before, {"source": 0, "note": 0}, False)[0]
+    assert not OP.counts_verdict(before, {"note": 0}, False)[0]
+    assert not OP.counts_verdict(before, None, False)[0]
+    assert not OP.counts_verdict(before, None, True)[0]
 
 
 # --- F-22: offline artifacts -----------------------------------------------------
@@ -2865,10 +2966,35 @@ def test_compose_file_changed_by_the_source_sync_cannot_touch_the_database(
     assert _apply(conf, pkg_dir, "--sync-source") == OP.EXIT_UPDATE
     assert not _ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
     assert fake_docker.get()["containers"]["db1"]["id"] == "db-container-original"
-    # the interrupted attempt is undone: application untouched, source back at v1.2.0
+    # the interrupted attempt is undone: application untouched (not even restarted), source back at v1.2.0
     assert _rollback(conf, "interrupted") == 0
+    assert not _ups(fake_docker)
     assert _git(server, "rev-parse", "HEAD") == _git(repo, "rev-parse", "v1.2.0")
     assert not (server / "docker-compose.yml").exists()
+
+
+def test_attempt_is_not_resumed_across_a_source_sync(
+    git_deployment, fake_docker, repo, tmp_path
+):
+    """After the source moved, the configuration on disk is the release's: a resumed
+    run would compare the database service against the wrong side. The attempt is
+    closed (application untouched, source back) and started again."""
+    conf, pkg_dir, server = git_deployment
+    v120 = _git(server, "rev-parse", "HEAD")
+    fake_docker.edit(lambda s: s["rapidocr"].update(copied={}, on_volume=[]))
+    assert (
+        _apply(conf, pkg_dir, "--sync-source") == OP.EXIT_UPDATE
+    )  # stops after K, before the recreate
+    assert _git(server, "rev-parse", "HEAD") != v120
+    assert (
+        _apply(conf, pkg_dir, "--sync-source", "--accept-missing-rapidocr")
+        == OP.EXIT_UPDATE
+    )
+    assert not _ups(fake_docker)
+    assert _rollback(conf, "interrupted") == 0
+    assert not _ups(fake_docker) and _git(server, "rev-parse", "HEAD") == v120
+    assert _apply(conf, pkg_dir, "--sync-source", "--accept-missing-rapidocr") == 0
+    assert fake_docker.app()["image_id"] == IMAGE_ID
 
 
 def test_sync_source_needs_a_git_checkout(deployment):

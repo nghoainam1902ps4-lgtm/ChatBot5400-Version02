@@ -284,7 +284,7 @@ def update_lock(state_dir: Path) -> Iterator[None]:
     """One update at a time (flock); released automatically if the process dies."""
     import fcntl
 
-    state_dir.mkdir(parents=True, exist_ok=True)
+    ensure_state_dir(state_dir)
     fh = open(state_dir / "update.lock", "w")
     try:
         try:
@@ -313,9 +313,24 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def atomic_write(path: Path, text: str) -> None:
+def ensure_state_dir(path: Path) -> None:
+    """STATE_DIR is private to the user who runs the tool (root): the journal
+    holds hashes of the effective compose configuration, which includes
+    interpolated environment values."""
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with contextlib.suppress(OSError):
+        if path.stat().st_mode & 0o077:
+            os.chmod(path, 0o700)
+
+
+def atomic_write(path: Path, text: str, private: bool = False) -> None:
     """Write + fsync a temporary file, then rename it over ``path`` (F-13)."""
     tmp = path.with_name(path.name + ".tmp")
+    if private:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(fd)
     with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(text)
         fh.flush()
@@ -380,12 +395,12 @@ class Journal:
         raise Refused(hint, EXIT_UPDATE)
 
     def save(self) -> None:
-        self.dir.mkdir(parents=True, exist_ok=True)
+        ensure_state_dir(self.dir)
         text = json.dumps(self.data, indent=2, sort_keys=True)
-        atomic_write(self.path, text)
+        atomic_write(self.path, text, private=True)
         # Second copy, written after the first is safely on disk: whichever of
         # the two a crash or a bad block damages, the other is a complete state.
-        atomic_write(self.backup, text)
+        atomic_write(self.backup, text, private=True)
 
     def step(self, name: str, **info: Any) -> None:
         self.data.setdefault("steps", []).append(
@@ -407,12 +422,14 @@ class Journal:
         if not self.data:
             return None
         history = self.dir / "journals"
-        history.mkdir(parents=True, exist_ok=True)
+        history.mkdir(parents=True, exist_ok=True, mode=0o700)
         name = self.data.get("attempt_id") or _dt.datetime.now().strftime(
             "%Y%m%d%H%M%S"
         )
         target = history / f"journal-{name}.json"
-        atomic_write(target, json.dumps(self.data, indent=2, sort_keys=True))
+        atomic_write(
+            target, json.dumps(self.data, indent=2, sort_keys=True), private=True
+        )
         self.data = {}
         for p in (self.path, self.backup):
             if p.exists():
@@ -1589,9 +1606,9 @@ def write_image_override(
 ) -> Path:
     """Our own override file (outside the deployment folder): image + no pulls."""
     text = render_override(dep.app, image, extra_env)
-    dep.state.mkdir(parents=True, exist_ok=True)
+    ensure_state_dir(dep.state)
     path = dep.override_path()
-    atomic_write(path, text)
+    atomic_write(path, text, private=True)
     return path
 
 
@@ -2154,22 +2171,60 @@ def _env_map(env: Any) -> Dict[str, str]:
     return out
 
 
+def take_reference(dep: Deployment, maintenance: bool) -> Dict[str, Any]:
+    """State right before a recreate that the recreate must leave untouched."""
+    return {
+        "taken_at": now_iso(),
+        "db": db_snapshot(dep),
+        "schema": current_schema(dep),
+        "counts": record_counts(dep),
+        # In maintenance the ports are loopback-only: no user can change data
+        # while the checks run, so the row counts must be exactly the same.
+        "maintenance": maintenance,
+    }
+
+
+def counts_verdict(
+    before: Dict[str, int], after: Optional[Dict[str, int]], maintenance: bool
+) -> Tuple[bool, str]:
+    """Row counts before / after a recreate.
+
+    Maintenance: must be identical. Normal mode: users are working again, so
+    counts may move; a table that had rows and is now empty (or unreadable)
+    still means the application sees another, or an empty, database.
+    """
+    if after is None:
+        return False, "row counts could not be read after the recreate"
+    if maintenance:
+        return after == before, f"row counts unchanged: {after}"
+    emptied = sorted(t for t, n in before.items() if n > 0 and not after.get(t))
+    if emptied:
+        return False, f"tables that had rows are now empty: {emptied} (before {before})"
+    return True, f"row counts before {before}, now {after} (normal mode: informational)"
+
+
 def recreate_app(
     dep: Deployment, journal: Journal, extra_files: List[str], step: str, **info: Any
 ) -> None:
-    """Recreate ONLY the application, then prove the database container is the same one."""
+    """Recreate ONLY the application, then prove the database container is the same one.
+
+    What this recreate must not change is recorded immediately before it (the
+    "reference"): the real database container, the schema and the row counts.
+    The attempt's baseline is NOT used for this: between the start of an
+    attempt and its finish or rollback the operator uploads acceptance
+    documents and the server may be rebooted - neither is caused by this tool.
+    """
+    journal.data["reference"] = take_reference(dep, bool(info.get("maintenance")))
     journal.data["compose_command"] = dep.up_command(extra_files)
     journal.save()
     run(dep.up_command(extra_files), capture=False, timeout=1800)
     journal.step(step, **info)
-    baseline_db = (journal.data.get("baseline") or {}).get("db")
-    if baseline_db:
-        try:
-            assert_db_untouched(dep, baseline_db, f"after {step}")
-        except Refused:
-            journal.data["db_changed"] = True
-            journal.save()
-            raise
+    try:
+        assert_db_untouched(dep, journal.data["reference"]["db"], f"after {step}")
+    except Refused:
+        journal.data["db_changed"] = True
+        journal.save()
+        raise
 
 
 def sync_source(
@@ -2355,14 +2410,18 @@ def start_attempt(dep: Deployment, journal: Journal, manifest: Dict[str, Any]) -
             return
         # failed, or interrupted after the recreate, but the baseline image runs
         # again: that transaction is over. A new one starts, with its own backup.
+    # The operator's Legal gate decision travels with the deployment: it is read
+    # from the container that runs NOW (whatever the journal history is), so an
+    # update after a rollback or a failed attempt does not silently switch it off.
     carried: Dict[str, str] = {}
-    if status == COMPLETED:
-        previous_env = journal.data.get("override_env") or {}
-        carried = {k: previous_env[k] for k in CARRIED_ENV if k in previous_env}
-    if journal.data:
-        archived = journal.archive()
-        log(f"previous attempt archived: {archived}")
-    journal.data = {
+    env_now = container_env(container) if container else {}
+    for key in CARRIED_ENV:
+        value = env_now.get(key, "").strip().lower()
+        if value in ("true", "false"):
+            carried[key] = value
+    # Everything that can still refuse (the baseline needs the application and the
+    # database container) happens BEFORE the previous journal is put away.
+    fresh = {
         "schema": 2,
         "attempt_id": new_attempt_id(),
         "version": manifest["application"]["version"],
@@ -2376,9 +2435,14 @@ def start_attempt(dep: Deployment, journal: Journal, manifest: Dict[str, Any]) -
         # Taken BEFORE anything changes (and before any source sync): F-21.
         "baseline": current_baseline(dep),
     }
+    if journal.data:
+        archived = journal.archive()
+        log(f"previous attempt archived: {archived}")
+    journal.data = fresh
     journal.save()
     log(
-        f"attempt {journal.data['attempt_id']} started; baseline image {journal.data['baseline']['image_id'][:19]}"
+        f"attempt {fresh['attempt_id']} started; baseline image "
+        f"{fresh['baseline']['image_id'][:19]}"
     )
 
 
@@ -2447,6 +2511,16 @@ def cmd_update(args: argparse.Namespace) -> int:
         args.quiet = True
         cmd_preflight(args, cfg)
         start_attempt(dep, journal, manifest)
+        if journal.done("K_source"):
+            # A resumed attempt that already moved the source: the configuration
+            # read now is the release's, not the baseline's, so the database /
+            # volume comparison of F-21 would be made against the wrong side.
+            raise Refused(
+                "this attempt already synchronised the source before it stopped: close it "
+                "with `rollback.sh interrupted` (nothing was recreated: the application is "
+                "not touched, the source goes back), then start the update again",
+                EXIT_UPDATE,
+            )
         env = attempt_env(cfg, journal)
         baseline = journal.data["baseline"]
         before_config = dep.config_json()  # before any source sync (F-21)
@@ -2553,6 +2627,7 @@ def cmd_update(args: argparse.Namespace) -> int:
         atomic_write(
             dep.state / f"artifacts-{journal.data['attempt_id']}.json",
             json.dumps(artifacts, sort_keys=True),
+            private=True,
         )
         journal.step(
             "ARTIFACTS_snapshot",
@@ -2661,7 +2736,8 @@ def health_checks(
         good = res.returncode == 0
         log(f"{'OK  ' if good else 'FAIL'} {name}")
         ok &= good
-    baseline = (journal.data.get("baseline") if journal else None) or {}
+    # Compared with the state recorded right before the recreate (see recreate_app).
+    baseline = (journal.data.get("reference") if journal else None) or {}
     if manifest is not None or baseline.get("schema") is not None:
         want = (
             manifest["database"]["schema_version"]
@@ -2675,9 +2751,10 @@ def health_checks(
         )
         ok &= good
     if baseline.get("counts"):
-        got_counts = record_counts(dep)
-        good = got_counts == baseline["counts"]
-        log(f"{'OK  ' if good else 'FAIL'} row counts unchanged: {got_counts}")
+        good, detail = counts_verdict(
+            baseline["counts"], record_counts(dep), bool(baseline.get("maintenance"))
+        )
+        log(f"{'OK  ' if good else 'FAIL'} {detail}")
         ok &= good
     snapshot = (
         dep.state / f"artifacts-{journal.data.get('attempt_id')}.json"
@@ -3078,6 +3155,25 @@ def cmd_rollback(args: argparse.Namespace) -> int:
 
         # app / interrupted: back to the baseline image, by VERIFIED IMAGE ID (F-24a).
         baseline = journal.data.get("baseline") or {}
+        if (
+            args.what == "interrupted"
+            and journal.data.get("status") == IN_PROGRESS
+            and not journal.done("N_recreated")
+            and container
+            and baseline.get("image_id")
+            and dep.container_image_id(container) == baseline["image_id"]
+        ):
+            # The update stopped before the application was recreated: it still
+            # runs the baseline image. Closing the attempt must not restart it.
+            note = restore_source(dep, journal)
+            journal.data["status"] = ROLLED_BACK
+            journal.step("ROLLBACK_nothing_recreated", image_id=baseline["image_id"])
+            log(
+                "the update had not recreated the application: it is left running, untouched"
+            )
+            log(f"source: {note}")
+            log("the next update is a new attempt with its own backup")
+            return EXIT_OK
         maintenance = (
             []
             if args.no_maintenance or not cfg["MAINTENANCE_OVERRIDE"]
@@ -3150,13 +3246,11 @@ def cmd_rollback(args: argparse.Namespace) -> int:
         # The baseline's own environment: the offline variables plus the Legal gate
         # decision that was in force before this attempt (empty for v1.2.0).
         env = attempt_env(cfg, journal)
-        if args.acknowledge_db_change:
-            # The operator investigated a reported database-container change and
-            # accepts the container as it is now: compare against the present.
-            db_before = db_snapshot(dep)
-            journal.data["db_change_acknowledged"] = now_iso()
-        else:
-            db_before = baseline.get("db") or db_snapshot(dep)
+        # What THIS recreate must not change (not the attempt's baseline: the server
+        # may have been rebooted and documents uploaded since the update).
+        reference = take_reference(dep, bool(maintenance))
+        journal.data["reference"] = reference
+        db_before = reference["db"]
         before = dep.config_json()
         override = write_image_override(dep, tag, env)
         after = dep.config_json([str(override)] + maintenance)
@@ -3171,7 +3265,21 @@ def cmd_rollback(args: argparse.Namespace) -> int:
             "ROLLBACK_app", to=tag, image_id=target_id, maintenance=bool(maintenance)
         )
         assert_db_untouched(dep, db_before, "after the rollback")
-        ok = health_checks(dep, cfg, expect_image=target_id)
+        ok = health_checks(dep, cfg, expect_image=target_id, journal=journal)
+        if ok and journal.data.get("db_changed"):
+            # The update itself reported a changed database container. The
+            # application is back on the previous image, but that report stays
+            # open until the operator has looked at the database container.
+            if not args.acknowledge_db_change:
+                log(
+                    "ROLLBACK NOT CONFIRMED: the application runs the previous image again, "
+                    "but DATABASE CONTAINER CHANGED was reported during the update. "
+                    "Investigate the database container, then run the rollback again with "
+                    "--acknowledge-db-change. Nothing was restored."
+                )
+                return EXIT_UPDATE
+            journal.data["db_changed"] = False
+            journal.data["db_change_acknowledged"] = now_iso()
         if not ok:
             log(
                 "ROLLBACK NOT CONFIRMED: the previous image was started but does not pass its "
