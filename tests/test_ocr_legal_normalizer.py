@@ -1034,3 +1034,156 @@ def test_summary_and_persisted_metadata_contain_no_text(built):
     assert len(removed) == 5 and all(
         len(o["sha256"]) == 64 and o["pages"] for o in removed
     )
+
+
+# --------------------------------------------------------------------------- #
+# Layouts the Phase 12D2 review listed as having no fixture (TEST_GAPS §5):
+# mixed page sizes / landscape pages, partly missing provenance, items with
+# several provenances, a table inside a picture.
+# --------------------------------------------------------------------------- #
+
+
+def _edge_tools():
+    from docling_core.types.doc.base import BoundingBox, CoordOrigin, Size
+    from docling_core.types.doc.document import (
+        DoclingDocument,
+        ProvenanceItem,
+        TableCell,
+        TableData,
+    )
+    from docling_core.types.doc.labels import DocItemLabel
+
+    def prov(page, left, t, r, b):
+        return ProvenanceItem(
+            page_no=page,
+            bbox=BoundingBox(l=left, t=t, r=r, b=b, coord_origin=CoordOrigin.TOPLEFT),
+            charspan=(0, 1),
+        )
+
+    return DoclingDocument, DocItemLabel, Size, TableCell, TableData, prov
+
+
+def _kept(doc, expected):
+    """Every expected line is displayed, in order, exactly once; nothing merged."""
+    res = N.normalize_document(doc)
+    lines = H.legal_lines(res.content)
+    assert [ln for ln in lines if ln in expected] == expected
+    return res, lines
+
+
+def test_mixed_page_sizes_and_landscape_pages():
+    """A4, A3 landscape, A4, A4 landscape, A4: positions are compared relative to
+    each page, so real page numbers are still found and no body line is touched."""
+    DoclingDocument, L, Size, _, _, prov = _edge_tools()
+    sizes = [(595, 842), (1191, 842), (595, 842), (842, 595), (595, 842)]
+    doc = DoclingDocument(name="mixed")
+    body = []
+    for p, (w, h) in enumerate(sizes, 1):
+        doc.add_page(page_no=p, size=Size(width=w, height=h))
+        text = f"Nội dung trang {p} của quy định chưa kết thúc ở cuối trang nên còn"
+        body.append(text)
+        doc.add_text(
+            label=L.TEXT, text=text, prov=prov(p, w * 0.12, h * 0.1, w * 0.88, h * 0.85)
+        )
+        doc.add_text(
+            label=L.TEXT,
+            text=str(p),
+            prov=prov(p, w * 0.49, h * 0.95, w * 0.51, h * 0.965),
+        )
+    res, lines = _kept(doc, body)
+    assert lines == body  # page numbers gone, each page still its own paragraph
+    assert res.counts["page_number_to_furniture"] == 5
+    assert res.counts.get("join_across_pages", 0) == 0
+
+
+def test_items_without_provenance_between_located_items():
+    """An item the layout gave no position is never a candidate for anything."""
+    DoclingDocument, L, Size, _, _, prov = _edge_tools()
+    doc = DoclingDocument(name="partial")
+    expected = []
+    for p in range(1, 6):
+        doc.add_page(page_no=p, size=Size(width=595, height=842))
+        located = f"Điều {p}. Đoạn có vị trí trên trang {p}."
+        floating = f"Đoạn thứ {p} không có vị trí và chưa kết thúc ở"
+        expected += [located, floating]
+        doc.add_text(label=L.TEXT, text=located, prov=prov(p, 70, 80, 525, 110))
+        doc.add_text(label=L.TEXT, text=floating)
+        doc.add_text(label=L.TEXT, text=str(p), prov=prov(p, 290, 800, 306, 812))
+    res, lines = _kept(doc, expected)
+    assert lines == expected
+    assert res.counts.get("join_across_pages", 0) == 0
+    # a bare number without a position is content, not a page number
+    doc.add_text(label=L.TEXT, text="2024")
+    assert "2024" in H.legal_lines(N.normalize_document(doc).content)
+
+
+def test_items_with_several_provenances_are_left_whole():
+    """Docling can already give one item two page fragments: it is neither
+    joined again nor split, and its text is unchanged."""
+    DoclingDocument, L, Size, _, _, prov = _edge_tools()
+    doc = DoclingDocument(name="multi")
+    for p in range(1, 6):
+        doc.add_page(page_no=p, size=Size(width=595, height=842))
+    expected = []
+    for p in range(1, 6):
+        head = f"Điều {p}. Mở đầu trang {p}."
+        expected.append(head)
+        doc.add_text(label=L.TEXT, text=head, prov=prov(p, 70, 80, 525, 110))
+        if p < 5:
+            spanning = f"Đoạn {p} bắt đầu ở trang {p} và kết thúc ở trang {p + 1}."
+            expected.append(spanning)
+            item = doc.add_text(
+                label=L.TEXT, text=spanning, prov=prov(p, 70, 700, 525, 780)
+            )
+            item.prov.append(prov(p + 1, 70, 40, 525, 70))
+        doc.add_text(label=L.TEXT, text=str(p), prov=prov(p, 290, 800, 306, 812))
+    res, lines = _kept(doc, expected)
+    assert lines == expected
+    assert res.counts.get("join_across_pages", 0) == 0
+
+
+def test_table_inside_a_picture_is_kept_and_the_picture_leaves_a_trace():
+    """The Standard export drops a table the layout nested in a picture region
+    (a scanned annex photographed as one image). Legal keeps its rows."""
+    DoclingDocument, L, Size, TableCell, TableData, prov = _edge_tools()
+    doc = DoclingDocument(name="tabpic")
+    doc.add_page(page_no=1, size=Size(width=595, height=842))
+    doc.add_text(
+        label=L.TEXT,
+        text="Phụ lục 01. Biểu phí dịch vụ.",
+        prov=prov(1, 70, 80, 525, 110),
+    )
+    picture = doc.add_picture(prov=prov(1, 70, 150, 525, 600))
+    rows = [["Chỉ tiêu", "Mức phí"], ["Phí chuyển tiền", "11.000 đồng"]]
+    cells = [
+        TableCell(
+            text=text,
+            start_row_offset_idx=r,
+            end_row_offset_idx=r + 1,
+            start_col_offset_idx=c,
+            end_col_offset_idx=c + 1,
+            column_header=(r == 0),
+        )
+        for r, row in enumerate(rows)
+        for c, text in enumerate(row)
+    ]
+    doc.add_table(
+        data=TableData(table_cells=cells, num_rows=2, num_cols=2),
+        prov=prov(1, 90, 200, 500, 400),
+        parent=picture,
+    )
+    doc.add_text(
+        label=L.TEXT,
+        text="Mức phí trên chưa bao gồm thuế.",
+        prov=prov(1, 70, 650, 525, 680),
+    )
+    standard = H.display_lines(doc.export_to_markdown())
+    assert "Phí chuyển tiền | 11.000 đồng" not in standard  # the upstream loss
+    lines = H.legal_lines(N.normalize_document(doc).content)
+    assert lines == [
+        "Phụ lục 01. Biểu phí dịch vụ.",
+        "<!-- image -->",
+        "Chỉ tiêu | Mức phí",
+        "Phí chuyển tiền | 11.000 đồng",
+        "Mức phí trên chưa bao gồm thuế.",
+    ]

@@ -34,7 +34,7 @@ from open_notebook.ocr import pdf_prep as pdf_prep_mod  # noqa: E402
 
 @pytest.fixture
 def stub_conversion(monkeypatch):
-    fixture = H.load_fixtures().by_name("f02_clause_across_pages")
+    fixture = H.load_fixtures().by_name("f33_five_pages_real_page_numbers_and_join")
     doc = H.build_document(fixture)
 
     def fake(path, cfg, ocr):
@@ -53,24 +53,31 @@ def stub_conversion(monkeypatch):
 
 @pytest.fixture
 def fixture_pdfs(tmp_path):
-    G.main(["--out", str(tmp_path / "fx"), "--only", "f02_clause_across_pages"])
+    G.main(
+        [
+            "--out",
+            str(tmp_path / "fx"),
+            "--only",
+            "f33_five_pages_real_page_numbers_and_join",
+        ]
+    )
     return tmp_path / "fx"
 
 
 def test_generator_writes_scan_and_ground_truth(fixture_pdfs):
-    pdf = fixture_pdfs / "f02_clause_across_pages.scan.pdf"
+    pdf = fixture_pdfs / "f33_five_pages_real_page_numbers_and_join.scan.pdf"
     assert pdf.read_bytes().startswith(b"%PDF")
-    gt = (fixture_pdfs / "f02_clause_across_pages.scan.gt.txt").read_text(
-        encoding="utf-8"
-    )
+    gt = (
+        fixture_pdfs / "f33_five_pages_real_page_numbers_and_join.scan.gt.txt"
+    ).read_text(encoding="utf-8")
     assert "9. Dịch vụ phi tài chính" in gt
     manifest = json.loads((fixture_pdfs / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest[0]["pages"] == 2
+    assert manifest[0]["pages"] == 5
 
 
 def test_diagnose_writes_every_layer(stub_conversion, fixture_pdfs, tmp_path):
     out = tmp_path / "diag"
-    pdf = fixture_pdfs / "f02_clause_across_pages.scan.pdf"
+    pdf = fixture_pdfs / "f33_five_pages_real_page_numbers_and_join.scan.pdf"
     D.main(
         [
             str(pdf),
@@ -80,7 +87,7 @@ def test_diagnose_writes_every_layer(stub_conversion, fixture_pdfs, tmp_path):
             "rapidocr",
             "--no-direct",
             "--ground-truth",
-            str(fixture_pdfs / "f02_clause_across_pages.scan.gt.txt"),
+            str(fixture_pdfs / "f33_five_pages_real_page_numbers_and_join.scan.gt.txt"),
         ]
     )
     for name in (
@@ -97,14 +104,16 @@ def test_diagnose_writes_every_layer(stub_conversion, fixture_pdfs, tmp_path):
         assert (out / name).is_file(), name
     summary = json.loads((out / "12_summary.json").read_text(encoding="utf-8"))
     assert (
-        summary["standard"]["placeholders"] == 1
+        summary["standard"]["placeholders"] == 0
         and summary["legal"]["placeholders"] == 0
     )
+    # five pages with real page numbers: all removed by Legal, all kept by Standard
     assert (
-        summary["standard"]["numeric_only_lines"] == 2
+        summary["standard"]["numeric_only_lines"] == 5
         and summary["legal"]["numeric_only_lines"] == 0
     )
     assert summary["ground_truth"]["legal"]["cer"] == 0.0
+    assert summary["ground_truth"]["standard"]["cer"] > 0.0
     report = json.loads((out / "09_legal_report.json").read_text(encoding="utf-8"))
     assert any(
         op["op"] == "join_across_pages" and op["text_before"]
@@ -124,7 +133,9 @@ def test_diagnose_refuses_non_empty_output(stub_conversion, fixture_pdfs, tmp_pa
     with pytest.raises(SystemExit):
         D.main(
             [
-                str(fixture_pdfs / "f02_clause_across_pages.scan.pdf"),
+                str(
+                    fixture_pdfs / "f33_five_pages_real_page_numbers_and_join.scan.pdf"
+                ),
                 "--out",
                 str(out),
                 "--no-direct",
@@ -152,7 +163,7 @@ def test_direct_tesseract_layer_is_real(stub_conversion, fixture_pdfs, tmp_path)
     out = tmp_path / "diag"
     D.main(
         [
-            str(fixture_pdfs / "f02_clause_across_pages.scan.pdf"),
+            str(fixture_pdfs / "f33_five_pages_real_page_numbers_and_join.scan.pdf"),
             "--out",
             str(out),
             "--direct-lang",
@@ -162,7 +173,7 @@ def test_direct_tesseract_layer_is_real(stub_conversion, fixture_pdfs, tmp_path)
         ]
     )
     page1 = (out / "01_tesseract_p001.txt").read_text(encoding="utf-8")
-    assert "Dịch vụ" in page1
+    assert "Giải thích từ ngữ" in page1
     assert (
         (out / "01_tesseract_p001.tsv").read_text(encoding="utf-8").startswith("level")
     )
@@ -175,14 +186,17 @@ def test_compare_one_command(stub_conversion, fixture_pdfs, tmp_path):
     C.main([str(fixture_pdfs), "--out", str(out), "--no-direct"])
     data = json.loads((out / "compare.json").read_text(encoding="utf-8"))
     names = {r["document"] for r in data["rows"]}
-    assert "f02_clause_across_pages.scan.pdf" in names
+    assert "f33_five_pages_real_page_numbers_and_join.scan.pdf" in names
     row = next(
-        r for r in data["rows"] if r["document"] == "f02_clause_across_pages.scan.pdf"
+        r
+        for r in data["rows"]
+        if r["document"] == "f33_five_pages_real_page_numbers_and_join.scan.pdf"
     )
     assert (
-        row["placeholders_standard"] == 1
+        row["placeholders_standard"] == 0
         and row["placeholders_legal"] == 0
         and row["joins"] == 1
+        and row["page_numbers_removed"] == 5
     )
     assert row["cer_legal"] == 0.0  # <name>.gt.txt picked up automatically
     assert "Dịch vụ" not in (out / "compare.json").read_text(encoding="utf-8")
@@ -191,3 +205,32 @@ def test_compare_one_command(stub_conversion, fixture_pdfs, tmp_path):
 def test_metrics_renumbering():
     assert M.renumbered_list_items("5. a\n7. b\n13. c") == (2, 3)
     assert M.renumbered_list_items("5\\. a\n\n7\\. b") == (0, 0)
+
+
+def test_benchmark_measures_against_the_declared_ground_truth(tmp_path):
+    """Phase 12D3 (T-01): the benchmark no longer adds back what the normalizer
+    removed. It can fail (Standard does lose displayed content on these
+    fixtures) and it measures a frozen copy of another version the same way."""
+    import phase12_benchmark as B
+
+    out = tmp_path / "benchmark.json"
+    frozen = ROOT / "open_notebook" / "ocr" / "legal_normalizer.py"
+    assert B.main(["--out", str(out), "--repeats", "1", "--before", str(frozen)]) == 0
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["schema"] == "chatbot5400-phase12-benchmark/2"
+    assert data["fixtures"] == len(H.load_fixtures().FIXTURES) >= 45
+    assert data["normalizer_version"] == data["before_normalizer_version"]
+    legal = data["aggregate"]["legal"]
+    assert legal["false_deletion_units"] == 0 and legal["false_deletion_tokens"] == 0
+    assert legal["false_merge"] == 0 and legal["false_insertion"] == 0
+    assert legal["critical_fields"][0] == legal["critical_fields"][1] > 0
+    assert legal["markers"][0] == legal["markers"][1] > 0
+    assert legal["tables_ok"] and legal["tables_identical"]
+    # not every artifact is removed and not every allowed join is made: by design
+    assert legal["artifacts_removed"][0] < legal["artifacts_removed"][1]
+    assert legal["joins"][0] <= legal["joins"][1]
+    standard = data["aggregate"]["standard"]
+    assert standard["false_deletion_units"] > 0  # the oracle is able to fail
+    assert "lost_words" not in json.dumps(
+        data
+    ) and "false_deleted_words" not in json.dumps(data)

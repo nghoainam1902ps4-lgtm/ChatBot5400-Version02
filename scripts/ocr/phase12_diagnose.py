@@ -290,7 +290,10 @@ def summarize(
     under_pictures = [
         r for r in rows if r["parent"] and r["parent"].startswith("#/pictures/")
     ]
-    std_lines, leg_lines = M.display_lines(standard), M.display_lines(legal)
+    # A Legal-normalized Source is shown through the frontend's render-time
+    # escape (legalDisplayMarkdown); the stored text itself has no escapes.
+    std_lines = M.display_lines(standard)
+    leg_lines = M.display_lines(M.legal_display_markdown(legal))
     std_renum, std_ordered = M.renumbered_list_items(standard)
     layer_words = {
         "direct_tesseract": _words(" ".join(direct)) if direct else None,
@@ -480,7 +483,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     _write(out / "08_markdown_legal.md", norm.content)
     _write(out / "09_legal_report.json", report)
     _write(out / "10_display_standard.txt", "\n".join(M.display_lines(standard)))
-    _write(out / "10_display_legal.txt", "\n".join(M.display_lines(norm.content)))
+    _write(
+        out / "10_display_legal.txt",
+        "\n".join(M.display_lines(M.legal_display_markdown(norm.content))),
+    )
     source_text = None
     if args.source_id:
         source_text = fetch_source(
