@@ -165,38 +165,28 @@ ALL_CASES = {
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True, reason="PHASE12D2 F-01: unit of the amounts removed from every page"
-)
+# PHASE12D2 F-01: unit of the amounts removed from every page -- fixed in Phase 12D3 (xfail removed: regression test)
 def test_f01_repeated_unit_line_is_content_not_a_running_header():
     _, standard, res = build(unit_line_pages())
     assert standard.count("Đơn vị tính: triệu đồng") == 3
     assert "Đơn vị tính: triệu đồng" in res.content
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-01: issuer line and signature note of every notice removed",
-)
+# PHASE12D2 F-01: issuer line and signature note of every notice removed -- fixed in Phase 12D3 (xfail removed: regression test)
 def test_f01_bundle_of_one_page_documents_keeps_issuer_and_signature_note():
     _, _, res = build(bundle_pages())
     assert "NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH" in res.content
     assert "(Ký, ghi rõ họ tên và đóng dấu)" in res.content
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-02: years removed as page numbers (same offset on two pages)",
-)
+# PHASE12D2 F-02: years removed as page numbers (same offset on two pages) -- fixed in Phase 12D3 (xfail removed: regression test)
 def test_f02_years_at_page_bottom_are_not_page_numbers():
     _, standard, res = build(year_pages())
     assert "2024" in standard and "2025" in standard
     assert "2024" in res.content and "2025" in res.content
 
 
-@pytest.mark.xfail(
-    strict=True, reason="PHASE12D2 F-02: clause numbers removed as page numbers"
-)
+# PHASE12D2 F-02: clause numbers removed as page numbers -- fixed in Phase 12D3 (xfail removed: regression test)
 def test_f02_clause_numbers_at_page_top_are_not_page_numbers():
     _, _, res = build(clause_number_pages())
     lines = H.display_lines(res.content)
@@ -204,31 +194,38 @@ def test_f02_clause_numbers_at_page_top_are_not_page_numbers():
 
 
 def test_f01_f02_existing_oracle_cannot_see_these_deletions():
-    """PHASE12D2 T-01: the oracle of tests/test_ocr_legal_normalizer.py::test_no_valid_content_lost.
+    """PHASE12D2 T-01: the oracle of Phase 12D (test_no_valid_content_lost) was circular.
 
-    It adds back whatever the normalizer itself moved to furniture, so a wrong
-    removal counts as "0 words lost". Reproduced here on the counter-examples:
-    the words ARE gone from the content, the oracle still reports 0.
+    It added back whatever the normalizer itself moved to furniture, so a wrong
+    removal counted as "0 words lost". Phase 12D3 fixed F-01 / F-02, so the
+    normalizer no longer removes these lines; the blind spot of the OLD formula
+    is therefore shown by construction: take the truth, delete the line the old
+    normalizer deleted, and hand the deleted text to the old formula as "removed
+    by the normalizer". The old formula reports 0; the declared-truth oracle
+    that replaced it (legal_harness.preservation) reports the loss.
     """
-    for pages, gone in ((unit_line_pages(), "triệu"), (year_pages(), "2024")):
+    for pages, line, gone in (
+        (unit_line_pages(), "Đơn vị tính: triệu đồng", "triệu"),
+        (year_pages(), "2024", "2024"),
+    ):
         doc, standard, res = build(pages)
-        removed = " ".join(
-            o.text_before or ""
-            for o in res.operations
-            if o.op.endswith("_to_furniture")
+        assert gone in res.content  # Phase 12D3: the content is kept now
+        truth = H.display_lines(standard)
+        damaged = [x for x in truth if x != line]  # what normalizer 1.0.0 produced
+        removed_report = " ".join(x for x in truth if x == line)
+        old_formula = H.lost_words(
+            " ".join(truth), " ".join(damaged) + " " + removed_report
         )
-        lost_by_existing_oracle = H.lost_words(
-            H.display_text(standard, list_prefixes=False),
-            H.display_text(res.content) + " " + removed,
-        )
-        assert lost_by_existing_oracle == 0  # what Phase 12D reports
-        assert gone not in res.content  # what really happened
+        assert old_formula == 0  # what Phase 12D reported
         assert (
-            H.lost_words(
-                H.display_text(standard, list_prefixes=False),
-                H.display_text(res.content),
-            )
-            > 0
+            H.lost_words(" ".join(truth), " ".join(damaged)) > 0
+        )  # what really happened
+        fixture = {"pages": pages}
+        assert (
+            H.preservation(fixture, damaged)["false_deletion"] > 0
+        )  # the new oracle sees it
+        assert (
+            H.preservation(fixture, H.legal_lines(res.content))["false_deletion"] == 0
         )
 
 
@@ -237,10 +234,7 @@ def test_f01_f02_existing_oracle_cannot_see_these_deletions():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-03: footnote joined to the next page's continuation",
-)
+# PHASE12D2 F-03: footnote joined to the next page's continuation -- fixed in Phase 12D3 (xfail removed: regression test)
 def test_f03_footnote_is_not_joined_to_next_page_text():
     _, standard, res = build(footnote_pages())
     fused = "39/2016/TT-NHNN khách hàng"
@@ -248,10 +242,7 @@ def test_f03_footnote_is_not_joined_to_next_page_text():
     assert fused not in res.content
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-03: running footer of a 2-page document joined to body text",
-)
+# PHASE12D2 F-03: running footer of a 2-page document joined to body text -- fixed in Phase 12D3 (xfail removed: regression test)
 def test_f03_footer_of_two_page_document_is_not_joined_to_body_text():
     _, standard, res = build(two_page_footer_pages())
     fused = "Lưu hành nội bộ trong trường hợp"
@@ -259,10 +250,7 @@ def test_f03_footer_of_two_page_document_is_not_joined_to_body_text():
     assert fused not in res.content
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-03: point 'a.' / 'a/' joined into the lead-in of its clause",
-)
+# PHASE12D2 F-03: point 'a.' / 'a/' joined into the lead-in of its clause -- fixed in Phase 12D3 (xfail removed: regression test)
 @pytest.mark.parametrize(
     "first,second",
     [
@@ -282,10 +270,7 @@ def test_f03_lettered_point_is_a_new_unit_not_a_continuation(first, second):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-06: 12%-of-page picture dropped silently (no placeholder, no warning)",
-)
+# PHASE12D2 F-06: 12%-of-page picture dropped silently (no placeholder, no warning) -- fixed in Phase 12D3 (xfail removed: regression test)
 def test_f06_medium_picture_without_text_leaves_a_trace():
     pages = [
         [

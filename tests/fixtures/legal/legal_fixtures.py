@@ -692,15 +692,15 @@ FIXTURES: list[dict[str, Any]] = [
     },
     {
         "name": "f19_hyphen_at_page_break",
-        "description": "Từ có gạch nối ở cuối trang: không tự nối (mơ hồ), có cảnh báo.",
+        "description": "Từ có gạch nối ở cuối trang (khoản nhãn LIST_ITEM để Docling không tự bỏ gạch nối): không tự nối, có cảnh báo.",
         "pages": [
-            [E("text", "Áp dụng cho tổ chức tín dụng phi-", y=740), page_number(1)],
+            [E("list_item", "3. Áp dụng cho tổ chức tín dụng phi-", y=740), footer(1)],
             [
                 E("text", "ngân hàng và chi nhánh ngân hàng nước ngoài.", y=60),
-                page_number(2),
+                footer(2),
             ],
         ],
-        "ground_truth": "Áp dụng cho tổ chức tín dụng phi- ngân hàng và chi nhánh ngân hàng nước ngoài.",
+        "ground_truth": "3. Áp dụng cho tổ chức tín dụng phi- ngân hàng và chi nhánh ngân hàng nước ngoài.",
         "must_not_join": [["phi-", "ngân hàng và"]],
         "expect_warnings": ["hyphen_at_page_break_not_joined"],
     },
@@ -1212,7 +1212,7 @@ FIXTURES += [
                 ),
                 E(
                     "text",
-                    "Cột phải trang một nói về thời hạn và lãi suất áp dụng cho",
+                    "Cột phải trang một nói về thời hạn và lãi suất áp dụng và",
                     x=315,
                     y=100,
                     w=210,
@@ -1239,10 +1239,10 @@ FIXTURES += [
             ],
         ],
         "ground_truth": (
-            "Cột trái trang một nói về điều kiện vay vốn của khách hàng. Cột phải trang một nói về thời hạn và lãi suất áp dụng cho "
+            "Cột trái trang một nói về điều kiện vay vốn của khách hàng. Cột phải trang một nói về thời hạn và lãi suất áp dụng và "
             "cột trái trang hai tiếp tục một nội dung khác hẳn. Cột phải trang hai kết thúc văn bản."
         ),
-        "must_not_join": [["lãi suất áp dụng cho", "cột trái trang hai"]],
+        "must_not_join": [["lãi suất áp dụng và", "cột trái trang hai"]],
     },
     {
         "name": "f39_text_then_table_across_pages",

@@ -211,12 +211,18 @@ def test_tables_identical(built, name):
 
 @pytest.mark.parametrize("name", NAMES)
 def test_reading_order_not_changed(built, name):
-    """Legal mode never reorders: shared lines keep the standard order."""
+    """Legal mode never reorders: the lines it shares with Standard come in the same order."""
     _, _, standard, res = built[name]
     std, leg = H.display_lines(standard), H.legal_lines(res.content)
-    common = [x for x in leg if x in std]
-    positions = [std.index(x) for x in common]
-    assert positions == sorted(positions)
+    shared = [x for x in leg if x in set(std)]
+    cursor = 0
+    for (
+        line
+    ) in shared:  # `shared` must be a subsequence of `std` (repeated lines included)
+        while cursor < len(std) and std[cursor] != line:
+            cursor += 1
+        assert cursor < len(std), line
+        cursor += 1
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -470,21 +476,6 @@ def test_legal_numeric_fields_at_page_edges_survive():
 # --------------------------------------------------------------------------- #
 
 
-def _join_case(a, b, extra_p1=(), extra_p2=(), pages_before=3):
-    E = FX.E
-    filler = [
-        [E("text", f"Trang đệm {i}.", y=100, h=28), FX.footer(i)]
-        for i in range(1, pages_before + 1)
-    ]
-    return _doc(
-        filler
-        + [
-            [E("text", "Điều 9. Nội dung.", y=100, h=28), a, *extra_p1, FX.footer(4)],
-            [b, *extra_p2, FX.footer(5)],
-        ]
-    )
-
-
 def _a(text="Khách hàng được hưởng các quyền lợi theo thỏa thuận đã ký và", **kw):
     kw.setdefault("y", 700)
     kw.setdefault("h", 28)
@@ -513,6 +504,25 @@ def test_join_refused_when_the_next_page_starts_a_new_unit(start):
     assert start in H.legal_lines(res.content)
 
 
+def _join_case(a, b, extra_p1=(), extra_p2=(), pages_before=3, footers=True):
+    E = FX.E
+
+    def foot(n):
+        return [FX.footer(n)] if footers else []
+
+    filler = [
+        [E("text", f"Trang đệm {i}.", y=100, h=28), *foot(i)]
+        for i in range(1, pages_before + 1)
+    ]
+    return _doc(
+        filler
+        + [
+            [E("text", "Điều 9. Nội dung.", y=100, h=28), a, *extra_p1, *foot(4)],
+            [b, *extra_p2, *foot(5)],
+        ]
+    )
+
+
 @pytest.mark.parametrize(
     "case,a,b,reason",
     [
@@ -530,28 +540,43 @@ def test_join_refused_when_the_next_page_starts_a_new_unit(start):
             _b(),
             "footnote",
         ),
-        ("smaller type", _a(y=770, h=9), _b(), "bottom band"),
-        ("single line in the footer band", _a(y=780, h=14), _b(), "bottom band"),
+        (
+            "single line in the footer band, no footer marked by the layout model",
+            _a(y=780, h=14),
+            _b(),
+            "bottom band",
+        ),
         ("indented continuation", _a(), _b(x=110, w=415), "indent"),
         ("continuation not at the top", _a(), _b(y=500), "upper"),
+        ("other column", _a(x=70, w=210), _b(x=315, w=210), "column"),
+        # not near misses: refused by the text itself, no warning needed
         (
             "sentence finished",
             _a("Khách hàng được hưởng các quyền lợi theo thỏa thuận đã ký."),
             _b(),
-            "terminal",
+            None,
         ),
-        ("colon", _a("Hồ sơ gồm:"), _b(), "terminal"),
-        ("other column", _a(x=70, w=210), _b(x=315, w=210), "column"),
-        ("uppercase start", _a(), _b("Các quy định khác của ngân hàng."), "lowercase"),
+        ("colon", _a("Hồ sơ gồm:"), _b(), None),
+        ("uppercase start", _a(), _b("Các quy định khác của ngân hàng."), None),
     ],
 )
 def test_join_refused_and_reason_reported(case, a, b, reason):
-    res = N.normalize_document(_join_case(a, b), include_text=True)
+    footers = "no footer marked" not in case
+    res = N.normalize_document(_join_case(a, b, footers=footers), include_text=True)
     assert "join_across_pages" not in res.counts, case
     lines = H.legal_lines(res.content)
     assert a["text"] in lines and b["text"] in lines, case
     refused = [w for w in res.warnings if w["code"] == "join_not_made"]
-    assert any(reason in w["reason"] for w in refused), (case, refused)
+    if reason is None:
+        assert not refused, case
+    else:
+        assert any(reason in w["reason"] for w in refused), (case, refused)
+
+
+def test_single_line_at_the_page_bottom_is_joined_when_the_layout_marks_the_footer_below_it():
+    """f24's situation: the layout model itself separated the footer from the last body line."""
+    res = N.normalize_document(_join_case(_a(y=765, h=14), _b(), footers=True))
+    assert res.counts.get("join_across_pages") == 1
 
 
 def test_join_refused_across_a_table_a_picture_and_a_blank_page():
@@ -796,7 +821,9 @@ def test_html_and_markdown_injection_not_introduced():
 # --------------------------------------------------------------------------- #
 
 
-def _big(n_pages, joins=True, pictures=False, tables=False, short_items=0):
+def _big(
+    n_pages, joins=True, pictures=False, tables=False, short_items=0, header=False
+):
     from docling_core.types.doc.base import BoundingBox, CoordOrigin, Size
     from docling_core.types.doc.document import (
         DoclingDocument,
@@ -816,11 +843,12 @@ def _big(n_pages, joins=True, pictures=False, tables=False, short_items=0):
     doc = DoclingDocument(name="big")
     for page in range(1, n_pages + 1):
         doc.add_page(page_no=page, size=Size(width=595, height=842))
-        doc.add_text(
-            label=DocItemLabel.TEXT,
-            text="NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ",
-            prov=prov(page, 70, 20, 320, 32),
-        )
+        if header:
+            doc.add_text(
+                label=DocItemLabel.TEXT,
+                text="NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ",
+                prov=prov(page, 70, 20, 320, 32),
+            )
         doc.add_text(
             label=DocItemLabel.TEXT,
             text="phần tiếp theo của đoạn văn trang trước.",
@@ -896,13 +924,23 @@ def test_many_joins_scale_linearly():
     assert full < 20
 
 
-def test_large_document_with_tables_pictures_and_headers():
+def test_large_document_with_tables_pictures_and_joins():
     took, res = _time(_big(300, pictures=True, tables=True))
     assert res.counts["join_across_pages"] == 299
     assert res.counts["image_placeholder_dropped"] == 300
-    assert (
-        res.content.count("NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ") == 300
-    )  # repeated TEXT line: kept
+    assert res.content.count("|------|------|------|") == 300  # every table still there
+    assert took < 30
+
+
+def test_text_labelled_running_header_is_kept_and_blocks_the_joins():
+    """The price of never deleting a repeated TEXT line: it stays between the two parts."""
+    took, res = _time(_big(300, header=True))
+    assert res.content.count("NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ") == 300
+    assert "join_across_pages" not in res.counts
+    assert res.counts["page_number_to_furniture"] == 300
+    assert any(
+        w["code"] == "repeated_line_kept" and w["count"] == 300 for w in res.warnings
+    )
     assert took < 30
 
 
