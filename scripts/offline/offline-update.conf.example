@@ -1,6 +1,12 @@
 # /etc/chatbot5400/offline-update.conf — server-local settings of the offline
 # update tooling (KEY=VALUE, no shell evaluation). Keep it OUT of the repository;
 # it holds paths only, never passwords or keys. Example values below.
+#
+# This file decides which commands run as root (BACKUP_CMD): it must be owned by
+# root (or the user running the tool) and NOT writable by group / others
+# (chmod 644 or 600) or the tool refuses to start. The same holds for
+# ALLOWED_SIGNERS. Individual keys can no longer be overridden through
+# environment variables; only CB5400_OFFLINE_CONFIG (the path of this file) is read.
 
 # Folder that holds the compose files of the deployment (and its .env, never read)
 DEPLOY_DIR=/srv/example/chatbot5400
@@ -25,6 +31,9 @@ MAINTENANCE_OVERRIDE=/srv/example/ops/docker-compose.maintenance.yml
 # restore verification. Leave empty to pass --backup-reference / --backup-verified.
 BACKUP_CMD=
 BACKUP_VERIFY_CMD=
+# Every update ATTEMPT takes its own backup. Only when the SAME attempt is resumed
+# before anything was recreated may its backup be reused, and only this long:
+BACKUP_MAX_AGE_MINUTES=120
 
 # Loopback health URL of the API
 HEALTH_URL=http://127.0.0.1:5055/health

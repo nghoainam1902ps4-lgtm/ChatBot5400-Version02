@@ -4,8 +4,9 @@
   containers, Internet). docs/deployment/OFFLINE_UPDATE_WINDOWS_BUILD.md
 
 .EXAMPLE
-  .\scripts\offline\build-package.ps1 -Version 1.3.0-rc.1
+  .\scripts\offline\build-package.ps1 -Version 1.2.0-phase12.1
   .\scripts\offline\build-package.ps1 -Version 1.3.0-rc.1 -SignKey $HOME\.ssh\cb5400_release -Platform linux/amd64
+  (the second form works only in the release commit whose VERSION file says 1.3.0)
 #>
 [CmdletBinding()]
 param(
@@ -33,6 +34,15 @@ try {
     if (& git status --porcelain --untracked-files=no) { Fail 'commit or stash your changes first' }
     $commit = (& git rev-parse HEAD).Trim()
     $tag = "chatbot5400:$Version"
+    $exe = $python[0]; $pre = @($python | Select-Object -Skip 1)
+    # Nothing Docker-related runs when the version cannot be packaged (F-27):
+    # VERSION 1.2.0 -> only 1.2.0 or 1.2.0-<suffix>.
+    & $exe @pre 'scripts/offline/offline_package.py' 'check-version' '--version' $Version '--git-ref' $commit '--repo' $Root
+    if ($LASTEXITCODE -ne 0) { Fail "VERSION of this checkout cannot be packaged as $Version" }
+    & git rev-parse -q --verify "$BaseRef^{commit}" | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail "BaseRef $BaseRef does not exist in this checkout" }
+    & git merge-base --is-ancestor $BaseRef $commit
+    if ($LASTEXITCODE -ne 0) { Fail "BaseRef $BaseRef is not an ancestor of HEAD" }
     if (-not $NoBuild) {
         & docker image inspect $tag 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { Fail "image $tag already exists: remove it deliberately or use -NoBuild" }
@@ -47,12 +57,12 @@ try {
     }
     New-Item -ItemType Directory -Force -Path $Out | Out-Null
     $pkgArgs = @('scripts/offline/offline_package.py', 'build', '--version', $Version, '--image', $tag,
-              '--platform', $Platform, '--git-ref', $commit, '--base-ref', $BaseRef, '--out', $Out)
+              '--platform', $Platform, '--git-ref', $commit, '--base-ref', $BaseRef, '--out', $Out,
+              '--repo', $Root)
     if ($SignKey) { $pkgArgs += @('--sign-key', $SignKey) }
     if ($ReleaseNotes) { $pkgArgs += @('--release-notes', $ReleaseNotes) }
     & git rev-parse -q --verify "refs/tags/v$Version" | Out-Null
     if ($LASTEXITCODE -eq 0) { $pkgArgs += @('--bundle-refs', "v$Version") }
-    $exe = $python[0]; $pre = @($python | Select-Object -Skip 1)
     & $exe @pre @pkgArgs
     if ($LASTEXITCODE -ne 0) { Fail 'packaging failed' }
 } finally { Pop-Location }
