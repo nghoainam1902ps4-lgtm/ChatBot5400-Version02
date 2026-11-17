@@ -146,6 +146,18 @@ RUN if [ "$OCR_INSTALL_TESSERACT" = "true" ]; then \
       apt-get update && apt-get install -y --no-install-recommends tesseract-ocr \
       && rm -rf /var/lib/apt/lists/*; \
     fi
+# Optional build profile for OFFLINE servers (Phase 12F, docs/deployment/
+# OFFLINE_UPDATE_PACKAGE.md): bake Docling (+ EasyOCR) into the image with the
+# SAME command and the SAME locked constraints the entrypoint would run at the
+# first start, so a recreated container needs no package index at all.
+# Default false: the image and its behaviour are unchanged.
+ARG OCR_PREINSTALL_RUNTIMES=false
+RUN if [ "$OCR_PREINSTALL_RUNTIMES" = "true" ]; then \
+      CCORE="$(/app/.venv/bin/python -c 'import importlib.metadata as m; print(m.version("content-core"))')" \
+      && UV_TORCH_BACKEND=cpu uv pip install --no-cache --python /app/.venv/bin/python \
+           -c /app/runtime-constraints.txt "content-core[docling]==${CCORE}" "easyocr==1.7.2" \
+      && /app/.venv/bin/python -c "import docling, easyocr; print('docling', docling.__version__ if hasattr(docling, '__version__') else 'ok')"; \
+    fi
 
 # Data directory (volume-mounted by users) and supervisor log directory
 RUN mkdir -p /app/data /var/log/supervisor \

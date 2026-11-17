@@ -61,6 +61,13 @@ deploy/.env
 deploy/agri-test/.env
 deploy/agri-test/import
 deploy/agri-test/TEST_ACCOUNT.txt
+deploy/phase12-test/.env
+deploy/phase12-test/import
+deploy/phase12-test/diagnostics
+deploy/phase12-test/fonts
+# Offline update packages / build output (Phase 12F)
+dist/offline
+*.offline.tar.gz
 
 # Documentation & CI (not needed in image)
 docs

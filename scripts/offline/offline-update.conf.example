@@ -1,0 +1,35 @@
+# /etc/chatbot5400/offline-update.conf — server-local settings of the offline
+# update tooling (KEY=VALUE, no shell evaluation). Keep it OUT of the repository;
+# it holds paths only, never passwords or keys. Example values below.
+
+# Folder that holds the compose files of the deployment (and its .env, never read)
+DEPLOY_DIR=/srv/example/chatbot5400
+COMPOSE_PROJECT=chatbot5400-example
+# Compose files, in the order the deployment uses them (relative to DEPLOY_DIR)
+COMPOSE_FILES=docker-compose.yml docker-compose.override.yml
+APP_SERVICE=open_notebook
+DB_SERVICE=surrealdb
+IMAGE_REPO=chatbot5400
+
+# Update journal, lock and generated image override (outside DEPLOY_DIR)
+STATE_DIR=/var/lib/chatbot5400-offline
+
+# Release public key(s) installed beforehand (ssh-keygen allowed_signers format)
+ALLOWED_SIGNERS=/etc/chatbot5400/allowed_signers
+SIGNER_IDENTITY=release@chatbot5400
+
+# Existing maintenance override (loopback-only ports, docs/ocr/OCR_OPERATOR_GUIDE.md §11)
+MAINTENANCE_OVERRIDE=/srv/example/ops/docker-compose.maintenance.yml
+
+# Site backup procedure (must exit 0 only when the backup is complete) and its
+# restore verification. Leave empty to pass --backup-reference / --backup-verified.
+BACKUP_CMD=
+BACKUP_VERIFY_CMD=
+
+# Loopback health URL of the API
+HEALTH_URL=http://127.0.0.1:5055/health
+MIN_FREE_GB_EXTRA=5
+
+# Environment added to the application by the generated override (offline:
+# RapidOCR weights on the data volume, never download)
+APP_ENV_OVERRIDES=OCR_RAPIDOCR_PERSISTENT=true OCR_OFFLINE=true
