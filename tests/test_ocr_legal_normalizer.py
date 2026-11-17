@@ -3,10 +3,16 @@
 The documents are built by Docling's REAL ReadingOrderModel from synthetic
 layout elements (tests/legal_harness.py); checks run on what a CommonMark
 renderer displays, the way the frontend shows the source to the reader.
+
+Phase 12D3 (findings T-01, T-03 of the independent audit): the oracle is the
+ground truth DECLARED in the fixtures (``gt`` annotations of every element),
+never something the normalizer reports about itself; parametrized tests run
+only on the fixtures that carry the data they assert on.
 """
 
 from __future__ import annotations
 
+import random
 import socket
 import sys
 from pathlib import Path
@@ -25,6 +31,13 @@ FX = H.load_fixtures()
 NAMES = [f["name"] for f in FX.FIXTURES]
 
 
+def _with(*keys: str) -> list[str]:
+    """Fixtures that declare at least one of ``keys`` (T-03: no empty cases)."""
+    names = [f["name"] for f in FX.FIXTURES if any(f.get(k) for k in keys)]
+    assert names, keys
+    return names
+
+
 @pytest.fixture(scope="module")
 def built():
     """name -> (fixture, document, standard markdown, legal result)."""
@@ -37,47 +50,148 @@ def built():
 
 
 # --------------------------------------------------------------------------- #
-# Per-fixture acceptance checks
+# The oracle itself must be able to fail (T-01)
+# --------------------------------------------------------------------------- #
+
+
+def _truth_lines(fx):
+    return [u["text"] for u in H.expected_units(fx) if u["gt"] != "artifact"]
+
+
+def test_oracle_accepts_the_declared_truth():
+    for fx in FX.FIXTURES:
+        p = H.preservation(fx, _truth_lines(fx))
+        assert (
+            p["false_deletion"],
+            p["false_merge"],
+            p["false_insertion"],
+            p["false_reordering"],
+        ) == (0, 0, 0, 0), fx["name"]
+
+
+def test_oracle_sees_a_repeated_line_deleted_once():
+    fx = FX.by_name("f25_appendix_unit_line_every_page")
+    lines = _truth_lines(fx)
+    lines.remove("Đơn vị tính: triệu đồng")  # 2 of 3 occurrences left
+    p = H.preservation(fx, lines)
+    assert p["false_deletion"] == 1 and p["false_deletion_tokens"] == 5
+    assert not p["critical_ok"]  # declared 3 times, shown twice
+
+
+def test_oracle_sees_deletion_merge_insertion_and_reordering():
+    fx = FX.by_name("f29_footnote_labelled_text")
+    truth = _truth_lines(fx)
+    assert H.preservation(fx, truth[:-1])["false_deletion"] == 1
+    merged = truth[:2] + [f"{truth[2]} {truth[3]}"] + truth[4:]
+    p = H.preservation(fx, merged)
+    assert p["false_merge"] == 1 and p["false_deletion"] == 2
+    assert (
+        H.preservation(fx, truth + ["Câu này không có trong văn bản."])[
+            "false_insertion"
+        ]
+        == 1
+    )
+    swapped = [truth[1], truth[0]] + truth[2:]
+    assert H.preservation(fx, swapped)["false_reordering"] == 1
+
+
+def test_oracle_does_not_use_the_normalizer_report():
+    """The declared truth is a function of the fixture alone."""
+    import inspect
+
+    import phase12_metrics as M
+
+    source = inspect.getsource(M.preservation) + inspect.getsource(M.expected_units)
+    for forbidden in ("operations", "text_before", "to_furniture", "legal_normalizer"):
+        assert forbidden not in source
+
+
+def test_declared_truth_matches_the_ground_truth_string():
+    """Two independent statements of the truth agree (except documented OCR loss)."""
+    differs = set()
+    for fx in FX.FIXTURES:
+        units = " ".join(
+            u["text"].replace(" | ", " ")
+            for u in H.expected_units(fx)
+            if u["gt"] != "artifact"
+        )
+        if " ".join(units.split()) != " ".join(fx["ground_truth"].split()):
+            differs.add(fx["name"])
+    # f03: the OCR lost a word that the ground truth has; f22: the lone "1" is
+    # kept in the ground truth string although it may be removed.
+    assert differs == {"f03_missing_word_not_invented", "f22_single_page_number_kept"}
+
+
+# --------------------------------------------------------------------------- #
+# Preservation: every fixture, measured against the declared truth
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_protected_fields_exact(built, name):
+def test_no_false_deletion_merge_or_insertion(built, name):
+    fx, _, standard, res = built[name]
+    legal = H.preservation(fx, H.legal_lines(res.content), res.content)
+    std = H.preservation(fx, H.display_lines(standard), standard)
+    assert legal["false_deletion_tokens"] == 0, legal["false_deletion_units"]
+    assert legal["false_deletion"] == 0, legal["false_deletion_units"]
+    assert legal["false_merge"] == 0, legal["false_merge_lines"]
+    assert legal["false_insertion"] == 0, legal["false_insertion_lines"]
+    assert legal["false_insertion_tokens"] == 0
+    # Reading order is Docling's: never worse than the standard export.
+    assert legal["false_reordering"] <= std["false_reordering"]
+    assert legal["tables_ok"]
+
+
+@pytest.mark.parametrize("name", _with("protected"))
+def test_critical_fields_exact_count(built, name):
     fx, _, _, res = built[name]
-    for value in fx.get("protected", []):
-        assert value in res.content, value
+    p = H.preservation(fx, H.legal_lines(res.content), res.content)
+    assert p["critical_ok"], [c for c in p["critical_fields"] if not c["ok"]]
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", _with("markers"))
 def test_markers_displayed_as_in_original(built, name):
     fx, _, _, res = built[name]
-    hit, total = H.markers_displayed(fx, H.display_lines(res.content))
-    assert hit == total
+    hit, total = H.markers_displayed(fx, H.legal_lines(res.content))
+    assert total > 0 and hit == total
 
 
-@pytest.mark.parametrize("name", NAMES)
-def test_artifact_lines_absent_and_kept_lines_present(built, name):
+@pytest.mark.parametrize("name", _with("present_lines"))
+def test_lines_that_must_stay(built, name):
     fx, _, _, res = built[name]
-    lines = H.display_lines(res.content)
-    for line in fx.get("absent_lines", []):
+    lines = H.legal_lines(res.content)
+    for line in fx["present_lines"]:
+        assert line in lines, line
+
+
+@pytest.mark.parametrize("name", _with("expect_removed"))
+def test_artifacts_removed_when_the_evidence_is_sufficient(built, name):
+    fx, _, standard, res = built[name]
+    lines = H.legal_lines(res.content)
+    for line in fx["expect_removed"]:
+        assert line in H.display_lines(standard)  # it was there
         assert line not in lines, line
-    for line in fx.get("present_lines", []):
-        assert line.replace("\\", "") in lines, line
 
 
-@pytest.mark.parametrize("name", NAMES)
-def test_joins_and_non_joins(built, name):
+@pytest.mark.parametrize("name", _with("expect_joined"))
+def test_joins_made_when_the_evidence_is_sufficient(built, name):
     fx, _, _, res = built[name]
-    lines = H.display_lines(res.content)
-    for phrase in fx.get("must_join", []):
-        assert any(phrase in line for line in lines), phrase
+    lines = H.legal_lines(res.content)
+    for line in fx["expect_joined"]:
+        assert line in lines, line
+
+
+@pytest.mark.parametrize("name", _with("must_not_join", "forbidden"))
+def test_no_forbidden_join(built, name):
+    fx, _, _, res = built[name]
+    lines = H.legal_lines(res.content)
     for left, right in fx.get("must_not_join", []):
         assert not any(left in line and right in line for line in lines), (left, right)
     for phrase in fx.get("forbidden", []):
         assert not any(phrase in line for line in lines), phrase
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", _with("expect_placeholders", "expect_warnings"))
 def test_placeholders_and_warnings(built, name):
     fx, _, _, res = built[name]
     if "expect_placeholders" in fx:
@@ -87,42 +201,22 @@ def test_placeholders_and_warnings(built, name):
         assert code in codes
 
 
-@pytest.mark.parametrize("name", NAMES)
-def test_no_valid_content_lost(built, name):
-    """Every word the standard export shows is still shown, except removed artifacts."""
-    fx, doc, standard, res = built[name]
-    removed = " ".join(
-        o.text_before or ""
-        for o in N.normalize_document(doc, include_text=True).operations
-        if o.op.endswith("_to_furniture")
-    )
-    lost = H.lost_words(
-        H.display_text(standard, list_prefixes=False),
-        H.display_text(res.content) + " " + removed,
-    )
-    # The bare "<!--", "image", "-->" tokens of a dropped placeholder are the
-    # only other words allowed to disappear.
-    placeholder_tokens = 3 * res.counts.get("image_placeholder_dropped", 0)
-    assert lost <= placeholder_tokens
+@pytest.mark.parametrize("name", _with("table_identical"))
+def test_tables_identical(built, name):
+    _, doc, _, res = built[name]
+    assert doc.tables
+    for table in doc.tables:
+        assert table.export_to_markdown(doc) in res.content
 
 
 @pytest.mark.parametrize("name", NAMES)
 def test_reading_order_not_changed(built, name):
     """Legal mode never reorders: shared lines keep the standard order."""
     _, _, standard, res = built[name]
-    std, leg = H.display_lines(standard), H.display_lines(res.content)
+    std, leg = H.display_lines(standard), H.legal_lines(res.content)
     common = [x for x in leg if x in std]
     positions = [std.index(x) for x in common]
     assert positions == sorted(positions)
-
-
-@pytest.mark.parametrize("name", NAMES)
-def test_tables_identical(built, name):
-    fx, doc, _, res = built[name]
-    if not fx.get("table_identical"):
-        return
-    for table in doc.tables:
-        assert table.export_to_markdown(doc) in res.content
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -141,28 +235,46 @@ def test_source_document_untouched(built, name):
     assert doc.export_to_markdown() == standard
 
 
+@pytest.mark.parametrize("name", NAMES)
+def test_stored_text_is_the_displayed_text(built, name):
+    """F-17: no Markdown escape of clause markers is stored (RAG = display = copy)."""
+    _, _, _, res = built[name]
+    for line in res.content.split("\n"):
+        assert not line.lstrip().startswith(("\\-", "\\+", "\\*")), line
+        head = line.lstrip()[:12]
+        assert "\\." not in head and "\\)" not in head, line
+
+
 # --------------------------------------------------------------------------- #
-# The user's reported case, spelled out
+# The reported case and the audit's counter-examples, spelled out
 # --------------------------------------------------------------------------- #
 
 
-def test_reported_case_khoan_9(built):
-    _, _, standard, res = built["f02_clause_across_pages"]
-    assert "<!-- image -->" in standard and "\n\n6\n\n" in standard
-    lines = H.display_lines(res.content)
+def test_reported_case_khoan_9_with_sufficient_evidence(built):
+    _, _, standard, res = built["f33_five_pages_real_page_numbers_and_join"]
+    assert "\n\n6\n\n" in standard
+    lines = H.legal_lines(res.content)
     assert (
         "9. Dịch vụ phi tài chính là dịch vụ không làm thay đổi số dư trên tài khoản của khách hàng."
         in lines
     )
-    assert "<!-- image -->" not in res.content
     assert res.counts["join_across_pages"] == 1
-    assert res.counts["page_number_to_furniture"] == 2
+    assert res.counts["page_number_to_furniture"] == 5
+
+
+def test_two_page_excerpt_keeps_suspected_page_numbers_and_reports_why(built):
+    """F-02: two pages are no pattern; the number stays, so the clause is not joined."""
+    _, _, _, res = built["f02_clause_across_pages"]
+    lines = H.legal_lines(res.content)
+    assert "6" in lines and "7" in lines
+    assert "join_across_pages" not in res.counts
+    assert any(w["code"] == "page_number_kept" for w in res.warnings)
+    assert "<!-- image -->" not in res.content
 
 
 def test_missing_word_is_never_invented(built):
     _, _, _, res = built["f03_missing_word_not_invented"]
     assert "thay đổi số" not in res.content
-    assert "thay đổi dư trên" in res.content
 
 
 def test_standard_renumbers_but_legal_does_not(built):
@@ -170,8 +282,8 @@ def test_standard_renumbers_but_legal_does_not(built):
     # the browser draws 6 and 12 where the source says 7 and 13
     assert "6. Lưu trữ hồ sơ theo quy định." in H.display_lines(standard)
     assert "12. Thực hiện các nhiệm vụ khác." in H.display_lines(standard)
-    assert "7. Lưu trữ hồ sơ theo quy định." in H.display_lines(res.content)
-    assert "13. Thực hiện các nhiệm vụ khác." in H.display_lines(res.content)
+    assert "7. Lưu trữ hồ sơ theo quy định." in H.legal_lines(res.content)
+    assert "13. Thực hiện các nhiệm vụ khác." in H.legal_lines(res.content)
 
 
 def test_synthesized_number_avoided(built):
@@ -187,11 +299,376 @@ def test_text_inside_picture_recovered(built):
     assert "Phí rút tiền là 1.100 đồng mỗi giao dịch." in res.content
 
 
-def test_running_header_only_when_repeated_exactly(built):
+def test_repeated_text_lines_are_reported_never_removed(built):
+    """F-01: a repeated TEXT line is content unless the layout model says otherwise."""
+    for name in (
+        "f14_running_header_footer",
+        "f25_appendix_unit_line_every_page",
+        "f26_bundle_of_one_page_notices",
+        "f37_repeated_business_lines",
+    ):
+        _, _, _, res = built[name]
+        assert "running_header_footer_to_furniture" not in res.counts, name
     _, _, _, res = built["f14_running_header_footer"]
-    for n in (1, 2, 3, 4):
-        assert f"Nội dung trang {n} của quy định." in res.content
-    assert "NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ" not in res.content
+    assert res.content.count("NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ") == 4
+    warning = next(w for w in res.warnings if w["code"] == "repeated_line_kept")
+    assert warning["pages"] == [1, 2, 3, 4] and "NGÂN HÀNG" not in repr(warning)
+
+
+def test_layout_labelled_header_in_body_goes_to_furniture():
+    """The only running header removed: one the layout model itself labelled."""
+    from docling_core.types.doc.base import BoundingBox, CoordOrigin, Size
+    from docling_core.types.doc.document import DoclingDocument, ProvenanceItem
+    from docling_core.types.doc.labels import DocItemLabel
+
+    doc = DoclingDocument(name="hdr")
+    for page in (1, 2, 3):
+        doc.add_page(page_no=page, size=Size(width=595, height=842))
+        top = BoundingBox(l=70, t=25, r=320, b=37, coord_origin=CoordOrigin.TOPLEFT)
+        doc.add_text(
+            label=DocItemLabel.PAGE_HEADER,
+            text="QUY ĐỊNH NỘI BỘ",
+            prov=ProvenanceItem(page_no=page, bbox=top, charspan=(0, 1)),
+        )
+        body = BoundingBox(l=70, t=100, r=525, b=128, coord_origin=CoordOrigin.TOPLEFT)
+        doc.add_text(
+            label=DocItemLabel.TEXT,
+            text=f"Nội dung trang {page}.",
+            prov=ProvenanceItem(page_no=page, bbox=body, charspan=(0, 1)),
+        )
+    res = N.normalize_document(doc)
+    assert "QUY ĐỊNH NỘI BỘ" not in res.content
+    assert res.counts["running_header_footer_to_furniture"] == 3
+    assert all(f"Nội dung trang {p}." in res.content for p in (1, 2, 3))
+
+
+def test_medium_and_large_pictures_leave_a_trace(built):
+    """F-06: 5 %, 12 % and 20 % pictures without text keep the placeholder + a located warning."""
+    _, _, _, res = built["f32_pictures_5_12_20_percent"]
+    located = [w for w in res.warnings if w["code"] == "picture_without_text"]
+    assert len(located) == 3
+    assert all(
+        w["pages"] == [1] and len(w["bbox"]) == 4 and w["area_ratio"] >= 0.04
+        for w in located
+    )
+
+
+def test_small_picture_drop_is_recorded_with_page_and_bbox(built):
+    _, _, _, res = built["f17_signature_block"]
+    drops = [o for o in res.operations if o.op == "image_placeholder_dropped"]
+    assert len(drops) == 2 and all(o.pages == [1] and o.bboxes for o in drops)
+
+
+# --------------------------------------------------------------------------- #
+# Page numbers: evidence thresholds (F-02)
+# --------------------------------------------------------------------------- #
+
+
+def _doc(pages):
+    return H.build_document({"pages": pages})
+
+
+def _numbered(
+    n_pages, value=lambda p: p, x=lambda p: 290, y=800, body=True, label="text"
+):
+    E = FX.E
+    pages = []
+    for p in range(1, n_pages + 1):
+        page = (
+            [E("text", f"Nội dung trang {p} của tài liệu thử nghiệm.", y=100, h=28)]
+            if body
+            else []
+        )
+        if value(p) is not None:
+            page.append(E(label, str(value(p)), x=x(p), y=y, w=16, h=12))
+        pages.append(page)
+    return pages
+
+
+@pytest.mark.parametrize("n_pages,removed", [(1, 0), (2, 0), (3, 3), (5, 5), (40, 40)])
+def test_page_numbers_need_three_pages(n_pages, removed):
+    res = N.normalize_document(_doc(_numbered(n_pages)))
+    assert res.counts.get("page_number_to_furniture", 0) == removed
+
+
+def test_page_numbers_need_sixty_percent_of_the_pages():
+    few = N.normalize_document(
+        _doc(_numbered(10, value=lambda p: p if p <= 5 else None))
+    )
+    assert "page_number_to_furniture" not in few.counts  # 5 of 10 pages
+    enough = N.normalize_document(
+        _doc(_numbered(10, value=lambda p: p if p <= 6 else None))
+    )
+    assert enough.counts["page_number_to_furniture"] == 6
+
+
+def test_page_number_values_must_fit_the_document():
+    years = N.normalize_document(_doc(_numbered(5, value=lambda p: 2020 + p)))
+    assert "page_number_to_furniture" not in years.counts
+    for y in range(2021, 2026):
+        assert str(y) in years.content
+    offset = N.normalize_document(
+        _doc(_numbered(5, value=lambda p: 40 + p))
+    )  # pages 41..45 of a long file
+    assert offset.counts["page_number_to_furniture"] == 5
+
+
+def test_page_numbers_need_a_consistent_horizontal_position():
+    scattered = N.normalize_document(_doc(_numbered(5, x=lambda p: 80 + 90 * p)))
+    assert "page_number_to_furniture" not in scattered.counts
+    mirrored = N.normalize_document(
+        _doc(_numbered(6, x=lambda p: 520 if p % 2 else 60))
+    )
+    assert mirrored.counts["page_number_to_furniture"] == 6
+
+
+def test_numbers_at_the_body_margin_are_kept():
+    """Detached clause numbers start where the paragraphs start."""
+    res = N.normalize_document(_doc(_numbered(6, x=lambda p: 70, y=62)))
+    assert "page_number_to_furniture" not in res.counts
+
+
+def test_numbers_inside_the_body_are_never_candidates():
+    res = N.normalize_document(_doc(_numbered(6, y=400)))
+    assert "page_number_to_furniture" not in res.counts
+    for p in range(1, 7):
+        assert f"\n\n{p}\n\n" in f"\n\n{res.content}\n\n"
+
+
+def test_hundred_pages_with_stray_figures_at_the_bottom():
+    """A long report whose last cell of every page is a figure: nothing is removed."""
+    rng = random.Random(12)
+    values = {
+        p: rng.choice([3, 7, 12, 25, 40, 55, 68, 80, 95, 120, 150])
+        for p in range(1, 101)
+    }
+    res = N.normalize_document(
+        _doc(_numbered(100, value=lambda p: values[p], x=lambda p: 450))
+    )
+    assert "page_number_to_furniture" not in res.counts
+    assert res.content.count("Nội dung trang") == 100
+
+
+def test_legal_numeric_fields_at_page_edges_survive():
+    E = FX.E
+    edge = ["2024", "2025", "2026", "15", "500", "12", "3"]
+    pages = [
+        [
+            E("text", f"Chỉ tiêu của trang {i + 1}:", y=100, h=28),
+            E("text", v, x=450, y=790, w=40, h=12),
+        ]
+        for i, v in enumerate(edge)
+    ]
+    res = N.normalize_document(_doc(pages))
+    lines = H.legal_lines(res.content)
+    for v in edge:
+        assert v in lines
+
+
+# --------------------------------------------------------------------------- #
+# Cross-page joins: every rule can say no (F-03)
+# --------------------------------------------------------------------------- #
+
+
+def _join_case(a, b, extra_p1=(), extra_p2=(), pages_before=3):
+    E = FX.E
+    filler = [
+        [E("text", f"Trang đệm {i}.", y=100, h=28), FX.footer(i)]
+        for i in range(1, pages_before + 1)
+    ]
+    return _doc(
+        filler
+        + [
+            [E("text", "Điều 9. Nội dung.", y=100, h=28), a, *extra_p1, FX.footer(4)],
+            [b, *extra_p2, FX.footer(5)],
+        ]
+    )
+
+
+def _a(text="Khách hàng được hưởng các quyền lợi theo thỏa thuận đã ký và", **kw):
+    kw.setdefault("y", 700)
+    kw.setdefault("h", 28)
+    return FX.E("text", text, **kw)
+
+
+def _b(text="các quy định khác của ngân hàng.", **kw):
+    kw.setdefault("y", 60)
+    return FX.E("text", text, **kw)
+
+
+def test_join_baseline_is_made():
+    res = N.normalize_document(_join_case(_a(), _b()))
+    assert res.counts.get("join_across_pages") == 1
+    assert "đã ký và các quy định khác của ngân hàng." in res.content
+
+
+@pytest.mark.parametrize(
+    "start",
+    ["a. điểm mới", "a/ điểm mới", "a) điểm mới", "đ. điểm mới", "đ) điểm mới", "(a) điểm mới", "(1) điểm mới", "a.1) điểm mới",
+     "a.1. điểm mới", "1.2.3 điểm mới", "i. điểm mới", "ii) điểm mới", "- gạch đầu dòng", "+ dấu cộng", "điều 5 quy định", "khoản 2 quy định"],
+)  # fmt: skip
+def test_join_refused_when_the_next_page_starts_a_new_unit(start):
+    res = N.normalize_document(_join_case(_a(), _b(start)))
+    assert "join_across_pages" not in res.counts, start
+    assert start in H.legal_lines(res.content)
+
+
+@pytest.mark.parametrize(
+    "case,a,b,reason",
+    [
+        ("narrow first part", _a(w=200), _b(), "narrower"),
+        (
+            "footnote number",
+            _a("1 Thông tư số 39/2016/TT-NHNN của Ngân hàng Nhà nước và", y=760, h=12),
+            _b(),
+            "footnote",
+        ),
+        ("footnote star", _a("* Áp dụng với khách hàng cá nhân và"), _b(), "footnote"),
+        (
+            "footnote paren",
+            _a("(1) Áp dụng với khách hàng cá nhân và"),
+            _b(),
+            "footnote",
+        ),
+        ("smaller type", _a(y=770, h=9), _b(), "bottom band"),
+        ("single line in the footer band", _a(y=780, h=14), _b(), "bottom band"),
+        ("indented continuation", _a(), _b(x=110, w=415), "indent"),
+        ("continuation not at the top", _a(), _b(y=500), "upper"),
+        (
+            "sentence finished",
+            _a("Khách hàng được hưởng các quyền lợi theo thỏa thuận đã ký."),
+            _b(),
+            "terminal",
+        ),
+        ("colon", _a("Hồ sơ gồm:"), _b(), "terminal"),
+        ("other column", _a(x=70, w=210), _b(x=315, w=210), "column"),
+        ("uppercase start", _a(), _b("Các quy định khác của ngân hàng."), "lowercase"),
+    ],
+)
+def test_join_refused_and_reason_reported(case, a, b, reason):
+    res = N.normalize_document(_join_case(a, b), include_text=True)
+    assert "join_across_pages" not in res.counts, case
+    lines = H.legal_lines(res.content)
+    assert a["text"] in lines and b["text"] in lines, case
+    refused = [w for w in res.warnings if w["code"] == "join_not_made"]
+    assert any(reason in w["reason"] for w in refused), (case, refused)
+
+
+def test_join_refused_across_a_table_a_picture_and_a_blank_page():
+    E = FX.E
+    table = E("table", y=40, h=15, rows=[["A", "B"], ["1", "2"]])
+    assert (
+        "join_across_pages"
+        not in N.normalize_document(_join_case(_a(), _b(y=70), extra_p2=[table])).counts
+    )
+    big = E("picture", x=70, y=730, w=455, h=60)
+    assert (
+        "join_across_pages"
+        not in N.normalize_document(_join_case(_a(y=690), _b(), extra_p1=[big])).counts
+    )
+    blank = _doc(
+        [
+            [_a(), FX.footer(1)],
+            [],
+            [_b(), FX.footer(3)],
+            [E("text", "Hết.", y=100)],
+            [E("text", "Hết.", y=100)],
+        ]
+    )
+    assert "join_across_pages" not in N.normalize_document(blank).counts
+
+
+def test_join_refused_when_the_first_part_repeats_on_the_next_page():
+    """A running footer of a short document is never the start of a sentence."""
+    E = FX.E
+    foot = "Tài liệu lưu hành nội bộ của ngân hàng thương mại mẫu và các công ty con"
+    pages = [
+        [E("text", "Điều 1. Phạm vi.", y=100, h=28), E("text", foot, y=700, h=28)],
+        [
+            E("text", "các nội dung khác thực hiện theo quy định.", y=60),
+            E("text", foot, y=700, h=28),
+        ],
+    ]
+    res = N.normalize_document(_doc(pages))
+    assert "join_across_pages" not in res.counts
+
+
+# --------------------------------------------------------------------------- #
+# Property: text outside the page edges is never lost (seeded, no new dependency)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_property_body_tokens_always_survive(seed):
+    rng = random.Random(seed)
+    E = FX.E
+    words = [
+        "khoản",
+        "vay",
+        "lãi",
+        "suất",
+        "2024",
+        "15",
+        "7,5%",
+        "đồng",
+        "a)",
+        "đ)",
+        "1.",
+        "Điều",
+        "số",
+        "và",
+        "theo",
+        "quy",
+        "định",
+        "-",
+        "(1)",
+        "3",
+    ]
+    pages, expected = [], []
+    for p in range(rng.randint(1, 9)):
+        page, y = [], 90.0
+        for _ in range(rng.randint(0, 9)):
+            text = " ".join(rng.choice(words) for _ in range(rng.randint(1, 9)))
+            label = rng.choice(["text", "text", "text", "list_item", "section_header"])
+            h = rng.choice([12, 14, 28, 42])
+            if y + h > 750:
+                break
+            page.append(
+                E(
+                    label,
+                    text,
+                    x=rng.choice([70, 70, 90, 315]),
+                    y=y,
+                    w=rng.choice([455, 300, 210, 60]),
+                    h=h,
+                )
+            )
+            expected.append(text)
+            y += h + rng.choice([6, 12, 30, 200])
+        if rng.random() < 0.6:
+            page.append(
+                E(
+                    "text",
+                    str(rng.choice([p + 1, p + 1, 2024, 7])),
+                    x=rng.choice([290, 70, 450]),
+                    y=800,
+                    w=16,
+                    h=12,
+                )
+            )
+        if rng.random() < 0.3:
+            page.append(E("picture", x=70, y=760, w=rng.choice([40, 200]), h=30))
+        pages.append(page)
+    doc = _doc(pages)
+    standard = doc.export_to_markdown()
+    res = N.normalize_document(doc)
+    from collections import Counter
+
+    shown = Counter(H.display_text(H.legal_display_markdown(res.content)).split())
+    need = Counter(" ".join(expected).split())
+    assert not (need - shown), (seed, need - shown)
+    assert doc.export_to_markdown() == standard
+    assert N.normalize_document(res.document).content == res.content
 
 
 # --------------------------------------------------------------------------- #
@@ -218,15 +695,17 @@ def _plain_doc():
 def test_document_without_provenance_keeps_everything():
     doc = _plain_doc()
     res = N.normalize_document(doc)
-    std_words = H.display_text(doc.export_to_markdown()).split()
-    for word in ("Đoạn", "6", "tiếp", "Mục"):
-        assert word in res.content
+    lines = H.legal_lines(res.content)
+    for line in (
+        "Đoạn không có provenance và chưa kết thúc",
+        "6",
+        "tiếp tục ở đây.",
+        "Mục không có marker",
+    ):
+        assert line in lines
     assert "join_across_pages" not in res.counts
     assert "page_number_to_furniture" not in res.counts
     assert "<!-- image -->" in res.content  # no evidence about the picture: kept
-    assert (
-        len(H.display_text(res.content).split()) >= len(std_words) - 1
-    )  # only "1." differs
 
 
 def test_empty_document():
@@ -258,6 +737,17 @@ def test_limits_fall_back(monkeypatch):
     content, meta = N.normalize_or_fallback(doc)
     assert content == doc.export_to_markdown()
     assert meta["legal_normalization_status"] == "failed"
+
+
+def test_time_budget_falls_back(monkeypatch):
+    """F-10: a document that takes too long is returned unnormalized, with a status."""
+    doc = _doc(_numbered(30))
+    monkeypatch.setattr(N, "TIME_BUDGET_SECONDS", 0.0)
+    with pytest.raises(N.NormalizationLimitError, match="time budget"):
+        N.normalize_document(doc)
+    content, meta = N.normalize_or_fallback(doc)
+    assert content == doc.export_to_markdown()
+    assert meta["legal_normalization_error"] == "NormalizationLimitError"
 
 
 def test_malformed_object_falls_back_without_raising():
@@ -297,42 +787,129 @@ def test_html_and_markdown_injection_not_introduced():
     doc.add_text(label=DocItemLabel.TEXT, text="> không phải trích dẫn")
     res = N.normalize_document(doc)
     assert "<script>" not in res.content and "&lt;script&gt;" in res.content
-    lines = H.display_lines(res.content)
+    lines = H.legal_lines(res.content)
     assert "# không phải tiêu đề" in lines and "> không phải trích dẫn" in lines
 
 
-def test_large_document_is_fast():
+# --------------------------------------------------------------------------- #
+# Performance: relative, with joins, headers, tables and pictures (F-10)
+# --------------------------------------------------------------------------- #
+
+
+def _big(n_pages, joins=True, pictures=False, tables=False, short_items=0):
     from docling_core.types.doc.base import BoundingBox, CoordOrigin, Size
-    from docling_core.types.doc.document import DoclingDocument, ProvenanceItem
+    from docling_core.types.doc.document import (
+        DoclingDocument,
+        ProvenanceItem,
+        TableCell,
+        TableData,
+    )
     from docling_core.types.doc.labels import DocItemLabel
 
+    def prov(page, left, t, r, b):
+        return ProvenanceItem(
+            page_no=page,
+            bbox=BoundingBox(l=left, t=t, r=r, b=b, coord_origin=CoordOrigin.TOPLEFT),
+            charspan=(0, 1),
+        )
+
     doc = DoclingDocument(name="big")
-    for page in range(1, 301):
+    for page in range(1, n_pages + 1):
         doc.add_page(page_no=page, size=Size(width=595, height=842))
-        for k in range(15):
-            box = BoundingBox(
-                l=70,
-                t=60 + 40 * k,
-                r=525,
-                b=74 + 40 * k,
-                coord_origin=CoordOrigin.TOPLEFT,
-            )
-            doc.add_text(
-                label=DocItemLabel.TEXT,
-                text=f"Đoạn {k} của trang {page} chưa kết thúc"
-                if k == 14
-                else f"Đoạn {k}.",
-                prov=ProvenanceItem(page_no=page, bbox=box, charspan=(0, 1)),
-            )
-        box = BoundingBox(l=290, t=800, r=306, b=812, coord_origin=CoordOrigin.TOPLEFT)
         doc.add_text(
             label=DocItemLabel.TEXT,
-            text=str(page),
-            prov=ProvenanceItem(page_no=page, bbox=box, charspan=(0, 1)),
+            text="NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ",
+            prov=prov(page, 70, 20, 320, 32),
         )
-    res = N.normalize_document(doc)
-    assert res.counts["page_number_to_furniture"] == 300
-    assert res.elapsed_ms < 10_000  # linear: ~1 s for 300 pages on a laptop CPU
+        doc.add_text(
+            label=DocItemLabel.TEXT,
+            text="phần tiếp theo của đoạn văn trang trước.",
+            prov=prov(page, 70, 60, 525, 74),
+        )
+        for k in range(12):
+            doc.add_text(
+                label=DocItemLabel.TEXT,
+                text=f"Đoạn {k} của trang {page}.",
+                prov=prov(page, 70, 90 + 40 * k, 525, 118 + 40 * k),
+            )
+        for k in range(short_items):
+            doc.add_text(
+                label=DocItemLabel.TEXT,
+                text=f"m{k}",
+                prov=prov(
+                    page,
+                    70 + (k % 40) * 10,
+                    2 + (k // 40),
+                    78 + (k % 40) * 10,
+                    4 + (k // 40),
+                ),
+            )
+        if tables:
+            cells = [
+                TableCell(
+                    text=f"{r}{c}",
+                    start_row_offset_idx=r,
+                    end_row_offset_idx=r + 1,
+                    start_col_offset_idx=c,
+                    end_col_offset_idx=c + 1,
+                )
+                for r in range(3)
+                for c in range(3)
+            ]
+            doc.add_table(
+                data=TableData(num_rows=3, num_cols=3, table_cells=cells),
+                prov=prov(page, 70, 580, 525, 640),
+            )
+        if pictures:
+            doc.add_picture(prov=prov(page, 400, 650, 480, 690))
+        end = "chưa kết thúc và" if joins else "đã kết thúc."
+        doc.add_text(
+            label=DocItemLabel.TEXT,
+            text=f"Đoạn cuối trang {page} {end}",
+            prov=prov(page, 70, 700, 525, 728),
+        )
+        doc.add_text(
+            label=DocItemLabel.TEXT, text=str(page), prov=prov(page, 290, 800, 306, 812)
+        )
+    return doc
+
+
+def _time(doc):
+    import time
+
+    best = None
+    for _ in range(2):
+        t0 = time.perf_counter()
+        res = N.normalize_document(doc)
+        took = time.perf_counter() - t0
+        best = took if best is None else min(best, took)
+    return best, res
+
+
+def test_many_joins_scale_linearly():
+    """F-10: 300 pages with a join on every page; doubling the pages must not triple the time."""
+    half, res_half = _time(_big(150))
+    full, res_full = _time(_big(300))
+    assert res_full.counts["join_across_pages"] == 299
+    assert res_full.counts["page_number_to_furniture"] == 300
+    assert full <= 2.6 * half + 0.5, (half, full)
+    assert full < 20
+
+
+def test_large_document_with_tables_pictures_and_headers():
+    took, res = _time(_big(300, pictures=True, tables=True))
+    assert res.counts["join_across_pages"] == 299
+    assert res.counts["image_placeholder_dropped"] == 300
+    assert (
+        res.content.count("NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ") == 300
+    )  # repeated TEXT line: kept
+    assert took < 30
+
+
+def test_many_short_items_in_the_page_band_scale_linearly():
+    small, _ = _time(_big(3, joins=False, short_items=1000))
+    large, _ = _time(_big(3, joins=False, short_items=3000))
+    assert large <= 4.0 * small + 0.5, (small, large)
 
 
 def test_very_long_text_item():
@@ -345,25 +922,41 @@ def test_very_long_text_item():
     assert res.content.count("chữ") == 200_000
 
 
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ("9. Dịch vụ", "9\\. Dịch vụ"),
-        ("10) Điểm", "10\\) Điểm"),
-        ("- gạch", "\\- gạch"),
-        ("* sao", "\\* sao"),
-        ("# tiêu đề", "\\# tiêu đề"),
-        ("> trích", "\\> trích"),
-        ("a) điểm", "a) điểm"),
-        ("1.1 Nội dung", "1.1 Nội dung"),
-        ("2024", "2024"),
-        ("Điều 5. Phạm vi", "Điều 5. Phạm vi"),
-        ("dòng một  \n- dòng hai", "dòng một  \n\\- dòng hai"),
-    ],
-)
-def test_escape_block_start(raw, expected):
-    assert N.escape_block_start(raw) == expected
-    assert N.escape_block_start(expected) == expected or expected == raw
+# --------------------------------------------------------------------------- #
+# Stored text, display escape, gate, metadata
+# --------------------------------------------------------------------------- #
+
+
+def test_display_escape_matches_the_shared_cases():
+    """The frontend port (legal-display.ts) is tested against the same file."""
+    import json
+
+    cases = json.loads(
+        (
+            Path(__file__).parent / "fixtures" / "legal" / "display_escape_cases.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert len(cases) >= 20
+    for case in cases:
+        assert H.legal_display_markdown(case["input"]) == case["display"], case
+        assert H.legal_display_markdown(case["display"]) == case["display"], (
+            case
+        )  # idempotent
+
+
+def test_literal_block_syntax_is_escaped_in_the_stored_text():
+    assert N.escape_literal_block_syntax("# tiêu đề giả") == "\\# tiêu đề giả"
+    assert N.escape_literal_block_syntax("> trích dẫn giả") == "\\> trích dẫn giả"
+    for plain in (
+        "9. Dịch vụ",
+        "10) Điểm",
+        "- gạch",
+        "a) điểm",
+        "1.1 Nội dung",
+        "2024",
+        "Điều 5. Phạm vi",
+    ):
+        assert N.escape_literal_block_syntax(plain) == plain
 
 
 def test_deployment_gate(monkeypatch):
@@ -391,9 +984,15 @@ def test_only_pdf_is_supported():
         assert not N.applies_to(mime)
 
 
-def test_summary_contains_no_text(built):
-    _, _, _, res = built["f02_clause_across_pages"]
-    blob = repr(res.summary())
-    assert "Dịch vụ" not in blob and "khách hàng" not in blob
+def test_summary_and_persisted_metadata_contain_no_text(built):
+    _, _, _, res = built["f33_five_pages_real_page_numbers_and_join"]
+    for blob in (repr(res.summary()), repr(res.persistable())):
+        assert "Dịch vụ" not in blob and "khách hàng" not in blob
     report = res.report()
     assert all("text_before" not in op for op in report["operations"])
+    meta = res.persistable()
+    assert meta["version"] == N.NORMALIZER_VERSION and meta["status"] == "applied"
+    removed = [o for o in meta["operations"] if o["op"] == "page_number_to_furniture"]
+    assert len(removed) == 5 and all(
+        len(o["sha256"]) == 64 and o["pages"] for o in removed
+    )

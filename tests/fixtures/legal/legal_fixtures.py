@@ -17,6 +17,24 @@ The specs are consumed by:
 Element shorthand: ``E(label, text, x, y, w=..., h=...)``; pictures may carry
 ``children`` (OCR text Docling places inside the picture region), tables carry
 ``rows`` (first row = header).
+
+GROUND TRUTH (Phase 12D3, finding T-01). The oracle must not depend on what the
+normalizer does, so every element declares its own truth, written with the
+fixture and before any implementation runs:
+
+  (no ``gt`` key)   REQUIRED: the text must be in the output, as its own line,
+                    as many times as it is declared, in this order.
+  ``gt="artifact"`` a page number / running header: MAY be removed. Removing
+                    anything else is a false deletion.
+  ``gt="join"``     the continuation of the previous required element: MAY be
+                    joined to it with one space. Any other merge is a false merge.
+  ``gt="furniture"``labelled PAGE_HEADER / PAGE_FOOTER by the layout model:
+                    Docling itself keeps it out of the body.
+
+``expect_removed`` / ``expect_joined`` list what MUST happen where the evidence
+is sufficient (so that conservative rules do not silently disable the feature).
+``tests/legal_harness.py::preservation`` computes the metrics from these
+declarations only.
 """
 
 from __future__ import annotations
@@ -41,12 +59,12 @@ def E(
 
 def page_number(n: int | str, bottom: bool = True) -> dict[str, Any]:
     """A page number the layout model mislabelled as body TEXT (the common case)."""
-    return E("text", str(n), x=290, y=800 if bottom else 30, w=16, h=12)
+    return E("text", str(n), x=290, y=800 if bottom else 30, w=16, h=12, gt="artifact")
 
 
 def footer(n: int | str) -> dict[str, Any]:
     """A page number correctly labelled PAGE_FOOTER (Docling puts it in furniture)."""
-    return E("page_footer", str(n), x=290, y=800, w=16, h=12)
+    return E("page_footer", str(n), x=290, y=800, w=16, h=12, gt="furniture")
 
 
 def signature(y: float = 700) -> dict[str, Any]:
@@ -152,7 +170,7 @@ FIXTURES: list[dict[str, Any]] = [
                 page_number(6),
             ],
             [
-                E("text", "dư trên tài khoản của khách hàng.", y=60),
+                E("text", "dư trên tài khoản của khách hàng.", y=60, gt="join"),
                 E(
                     "list_item",
                     "10. Ngày làm việc là các ngày từ thứ Hai đến thứ Sáu.",
@@ -168,8 +186,7 @@ FIXTURES: list[dict[str, Any]] = [
             "10. Ngày làm việc là các ngày từ thứ Hai đến thứ Sáu."
         ),
         "markers": ["8.", "9.", "10."],
-        "must_join": ["không làm thay đổi số dư trên tài khoản của khách hàng."],
-        "absent_lines": ["6", "7"],
+        # 2 trang: chưa đủ bằng chứng số trang (F-02) => số trang và phép ghép chỉ là "được phép".
         "order": ["8. Dịch vụ", "9. Dịch vụ", "10. Ngày"],
         "expect_placeholders": 0,
     },
@@ -185,13 +202,14 @@ FIXTURES: list[dict[str, Any]] = [
                 ),
                 page_number(6),
             ],
-            [E("text", "dư trên tài khoản của khách hàng.", y=60), page_number(7)],
+            [
+                E("text", "dư trên tài khoản của khách hàng.", y=60, gt="join"),
+                page_number(7),
+            ],
         ],
         "ground_truth": "9. Dịch vụ phi tài chính là dịch vụ không làm thay đổi số dư trên tài khoản của khách hàng.",
         "markers": ["9."],
-        "must_join": ["không làm thay đổi dư trên tài khoản"],
         "forbidden": ["thay đổi số dư"],
-        "absent_lines": ["6", "7"],
     },
     {
         "name": "f04_new_clause_not_joined",
@@ -223,7 +241,7 @@ FIXTURES: list[dict[str, Any]] = [
             ["theo quy định", "4. Hiệu lực"],
         ],
         "protected": ["01/07/2024"],
-        "absent_lines": ["2", "3", "4"],
+        "expect_removed": ["2", "3", "4"],
     },
     {
         "name": "f05_list_starts_at_10_not_continuous",
@@ -331,7 +349,6 @@ FIXTURES: list[dict[str, Any]] = [
             "Trong quy định này, các từ ngữ dưới đây được hiểu như sau."
         ),
         "order": ["PHẦN I", "CHƯƠNG I", "Mục 1.", "Điều 1.", "Điều 2."],
-        "absent_lines": ["1", "2"],
     },
     {
         "name": "f08_protected_fields",
@@ -390,7 +407,6 @@ FIXTURES: list[dict[str, Any]] = [
             "500 triệu đồng",
         ],
         "present_lines": ["2024", "15"],
-        "absent_lines": ["1", "2"],
     },
     {
         "name": "f09_table",
@@ -456,7 +472,6 @@ FIXTURES: list[dict[str, Any]] = [
         ),
         "protected": ["CN01", "CN02", "CN03", "CN04"],
         "table_identical": True,
-        "absent_lines": ["1", "2"],
     },
     {
         "name": "f11_blank_page",
@@ -471,7 +486,6 @@ FIXTURES: list[dict[str, Any]] = [
         ],
         "ground_truth": "Phần này được để trống có chủ ý và tiếp tục nội dung của phụ lục kèm theo.",
         "must_not_join": [["tiếp tục", "nội dung của phụ lục"]],
-        "absent_lines": ["1", "3"],
     },
     {
         "name": "f12_two_columns",
@@ -544,14 +558,20 @@ FIXTURES: list[dict[str, Any]] = [
             "(1) Chương trình áp dụng từ ngày 01/07/2024 đến 31/12/2024. Các ưu đãi không được cộng dồn."
         ),
         "protected": ["01/07/2024", "31/12/2024"],
-        "absent_lines": ["1", "2"],
     },
     {
         "name": "f14_running_header_footer",
         "description": "Header/footer lặp trên 4 trang (nhãn TEXT) và 'Trang n/4'.",
         "pages": [
             [
-                E("text", "NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ", y=25, w=250, h=12),
+                E(
+                    "text",
+                    "NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ",
+                    y=25,
+                    w=250,
+                    h=12,
+                    gt="artifact",
+                ),
                 E(
                     "section_header",
                     "QUY ĐỊNH VỀ DỊCH VỤ THẺ",
@@ -561,14 +581,21 @@ FIXTURES: list[dict[str, Any]] = [
                     h=18,
                 ),
                 E("text", f"Nội dung trang {1} của quy định.", y=120),
-                E("text", "Trang 1/4", x=270, y=805, w=60, h=12),
+                E("text", "Trang 1/4", x=270, y=805, w=60, h=12, gt="artifact"),
             ]
         ]
         + [
             [
-                E("text", "NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ", y=25, w=250, h=12),
+                E(
+                    "text",
+                    "NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ",
+                    y=25,
+                    w=250,
+                    h=12,
+                    gt="artifact",
+                ),
                 E("text", f"Nội dung trang {n} của quy định.", y=60),
-                E("text", f"Trang {n}/4", x=270, y=805, w=60, h=12),
+                E("text", f"Trang {n}/4", x=270, y=805, w=60, h=12, gt="artifact"),
             ]
             for n in (2, 3, 4)
         ],
@@ -576,7 +603,7 @@ FIXTURES: list[dict[str, Any]] = [
             "QUY ĐỊNH VỀ DỊCH VỤ THẺ Nội dung trang 1 của quy định. Nội dung trang 2 của quy định. "
             "Nội dung trang 3 của quy định. Nội dung trang 4 của quy định."
         ),
-        "absent_lines": ["NGÂN HÀNG MẪU - QUY ĐỊNH NỘI BỘ", "Trang 1/4", "Trang 4/4"],
+        "expect_removed": ["Trang 1/4", "Trang 2/4", "Trang 3/4", "Trang 4/4"],
         "present_lines": ["QUY ĐỊNH VỀ DỊCH VỤ THẺ"],
     },
     {
@@ -644,7 +671,7 @@ FIXTURES: list[dict[str, Any]] = [
             "TM. HỘI ĐỒNG QUẢN TRỊ CHỦ TỊCH Trần Thị Mẫu"
         ),
         "expect_placeholders": 0,
-        "present_lines": ["\\- Như Điều 3;"],
+        "present_lines": ["- Như Điều 3;", "- Lưu VT."],
     },
     {
         "name": "f18_literal_html_comment",
@@ -735,19 +762,551 @@ FIXTURES: list[dict[str, Any]] = [
         ],
         "ground_truth": "Nội dung chương một kết thúc tại đây. CHƯƠNG II Nội dung chương hai. CHƯƠNG III Nội dung chương ba.",
         "order": ["CHƯƠNG II", "Nội dung chương hai", "CHƯƠNG III"],
-        "absent_lines": ["1", "2", "3"],
+        "expect_removed": ["1", "2", "3"],
     },
     {
         "name": "f24_join_chain_and_footer_label",
         "description": "Đoạn kéo dài 3 trang; số trang được Docling gán đúng PAGE_FOOTER (đã là furniture).",
         "pages": [
             [E("text", "Đoạn văn rất dài bắt đầu ở trang một và", y=760), footer(1)],
-            [E("text", "tiếp tục suốt trang hai cho đến khi", y=60, h=700), footer(2)],
-            [E("text", "kết thúc ở đầu trang ba.", y=60), footer(3)],
+            [
+                E(
+                    "text",
+                    "tiếp tục suốt trang hai cho đến khi",
+                    y=60,
+                    h=700,
+                    gt="join",
+                ),
+                footer(2),
+            ],
+            [E("text", "kết thúc ở đầu trang ba.", y=60, gt="join"), footer(3)],
         ],
         "ground_truth": "Đoạn văn rất dài bắt đầu ở trang một và tiếp tục suốt trang hai cho đến khi kết thúc ở đầu trang ba.",
-        "must_join": [
-            "trang một và tiếp tục suốt trang hai cho đến khi kết thúc ở đầu trang ba."
+        "expect_joined": [
+            "Đoạn văn rất dài bắt đầu ở trang một và tiếp tục suốt trang hai cho đến khi kết thúc ở đầu trang ba."
+        ],
+    },
+    # ------------------------------------------------------------------ #
+    # Phase 12D3: counter-examples of the independent audit (PHASE12D2),
+    # promoted to fixtures. Ground truth = the gt annotations above.
+    # ------------------------------------------------------------------ #
+    {
+        "name": "f25_appendix_unit_line_every_page",
+        "description": "F-01: phụ lục 3 trang, mỗi trang bắt đầu bằng 'Đơn vị tính: triệu đồng' — là nội dung, không phải header.",
+        "pages": [
+            [
+                E("text", "Đơn vị tính: triệu đồng", x=380, y=62, w=145, h=14),
+                E(
+                    "text",
+                    f"Chi nhánh {p} dư nợ cho vay ngắn hạn là {1500 + p}.",
+                    y=120,
+                    h=28,
+                ),
+                E(
+                    "text",
+                    f"Chi nhánh {p} dư nợ cho vay trung hạn là {2500 + p}.",
+                    y=400,
+                    h=28,
+                ),
+            ]
+            for p in (1, 2, 3)
+        ],
+        "ground_truth": " ".join(
+            f"Đơn vị tính: triệu đồng Chi nhánh {p} dư nợ cho vay ngắn hạn là {1500 + p}. "
+            f"Chi nhánh {p} dư nợ cho vay trung hạn là {2500 + p}."
+            for p in (1, 2, 3)
+        ),
+        "protected": [["Đơn vị tính: triệu đồng", 3], ["1501", 1], ["2503", 1]],
+    },
+    {
+        "name": "f26_bundle_of_one_page_notices",
+        "description": "F-01: bốn thông báo một trang scan chung một PDF; tên đơn vị ban hành và ghi chú ký lặp lại có chủ đích.",
+        "pages": [
+            [
+                E("text", "NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH", y=50, w=300),
+                E(
+                    "section_header",
+                    f"THÔNG BÁO SỐ {p + 10}",
+                    x=230,
+                    y=110,
+                    w=135,
+                    h=18,
+                ),
+                E(
+                    "text",
+                    f"Thông báo lãi suất cho vay áp dụng từ tháng {p + 1} là {7 + p},5%/năm.",
+                    y=160,
+                    h=28,
+                ),
+                E("text", "(Ký, ghi rõ họ tên và đóng dấu)", x=330, y=770, w=190, h=12),
+            ]
+            for p in range(4)
+        ],
+        "ground_truth": " ".join(
+            f"NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH THÔNG BÁO SỐ {p + 10} "
+            f"Thông báo lãi suất cho vay áp dụng từ tháng {p + 1} là {7 + p},5%/năm. (Ký, ghi rõ họ tên và đóng dấu)"
+            for p in range(4)
+        ),
+        "protected": [
+            ["NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH", 4],
+            ["(Ký, ghi rõ họ tên và đóng dấu)", 4],
+            ["7,5%/năm", 1],
+            ["10,5%/năm", 1],
+        ],
+    },
+    {
+        "name": "f27_years_at_page_bottom",
+        "description": "F-02: ô cuối trang là số năm (cột bảng không được nhận diện) — không phải số trang.",
+        "pages": [
+            [
+                E("text", "Kế hoạch tăng trưởng tín dụng năm:", y=120, h=28),
+                E("text", "2024", x=450, y=780, w=40, h=12),
+            ],
+            [
+                E("text", "Kế hoạch huy động vốn năm:", y=120, h=28),
+                E("text", "2025", x=450, y=780, w=40, h=12),
+            ],
+            [
+                E(
+                    "text",
+                    "Các nội dung khác thực hiện theo quy định hiện hành.",
+                    y=120,
+                    h=28,
+                )
+            ],
+        ],
+        "ground_truth": (
+            "Kế hoạch tăng trưởng tín dụng năm: 2024 Kế hoạch huy động vốn năm: 2025 "
+            "Các nội dung khác thực hiện theo quy định hiện hành."
+        ),
+        "protected": [["2024", 1], ["2025", 1]],
+        "present_lines": ["2024", "2025"],
+    },
+    {
+        "name": "f28_clause_numbers_at_page_top",
+        "description": "F-02: OCR tách số khoản khỏi nội dung; số đứng đầu trang ở lề trái thân.",
+        "pages": [
+            [E("text", "Điều 4. Quyền của khách hàng.", y=120, h=28)],
+            [
+                E("text", "2", x=70, y=62, w=10, h=12),
+                E(
+                    "text",
+                    "Khách hàng có quyền từ chối các yêu cầu trái thỏa thuận.",
+                    y=100,
+                    h=28,
+                ),
+            ],
+            [
+                E("text", "3", x=70, y=62, w=10, h=12),
+                E(
+                    "text",
+                    "Khách hàng có quyền khiếu nại theo quy định của pháp luật.",
+                    y=100,
+                    h=28,
+                ),
+            ],
+        ],
+        "ground_truth": (
+            "Điều 4. Quyền của khách hàng. 2 Khách hàng có quyền từ chối các yêu cầu trái thỏa thuận. "
+            "3 Khách hàng có quyền khiếu nại theo quy định của pháp luật."
+        ),
+        "present_lines": ["2", "3"],
+    },
+    {
+        "name": "f29_footnote_labelled_text",
+        "description": "F-03: footnote nhãn TEXT nằm giữa đoạn bị cắt và phần nối — không được ghép footnote với trang sau.",
+        "pages": [
+            [
+                E("text", "Điều 3. Mức cho vay.", y=120, h=28),
+                E(
+                    "text",
+                    "Mức cho vay tối đa được xác định căn cứ vào nhu cầu vay vốn và khả năng hoàn trả nợ của",
+                    y=600,
+                    h=28,
+                ),
+                E("text", "1 Thông tư số 39/2016/TT-NHNN", y=760, h=12, w=200),
+            ],
+            [
+                E(
+                    "text",
+                    "khách hàng theo quy định tại Điều 5 Quy chế này.",
+                    y=100,
+                    h=14,
+                ),
+                E("text", "Điều 4. Thời hạn cho vay.", y=200, h=28),
+            ],
+        ],
+        "ground_truth": (
+            "Điều 3. Mức cho vay. Mức cho vay tối đa được xác định căn cứ vào nhu cầu vay vốn và khả năng hoàn trả nợ của "
+            "1 Thông tư số 39/2016/TT-NHNN khách hàng theo quy định tại Điều 5 Quy chế này. Điều 4. Thời hạn cho vay."
+        ),
+        "protected": [["39/2016/TT-NHNN", 1]],
+        "must_not_join": [["39/2016/TT-NHNN", "khách hàng theo quy định"]],
+    },
+    {
+        "name": "f30_two_page_running_footer",
+        "description": "F-03: tài liệu 2 trang có footer 'Lưu hành nội bộ' (nhãn TEXT) — không được ghép footer với thân trang sau.",
+        "pages": [
+            [
+                E("text", "Điều 3. Mức cho vay.", y=120, h=28),
+                E(
+                    "text",
+                    "Mức cho vay tối đa được xác định căn cứ vào nhu cầu vay vốn và khả năng trả nợ.",
+                    y=600,
+                    h=28,
+                ),
+                E("text", "Lưu hành nội bộ", y=790, h=12, w=200, gt="artifact"),
+            ],
+            [
+                E(
+                    "text",
+                    "trong trường hợp đặc biệt, Tổng Giám đốc quyết định mức cho vay.",
+                    y=100,
+                    h=14,
+                ),
+                E("text", "Điều 4. Thời hạn cho vay.", y=200, h=28),
+                E("text", "Lưu hành nội bộ", y=790, h=12, w=200, gt="artifact"),
+            ],
+        ],
+        "ground_truth": (
+            "Điều 3. Mức cho vay. Mức cho vay tối đa được xác định căn cứ vào nhu cầu vay vốn và khả năng trả nợ. "
+            "trong trường hợp đặc biệt, Tổng Giám đốc quyết định mức cho vay. Điều 4. Thời hạn cho vay."
+        ),
+        "must_not_join": [["Lưu hành nội bộ", "trong trường hợp"]],
+    },
+]
+
+_POINT_STYLES = {
+    "a_dot": ("a. Giấy đề nghị vay vốn;", "b. Phương án sử dụng vốn."),
+    "a_slash": ("a/ Giấy đề nghị vay vốn;", "b/ Phương án sử dụng vốn."),
+    "dd_dot": ("đ. Giấy đề nghị vay vốn;", "e. Phương án sử dụng vốn."),
+    "paren": ("(a) giấy đề nghị vay vốn;", "(b) phương án sử dụng vốn."),
+    "a_1": ("a.1) giấy đề nghị vay vốn;", "a.2) phương án sử dụng vốn."),
+    "dd_paren": ("đ) giấy đề nghị vay vốn;", "e) phương án sử dụng vốn."),
+}
+for _style, (_first, _second) in _POINT_STYLES.items():
+    FIXTURES.append(
+        {
+            "name": f"f31_lettered_points_{_style}",
+            "description": f"F-03: điểm kiểu '{_first.split(' ')[0]}' ở đầu trang sau là đơn vị mới, không phải phần nối của câu dẫn.",
+            "pages": [
+                [
+                    E("text", "Điều 6. Hồ sơ vay vốn.", y=120, h=28),
+                    E("text", "2. Hồ sơ vay vốn bao gồm các giấy tờ", y=700, h=14),
+                ],
+                [E("text", _first, y=100, h=14), E("text", _second, y=130, h=14)],
+            ],
+            "ground_truth": f"Điều 6. Hồ sơ vay vốn. 2. Hồ sơ vay vốn bao gồm các giấy tờ {_first} {_second}",
+            "must_not_join": [["bao gồm các giấy tờ", _first.split(" ")[0]]],
+            "present_lines": [_first, _second],
+        }
+    )
+
+FIXTURES += [
+    {
+        "name": "f32_pictures_5_12_20_percent",
+        "description": "F-06: ảnh không chữ 5%, 12%, 20% diện tích trang (bảng lãi suất scan, sơ đồ) phải để lại dấu vết.",
+        "pages": [
+            [
+                E("text", "Biểu lãi suất áp dụng:", y=60, h=14),
+                E("picture", x=70, y=90, w=200, h=125),  # 5.0 %
+                E("text", "Sơ đồ quy trình phê duyệt:", y=240, h=14),
+                E("picture", x=70, y=270, w=300, h=200),  # 12.0 %
+                E("text", "Biểu đồ dư nợ theo năm:", y=490, h=14),
+                E("picture", x=70, y=520, w=400, h=250),  # 20.0 %
+            ]
+        ],
+        "ground_truth": "Biểu lãi suất áp dụng: Sơ đồ quy trình phê duyệt: Biểu đồ dư nợ theo năm:",
+        "expect_placeholders": 3,
+        "expect_warnings": ["picture_without_text"],
+    },
+    {
+        "name": "f33_five_pages_real_page_numbers_and_join",
+        "description": "Đủ bằng chứng: 5 trang có số trang thật ở giữa cuối trang (nhãn TEXT) và khoản 9 bị cắt qua trang.",
+        "pages": [
+            [
+                E("section_header", "Điều 3. Giải thích từ ngữ", y=80),
+                E(
+                    "text",
+                    "Trong Quy định này, các từ ngữ được hiểu như sau.",
+                    y=110,
+                    h=28,
+                ),
+                page_number(5),
+            ],
+            [
+                E(
+                    "list_item",
+                    "8. Dịch vụ tài chính là dịch vụ làm thay đổi số dư tài khoản.",
+                    y=700,
+                    h=28,
+                ),
+                E(
+                    "list_item",
+                    "9. Dịch vụ phi tài chính là dịch vụ không làm thay đổi số",
+                    y=735,
+                    h=28,
+                ),
+                page_number(6),
+            ],
+            [
+                E("text", "dư trên tài khoản của khách hàng.", y=60, gt="join"),
+                E(
+                    "list_item",
+                    "10. Ngày làm việc là các ngày từ thứ Hai đến thứ Sáu.",
+                    y=85,
+                ),
+                page_number(7),
+            ],
+            [
+                E("section_header", "Điều 4. Phạm vi áp dụng", y=60),
+                E("text", "Quy định áp dụng trong toàn hệ thống.", y=90, h=28),
+                page_number(8),
+            ],
+            [
+                E("section_header", "Điều 5. Hiệu lực", y=60),
+                E("text", "Quy định có hiệu lực từ ngày 01/01/2025.", y=90, h=28),
+                page_number(9),
+            ],
+        ],
+        "ground_truth": (
+            "Điều 3. Giải thích từ ngữ Trong Quy định này, các từ ngữ được hiểu như sau. "
+            "8. Dịch vụ tài chính là dịch vụ làm thay đổi số dư tài khoản. "
+            "9. Dịch vụ phi tài chính là dịch vụ không làm thay đổi số dư trên tài khoản của khách hàng. "
+            "10. Ngày làm việc là các ngày từ thứ Hai đến thứ Sáu. Điều 4. Phạm vi áp dụng "
+            "Quy định áp dụng trong toàn hệ thống. Điều 5. Hiệu lực Quy định có hiệu lực từ ngày 01/01/2025."
+        ),
+        "markers": ["8.", "9.", "10."],
+        "protected": [["01/01/2025", 1]],
+        "expect_removed": ["5", "6", "7", "8", "9"],
+        "expect_joined": [
+            "9. Dịch vụ phi tài chính là dịch vụ không làm thay đổi số dư trên tài khoản của khách hàng."
+        ],
+    },
+    {
+        "name": "f34_five_pages_detached_clause_numbers",
+        "description": "F-02: số khoản 2, 3, 4 bị OCR tách ra, đứng đầu trang 2-4 tại lề trái của thân (5 trang) — phải giữ.",
+        "pages": [
+            [E("text", "Điều 4. Quyền của khách hàng.", y=120, h=28)],
+            [
+                E("text", "2", x=70, y=62, w=10, h=12),
+                E(
+                    "text",
+                    "Khách hàng có quyền từ chối các yêu cầu trái thỏa thuận.",
+                    y=100,
+                    h=28,
+                ),
+            ],
+            [
+                E("text", "3", x=70, y=62, w=10, h=12),
+                E(
+                    "text",
+                    "Khách hàng có quyền khiếu nại theo quy định của pháp luật.",
+                    y=100,
+                    h=28,
+                ),
+            ],
+            [
+                E("text", "4", x=70, y=62, w=10, h=12),
+                E("text", "Khách hàng có quyền được bảo mật thông tin.", y=100, h=28),
+            ],
+            [E("text", "Điều 5. Nghĩa vụ của khách hàng.", y=100, h=28)],
+        ],
+        "ground_truth": (
+            "Điều 4. Quyền của khách hàng. 2 Khách hàng có quyền từ chối các yêu cầu trái thỏa thuận. "
+            "3 Khách hàng có quyền khiếu nại theo quy định của pháp luật. 4 Khách hàng có quyền được bảo mật thông tin. "
+            "Điều 5. Nghĩa vụ của khách hàng."
+        ),
+        "present_lines": ["2", "3", "4"],
+    },
+    {
+        "name": "f35_unrecognised_table_repeated_column_headers",
+        "description": "F-01/F-02: bảng không được nhận diện; tiêu đề cột lặp ở đầu mỗi trang và số liệu đứng riêng ở cuối trang.",
+        "pages": [
+            [
+                E("text", "STT", x=70, y=60, w=30, h=12),
+                E("text", "CHỈ TIÊU", x=120, y=60, w=60, h=12),
+                E("text", "SỐ TIỀN", x=420, y=60, w=60, h=12),
+                E("text", str(p), x=70, y=400, w=10, h=12),
+                E("text", f"Dư nợ nhóm {p}", x=120, y=400, w=120, h=12),
+                E("text", str(100 + p), x=420, y=790, w=30, h=12),
+            ]
+            for p in (1, 2, 3, 4)
+        ],
+        "ground_truth": " ".join(
+            f"STT CHỈ TIÊU SỐ TIỀN {p} Dư nợ nhóm {p} {100 + p}" for p in (1, 2, 3, 4)
+        ),
+        "protected": [["STT", 4], ["SỐ TIỀN", 4], ["101", 1], ["104", 1]],
+        "present_lines": ["101", "102", "103", "104"],
+    },
+    {
+        "name": "f36_six_pages_mirrored_page_numbers",
+        "description": "Đủ bằng chứng: số trang ở lề ngoài, trang lẻ bên phải / trang chẵn bên trái (6 trang).",
+        "pages": [
+            [
+                E(
+                    "text",
+                    f"Nội dung chính của trang thứ {n} trong quy định mẫu.",
+                    y=100,
+                    h=28,
+                ),
+                E(
+                    "text",
+                    str(n),
+                    x=520 if n % 2 else 60,
+                    y=805,
+                    w=14,
+                    h=12,
+                    gt="artifact",
+                ),
+            ]
+            for n in range(1, 7)
+        ],
+        "ground_truth": " ".join(
+            f"Nội dung chính của trang thứ {n} trong quy định mẫu." for n in range(1, 7)
+        ),
+        "expect_removed": ["1", "2", "3", "4", "5", "6"],
+    },
+    {
+        "name": "f37_repeated_business_lines",
+        "description": "F-01: 'Kính gửi', 'Nơi nhận', 'Căn cứ', tiêu đề phụ lục, tên các bên lặp trên mọi trang của bộ văn bản.",
+        "pages": [
+            [
+                E("text", "Kính gửi: Các chi nhánh trong hệ thống", y=40, w=300, h=12),
+                E("text", "PHỤ LỤC HỢP ĐỒNG", x=230, y=62, w=135, h=14),
+                E(
+                    "text",
+                    f"Căn cứ Quyết định số {p}0/QĐ-NHM ngày 0{p}/01/2025;",
+                    y=120,
+                    h=28,
+                ),
+                E("text", "Bên A: Ngân hàng Thương mại Mẫu", y=760, w=300, h=12),
+                E("text", "Nơi nhận: Như trên; Lưu VT", y=790, w=300, h=12),
+            ]
+            for p in (1, 2, 3, 4)
+        ],
+        "ground_truth": " ".join(
+            "Kính gửi: Các chi nhánh trong hệ thống PHỤ LỤC HỢP ĐỒNG "
+            f"Căn cứ Quyết định số {p}0/QĐ-NHM ngày 0{p}/01/2025; Bên A: Ngân hàng Thương mại Mẫu Nơi nhận: Như trên; Lưu VT"
+            for p in (1, 2, 3, 4)
+        ),
+        "protected": [
+            ["Kính gửi: Các chi nhánh trong hệ thống", 4],
+            ["PHỤ LỤC HỢP ĐỒNG", 4],
+            ["Bên A: Ngân hàng Thương mại Mẫu", 4],
+            ["Nơi nhận: Như trên; Lưu VT", 4],
+        ],
+    },
+    {
+        "name": "f38_two_columns_across_pages",
+        "description": "Hai cột qua hai trang: không ghép giữa hai cột khác nhau (cuối cột phải trang 1 với đầu cột trái trang 2).",
+        "pages": [
+            [
+                E(
+                    "text",
+                    "Cột trái trang một nói về điều kiện vay vốn của khách hàng.",
+                    x=70,
+                    y=100,
+                    w=210,
+                    h=640,
+                ),
+                E(
+                    "text",
+                    "Cột phải trang một nói về thời hạn và lãi suất áp dụng cho",
+                    x=315,
+                    y=100,
+                    w=210,
+                    h=660,
+                ),
+            ],
+            [
+                E(
+                    "text",
+                    "cột trái trang hai tiếp tục một nội dung khác hẳn.",
+                    x=70,
+                    y=100,
+                    w=210,
+                    h=300,
+                ),
+                E(
+                    "text",
+                    "Cột phải trang hai kết thúc văn bản.",
+                    x=315,
+                    y=100,
+                    w=210,
+                    h=300,
+                ),
+            ],
+        ],
+        "ground_truth": (
+            "Cột trái trang một nói về điều kiện vay vốn của khách hàng. Cột phải trang một nói về thời hạn và lãi suất áp dụng cho "
+            "cột trái trang hai tiếp tục một nội dung khác hẳn. Cột phải trang hai kết thúc văn bản."
+        ),
+        "must_not_join": [["lãi suất áp dụng cho", "cột trái trang hai"]],
+    },
+    {
+        "name": "f39_text_then_table_across_pages",
+        "description": "Đoạn chưa kết thúc ở cuối trang, trang sau bắt đầu bằng bảng rồi tới đoạn chữ thường: không ghép qua bảng.",
+        "pages": [
+            [
+                E("text", "Biểu phí áp dụng cho các dịch vụ sau đây gồm", y=700, h=28),
+                page_number(1),
+            ],
+            [
+                E(
+                    "table",
+                    y=60,
+                    h=60,
+                    rows=[["STT", "Dịch vụ", "Phí"], ["1", "Chuyển tiền", "2.200"]],
+                ),
+                E("text", "phí trên đã bao gồm thuế giá trị gia tăng.", y=140, h=14),
+                page_number(2),
+            ],
+            [E("text", "Điều 9. Tổ chức thực hiện.", y=60, h=28), page_number(3)],
+        ],
+        "ground_truth": (
+            "Biểu phí áp dụng cho các dịch vụ sau đây gồm STT Dịch vụ Phí 1 Chuyển tiền 2.200 "
+            "phí trên đã bao gồm thuế giá trị gia tăng. Điều 9. Tổ chức thực hiện."
+        ),
+        "protected": [["2.200", 1]],
+        "table_identical": True,
+        "must_not_join": [["sau đây gồm", "phí trên đã bao gồm"]],
+        "expect_removed": ["1", "2", "3"],
+    },
+    {
+        "name": "f40_caption_and_picture_text",
+        "description": "F-06: ảnh có caption và ảnh có chữ OCR bên trong — caption và chữ phải còn; literal HTML comment giữ nguyên.",
+        "pages": [
+            [
+                E(
+                    "text",
+                    "Mẫu biểu có ghi chú <!-- image --> trong mã nguồn.",
+                    y=60,
+                    h=14,
+                ),
+                E("caption", "Hình 1. Sơ đồ tổ chức chi nhánh", y=90, h=14),
+                E("picture", x=70, y=110, w=300, h=200),
+                E(
+                    "picture",
+                    x=70,
+                    y=340,
+                    w=455,
+                    h=200,
+                    children=[
+                        E("text", "Lãi suất kỳ hạn 12 tháng: 5,2%/năm", y=380),
+                        E("text", "Lãi suất kỳ hạn 24 tháng: 5,8%/năm", y=420),
+                    ],
+                ),
+            ]
+        ],
+        "ground_truth": (
+            "Mẫu biểu có ghi chú <!-- image --> trong mã nguồn. Hình 1. Sơ đồ tổ chức chi nhánh "
+            "Lãi suất kỳ hạn 12 tháng: 5,2%/năm Lãi suất kỳ hạn 24 tháng: 5,8%/năm"
+        ),
+        "protected": [
+            ["5,2%/năm", 1],
+            ["5,8%/năm", 1],
+            ["Hình 1. Sơ đồ tổ chức chi nhánh", 1],
         ],
     },
 ]

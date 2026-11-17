@@ -29,7 +29,7 @@ import offline_package as OP  # noqa: E402
 IMAGE_ID = "sha256:" + "a" * 64
 OLD_ID = "sha256:" + "b" * 64
 
-FAKE_DOCKER = r'''#!/usr/bin/env python3
+FAKE_DOCKER = r"""#!/usr/bin/env python3
 import json, os, re, sys
 state_path = os.environ["FAKE_DOCKER_STATE"]
 state = json.load(open(state_path))
@@ -98,7 +98,7 @@ if argv[0] == "compose":
         state["containers"]["c1"] = {"image": img, "image_id": state["images"].get(img, img)}; save(); sys.exit(0)
     sys.exit(0)
 sys.exit(0)
-'''
+"""
 
 
 @pytest.fixture
@@ -121,15 +121,27 @@ def fake_docker(tmp_path, monkeypatch):
             "app_version": "1.3.0",
             "schema_version": 33,
             "python": "3.12",
-            "dependencies": {"docling": "2.129.0", "docling-core": "2.96.0", "content-core": "2.0.7"},
+            "dependencies": {
+                "docling": "2.129.0",
+                "docling-core": "2.96.0",
+                "content-core": "2.0.7",
+            },
             "tesseract": "tesseract 5.5.0",
             "runtimes_baked": {"docling": True, "easyocr": True, "tesseract": True},
             "runtime_artifacts": {"rapidocr_weights_sha256": {}},
         },
         "config": {
             "services": {
-                "open_notebook": {"image": "chatbot5400:local", "ports": [{"target": 8502, "published": "8502", "host_ip": "0.0.0.0"}]},
-                "surrealdb": {"image": "surrealdb/surrealdb:v2", "volumes": [{"source": "./surreal_data"}]},
+                "open_notebook": {
+                    "image": "chatbot5400:local",
+                    "ports": [
+                        {"target": 8502, "published": "8502", "host_ip": "0.0.0.0"}
+                    ],
+                },
+                "surrealdb": {
+                    "image": "surrealdb/surrealdb:v2",
+                    "volumes": [{"source": "./surreal_data"}],
+                },
             }
         },
     }
@@ -151,7 +163,11 @@ def fake_docker(tmp_path, monkeypatch):
 
         def calls(self):
             log = Path(self.get()["log"])
-            return [json.loads(x) for x in log.read_text().splitlines()] if log.is_file() else []
+            return (
+                [json.loads(x) for x in log.read_text().splitlines()]
+                if log.is_file()
+                else []
+            )
 
     return Fake()
 
@@ -173,7 +189,9 @@ def repo(tmp_path):
     git("tag", "v1.2.0")
     (r / "VERSION").write_text("1.3.0\n")
     (r / "docs" / "deployment").mkdir(parents=True)
-    (r / "docs" / "deployment" / "OFFLINE_UPDATE_UBUNTU_GUIDE.md").write_text("# guide\n")
+    (r / "docs" / "deployment" / "OFFLINE_UPDATE_UBUNTU_GUIDE.md").write_text(
+        "# guide\n"
+    )
     git("add", ".")
     git("commit", "-qm", "phase 12")
     return r
@@ -181,7 +199,20 @@ def repo(tmp_path):
 
 def _build(repo, tmp_path, *extra):
     out = tmp_path / "dist"
-    rc = OP.main(["build", "--version", "1.3.0-rc.1", "--image", "chatbot5400:1.3.0-rc.1", "--repo", str(repo), "--out", str(out), *extra])
+    rc = OP.main(
+        [
+            "build",
+            "--version",
+            "1.3.0-rc.1",
+            "--image",
+            "chatbot5400:1.3.0-rc.1",
+            "--repo",
+            str(repo),
+            "--out",
+            str(out),
+            *extra,
+        ]
+    )
     assert rc == 0
     pkg = next(out.glob("*.tar.gz"))
     return pkg, OP.sha256_file(pkg)
@@ -193,7 +224,17 @@ def package(fake_docker, repo, tmp_path):
 
 
 def _verify(pkg, dest, *extra):
-    return OP.main(["verify", str(pkg), "--extract-to", str(dest), "--platform", "linux/amd64", *extra])
+    return OP.main(
+        [
+            "verify",
+            str(pkg),
+            "--extract-to",
+            str(dest),
+            "--platform",
+            "linux/amd64",
+            *extra,
+        ]
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -210,12 +251,22 @@ def test_build_uses_docker_save_and_git_bundle(package, fake_docker):
     assert run_call[run_call.index("--network") + 1] == "none"
     names = tarfile.open(pkg).getnames()
     top = names[0].split("/")[0]
-    for rel in ("manifest.json", "SHA256SUMS", "images/chatbot5400-1.3.0-rc.1.tar", "source/chatbot5400-1.3.0-rc.1.bundle",
-                "scripts/update.sh", "scripts/offline_package.py"):
+    for rel in (
+        "manifest.json",
+        "SHA256SUMS",
+        "images/chatbot5400-1.3.0-rc.1.tar",
+        "source/chatbot5400-1.3.0-rc.1.bundle",
+        "scripts/update.sh",
+        "scripts/offline_package.py",
+    ):
         assert f"{top}/{rel}" in names
     manifest = json.loads(tarfile.open(pkg).extractfile(f"{top}/manifest.json").read())
     assert manifest["image"]["id"] == IMAGE_ID
-    assert manifest["database"] == {"schema_version": 33, "migration_required": False, "compatible_schema_versions": [33]}
+    assert manifest["database"] == {
+        "schema_version": 33,
+        "migration_required": False,
+        "compatible_schema_versions": [33],
+    }
     assert manifest["readiness"]["status"] == "READY"
     assert manifest["source"]["base_ref"] == "v1.2.0"
     blob = json.dumps(manifest).lower()
@@ -232,7 +283,10 @@ def test_verify_with_trusted_hash(package, tmp_path):
 
 def test_verify_refuses_without_authenticity(package, tmp_path):
     pkg, _ = package
-    assert _verify(pkg, tmp_path / "x", "--allowed-signers", str(tmp_path / "none")) == OP.EXIT_VERIFY
+    assert (
+        _verify(pkg, tmp_path / "x", "--allowed-signers", str(tmp_path / "none"))
+        == OP.EXIT_VERIFY
+    )
 
 
 def test_verify_refuses_wrong_hash(package, tmp_path):
@@ -242,18 +296,44 @@ def test_verify_refuses_wrong_hash(package, tmp_path):
 
 def test_verify_refuses_wrong_platform(package, tmp_path):
     pkg, digest = package
-    rc = OP.main(["verify", str(pkg), "--extract-to", str(tmp_path / "x"), "--expected-sha256", digest, "--platform", "linux/arm64"])
+    rc = OP.main(
+        [
+            "verify",
+            str(pkg),
+            "--extract-to",
+            str(tmp_path / "x"),
+            "--expected-sha256",
+            digest,
+            "--platform",
+            "linux/arm64",
+        ]
+    )
     assert rc == OP.EXIT_VERIFY
 
 
 def test_verify_refuses_unsupported_source_version(package, tmp_path):
     pkg, digest = package
-    assert _verify(pkg, tmp_path / "x", "--expected-sha256", digest, "--current-version", "1.0.8") == OP.EXIT_VERIFY
+    assert (
+        _verify(
+            pkg,
+            tmp_path / "x",
+            "--expected-sha256",
+            digest,
+            "--current-version",
+            "1.0.8",
+        )
+        == OP.EXIT_VERIFY
+    )
 
 
 def test_verify_refuses_newer_database(package, tmp_path):
     pkg, digest = package
-    assert _verify(pkg, tmp_path / "x", "--expected-sha256", digest, "--current-schema", "34") == OP.EXIT_VERIFY
+    assert (
+        _verify(
+            pkg, tmp_path / "x", "--expected-sha256", digest, "--current-schema", "34"
+        )
+        == OP.EXIT_VERIFY
+    )
 
 
 def _repack(pkg, tmp_path, mutate):
@@ -282,9 +362,13 @@ def test_verify_detects_corrupted_image(package, tmp_path):
 
 def test_verify_detects_extra_and_missing_files(package, tmp_path):
     pkg, _ = package
-    new, digest = _repack(pkg, tmp_path, lambda top: (top / "scripts" / "evil.sh").write_text("rm -rf /"))
+    new, digest = _repack(
+        pkg, tmp_path, lambda top: (top / "scripts" / "evil.sh").write_text("rm -rf /")
+    )
     assert _verify(new, tmp_path / "x", "--expected-sha256", digest) == OP.EXIT_VERIFY
-    new, digest = _repack(pkg, tmp_path / "b", lambda top: (top / "scripts" / "update.sh").unlink())
+    new, digest = _repack(
+        pkg, tmp_path / "b", lambda top: (top / "scripts" / "update.sh").unlink()
+    )
     assert _verify(new, tmp_path / "y", "--expected-sha256", digest) == OP.EXIT_VERIFY
 
 
@@ -299,7 +383,9 @@ def test_verify_detects_invalid_manifest(package, tmp_path):
     new, digest = _repack(pkg, tmp_path, bad)
     assert _verify(new, tmp_path / "x", "--expected-sha256", digest) == OP.EXIT_VERIFY
 
-    new, digest = _repack(pkg, tmp_path / "c", lambda top: (top / "manifest.json").write_text("{not json"))
+    new, digest = _repack(
+        pkg, tmp_path / "c", lambda top: (top / "manifest.json").write_text("{not json")
+    )
     assert _verify(new, tmp_path / "z", "--expected-sha256", digest) == OP.EXIT_VERIFY
 
 
@@ -372,10 +458,15 @@ def test_archive_bomb_refused(tmp_path, monkeypatch):
         OP.safe_extract(pkg, tmp_path / "out2")
 
 
-@pytest.mark.skipif(shutil.which("ssh-keygen") is None, reason="ssh-keygen not installed")
+@pytest.mark.skipif(
+    shutil.which("ssh-keygen") is None, reason="ssh-keygen not installed"
+)
 def test_signature_valid_and_invalid(fake_docker, repo, tmp_path):
     key = tmp_path / "release_key"
-    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "test", "-f", str(key)], check=True)
+    subprocess.run(
+        ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "test", "-f", str(key)],
+        check=True,
+    )
     pub = (tmp_path / "release_key.pub").read_text().strip()
     signers = tmp_path / "allowed_signers"
     signers.write_text(f"release@chatbot5400 {pub}\n")
@@ -385,10 +476,17 @@ def test_signature_valid_and_invalid(fake_docker, repo, tmp_path):
     assert report["authenticity"] == ["signature valid"]
 
     other = tmp_path / "other_key"
-    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(other)], check=True)
+    subprocess.run(
+        ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(other)], check=True
+    )
     wrong = tmp_path / "wrong_signers"
-    wrong.write_text(f"release@chatbot5400 {(tmp_path / 'other_key.pub').read_text().strip()}\n")
-    assert _verify(pkg, tmp_path / "bad", "--allowed-signers", str(wrong)) == OP.EXIT_VERIFY
+    wrong.write_text(
+        f"release@chatbot5400 {(tmp_path / 'other_key.pub').read_text().strip()}\n"
+    )
+    assert (
+        _verify(pkg, tmp_path / "bad", "--allowed-signers", str(wrong))
+        == OP.EXIT_VERIFY
+    )
 
     def tamper(top):  # manifest changed after signing
         m = json.loads((top / "manifest.json").read_text())
@@ -396,7 +494,10 @@ def test_signature_valid_and_invalid(fake_docker, repo, tmp_path):
         (top / "manifest.json").write_text(json.dumps(m))
 
     new, _ = _repack(pkg, tmp_path / "t", tamper)
-    assert _verify(new, tmp_path / "tampered", "--allowed-signers", str(signers)) == OP.EXIT_VERIFY
+    assert (
+        _verify(new, tmp_path / "tampered", "--allowed-signers", str(signers))
+        == OP.EXIT_VERIFY
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -462,7 +563,9 @@ def test_preflight_is_read_only(deployment, fake_docker):
     new = fake_docker.calls()[before:]
     mutating = {"load", "tag", "rm", "rmi", "save", "push", "pull"}
     assert not any(c[0] in mutating for c in new)
-    assert not any("up" in c or "down" in c or "stop" in c for c in new if c[0] == "compose")
+    assert not any(
+        "up" in c or "down" in c or "stop" in c for c in new if c[0] == "compose"
+    )
     for c in new:
         if c[0] == "compose" and "exec" in c:
             assert "-T" in c  # only read-only probes (version, schema, jobs)
@@ -471,11 +574,20 @@ def test_preflight_is_read_only(deployment, fake_docker):
 def test_preflight_fails_closed(deployment, fake_docker):
     conf, pkg_dir, _ = deployment
     fake_docker.set(jobs=2)
-    assert _server("preflight", conf, pkg_dir, "--backup-reference", "x") == OP.EXIT_PREFLIGHT
+    assert (
+        _server("preflight", conf, pkg_dir, "--backup-reference", "x")
+        == OP.EXIT_PREFLIGHT
+    )
     fake_docker.set(jobs=0, schema=32)
-    assert _server("preflight", conf, pkg_dir, "--backup-reference", "x") == OP.EXIT_PREFLIGHT
+    assert (
+        _server("preflight", conf, pkg_dir, "--backup-reference", "x")
+        == OP.EXIT_PREFLIGHT
+    )
     fake_docker.set(schema=33, version="1.0.8")
-    assert _server("preflight", conf, pkg_dir, "--backup-reference", "x") == OP.EXIT_PREFLIGHT
+    assert (
+        _server("preflight", conf, pkg_dir, "--backup-reference", "x")
+        == OP.EXIT_PREFLIGHT
+    )
 
 
 def test_preflight_needs_verified_package(deployment, tmp_path):
@@ -488,26 +600,191 @@ def test_update_dry_run_changes_nothing(deployment, fake_docker):
     conf, pkg_dir, _ = deployment
     before = len(fake_docker.calls())
     assert _server("update", conf, pkg_dir, "--backup-reference", "bk") == 0
-    assert not any(c[0] in ("load", "tag") or "up" in c for c in fake_docker.calls()[before:])
+    assert not any(
+        c[0] in ("load", "tag") or "up" in c for c in fake_docker.calls()[before:]
+    )
+
+
+SAFE_UP_TAIL = [
+    "up",
+    "-d",
+    "--no-deps",
+    "--no-build",
+    "--pull",
+    "never",
+    "--force-recreate",
+    "open_notebook",
+]
+ALLOWED_DOCKER = {"image", "info", "load", "tag", "inspect", "run", "save", "compose"}
+ALLOWED_COMPOSE = {"config", "ps", "exec", "up"}
+
+
+def _compose_verb(call):
+    """The compose sub-command: the first token after the global options."""
+    i = 1
+    while i < len(call):
+        if call[i] in (
+            "-p",
+            "-f",
+            "--project-directory",
+            "--project-name",
+            "--file",
+            "--env-file",
+        ):
+            i += 2
+        elif call[i].startswith("-"):
+            i += 1
+        else:
+            return call[i], call[i:]
+    return None, []
 
 
 def _assert_safe_calls(calls):
+    """Every recorded Docker call is one the update tool may make (T-02).
+
+    Each condition is its own assert: no `A and B or C`. A compose call may only
+    be config / ps / exec / up, and `up` must be EXACTLY the app-only recreate:
+    --no-deps --no-build --pull never, nothing else, never the database.
+    """
     for c in calls:
-        assert c[0] not in ("pull", "push", "login", "rm", "rmi", "export", "import", "system", "volume", "network", "build", "buildx")
-        if c[0] == "compose":
-            assert "down" not in c and "pull" not in c[c.index("-f"):] or "--pull" in c
-            assert "-v" not in c and "--volumes" not in c and "build" not in c
-            if "up" in c:
-                tail = c[c.index("up"):]
-                for flag in ("-d", "--no-deps", "--no-build", "--force-recreate"):
-                    assert flag in tail
-                assert tail[tail.index("--pull") + 1] == "never"
-                assert tail[-1] == "open_notebook"  # never the database
+        assert c[0] in ALLOWED_DOCKER, c
+        if c[0] != "compose":
+            continue
+        verb, tail = _compose_verb(c)
+        assert verb in ALLOWED_COMPOSE, c
+        for forbidden in (
+            "down",
+            "pull",
+            "build",
+            "prune",
+            "rm",
+            "restart",
+            "stop",
+            "kill",
+            "create",
+            "run",
+        ):
+            assert verb != forbidden, c
+        assert "-v" not in c, c
+        assert "--volumes" not in c, c
+        assert "--build" not in c, c
+        assert "--remove-orphans" not in c, c
+        if verb == "up":
+            assert tail == SAFE_UP_TAIL, c
+
+
+def test_safe_calls_oracle_can_fail():
+    """The oracle rejects each dangerous form on its own."""
+    base = ["compose", "-p", "x", "-f", "docker-compose.yml"]
+    dangerous = [
+        base + ["down", "--pull", "never"],
+        base + ["down"],
+        base + ["pull"],
+        base + ["build"],
+        base
+        + [
+            "up",
+            "-d",
+            "--no-build",
+            "--pull",
+            "never",
+            "--force-recreate",
+            "open_notebook",
+        ],  # no --no-deps
+        base
+        + [
+            "up",
+            "-d",
+            "--no-deps",
+            "--pull",
+            "never",
+            "--force-recreate",
+            "open_notebook",
+        ],  # no --no-build
+        base
+        + [
+            "up",
+            "-d",
+            "--no-deps",
+            "--no-build",
+            "--force-recreate",
+            "open_notebook",
+        ],  # no --pull never
+        base
+        + [
+            "up",
+            "-d",
+            "--no-deps",
+            "--no-build",
+            "--pull",
+            "always",
+            "--force-recreate",
+            "open_notebook",
+        ],
+        base
+        + [
+            "up",
+            "-d",
+            "--no-deps",
+            "--no-build",
+            "--pull",
+            "never",
+            "--force-recreate",
+            "surrealdb",
+        ],
+        base
+        + [
+            "up",
+            "-d",
+            "--no-deps",
+            "--no-build",
+            "--pull",
+            "never",
+            "--force-recreate",
+            "open_notebook",
+            "surrealdb",
+        ],
+        base
+        + [
+            "up",
+            "-d",
+            "--no-deps",
+            "--no-build",
+            "--pull",
+            "never",
+            "--force-recreate",
+            "-v",
+            "open_notebook",
+        ],
+        base + ["rm", "-f", "open_notebook"],
+        ["system", "prune", "-f"],
+        ["volume", "rm", "data"],
+        ["pull", "chatbot5400:1.3.0"],
+        ["rmi", "chatbot5400:local"],
+    ]
+    for call in dangerous:
+        with pytest.raises(AssertionError):
+            _assert_safe_calls([call])
+    _assert_safe_calls(
+        [
+            base + SAFE_UP_TAIL,
+            base + ["config", "--format", "json"],
+            ["load", "-i", "x.tar"],
+        ]
+    )
 
 
 def test_update_apply_full_flow(deployment, fake_docker, tmp_path):
     conf, pkg_dir, deploy = deployment
-    rc = _server("update", conf, pkg_dir, "--apply", "--backup-reference", "bk-2026-11-17", "--backup-verified")
+    rc = _server(
+        "update",
+        conf,
+        pkg_dir,
+        "--apply",
+        "--backup-reference",
+        "bk-2026-11-17",
+        "--backup-verified",
+    )
     assert rc == 0
     calls = fake_docker.calls()
     _assert_safe_calls(calls)
@@ -521,10 +798,17 @@ def test_update_apply_full_flow(deployment, fake_docker, tmp_path):
     assert state["containers"]["c1"]["image_id"] == IMAGE_ID
     journal = json.loads((tmp_path / "state" / "journal.json").read_text())
     assert journal["status"] == "awaiting_approval"
-    assert [s["step"] for s in journal["steps"]][:4] == ["G_load", "H_rollback_tag", "I_backup", "J_backup_verified"]
+    assert [s["step"] for s in journal["steps"]][:4] == [
+        "G_load",
+        "H_rollback_tag",
+        "I_backup",
+        "J_backup_verified",
+    ]
     override = (tmp_path / "state" / "image-override.yml").read_text()
     assert "pull_policy: never" in override and "OCR_RAPIDOCR_PERSISTENT" in override
-    assert (deploy / ".env").read_text() == "SURREAL_PASSWORD=do-not-read\n"  # untouched
+    assert (
+        deploy / ".env"
+    ).read_text() == "SURREAL_PASSWORD=do-not-read\n"  # untouched
 
     # finish (approval) -> normal mode, without the maintenance override
     assert OP.main(["finish", "--config", str(conf)]) == OP.EXIT_USAGE
@@ -533,7 +817,12 @@ def test_update_apply_full_flow(deployment, fake_docker, tmp_path):
     assert not any("maintenance" in x for x in last_up)
 
     # rollback to the previous image
-    assert OP.main(["rollback", "app", "--config", str(conf), "--package-dir", str(pkg_dir)]) == 0
+    assert (
+        OP.main(
+            ["rollback", "app", "--config", str(conf), "--package-dir", str(pkg_dir)]
+        )
+        == 0
+    )
     assert fake_docker.get()["containers"]["c1"]["image_id"] == OLD_ID
     _assert_safe_calls(fake_docker.calls())
 
@@ -544,26 +833,67 @@ def test_update_apply_full_flow(deployment, fake_docker, tmp_path):
 
 def test_update_without_backup_refused_then_resumed(deployment, fake_docker, tmp_path):
     conf, pkg_dir, _ = deployment
-    assert _server("update", conf, pkg_dir, "--apply", "--no-maintenance", "--backup-reference", "x") == OP.EXIT_UPDATE  # restore not verified
+    assert (
+        _server(
+            "update",
+            conf,
+            pkg_dir,
+            "--apply",
+            "--no-maintenance",
+            "--backup-reference",
+            "x",
+        )
+        == OP.EXIT_UPDATE
+    )  # restore not verified
     journal = json.loads((tmp_path / "state" / "journal.json").read_text())
     assert journal["status"] == "in_progress"
     assert not any("up" in c for c in fake_docker.calls() if c[0] == "compose")
     loads = sum(1 for c in fake_docker.calls() if c[0] == "load")
-    assert _server("update", conf, pkg_dir, "--apply", "--no-maintenance", "--backup-reference", "x", "--backup-verified") == 0
-    assert sum(1 for c in fake_docker.calls() if c[0] == "load") == loads  # resumed, not reloaded
+    assert (
+        _server(
+            "update",
+            conf,
+            pkg_dir,
+            "--apply",
+            "--no-maintenance",
+            "--backup-reference",
+            "x",
+            "--backup-verified",
+        )
+        == 0
+    )
+    assert (
+        sum(1 for c in fake_docker.calls() if c[0] == "load") == loads
+    )  # resumed, not reloaded
 
 
 def test_update_lock(deployment, tmp_path):
     conf, pkg_dir, _ = deployment
     with OP.update_lock(tmp_path / "state"):
-        rc = _server("update", conf, pkg_dir, "--apply", "--backup-reference", "x", "--backup-verified")
+        rc = _server(
+            "update",
+            conf,
+            pkg_dir,
+            "--apply",
+            "--backup-reference",
+            "x",
+            "--backup-verified",
+        )
     assert rc == OP.EXIT_LOCK
 
 
 def test_failed_health_keeps_maintenance_and_reports(deployment, fake_docker, tmp_path):
     conf, pkg_dir, _ = deployment
     fake_docker.set(exec_rc=1)  # readiness check fails in the new container
-    rc = _server("update", conf, pkg_dir, "--apply", "--backup-reference", "x", "--backup-verified")
+    rc = _server(
+        "update",
+        conf,
+        pkg_dir,
+        "--apply",
+        "--backup-reference",
+        "x",
+        "--backup-verified",
+    )
     assert rc == OP.EXIT_UPDATE
     journal = json.loads((tmp_path / "state" / "journal.json").read_text())
     assert journal["status"] == "failed"
@@ -584,13 +914,24 @@ def test_config_change_to_database_refused(deployment, fake_docker, tmp_path):
 
 def test_legal_mode_rollback_via_gate(deployment, fake_docker, tmp_path):
     conf, _, _ = deployment
-    assert OP.main(["rollback", "legal-off", "--config", str(conf), "--no-maintenance"]) == 0
+    assert (
+        OP.main(["rollback", "legal-off", "--config", str(conf), "--no-maintenance"])
+        == 0
+    )
     override = (tmp_path / "state" / "image-override.yml").read_text()
     assert 'OCR_LEGAL_NORMALIZATION_ENABLED: "false"' in override
     _assert_safe_calls(fake_docker.calls())
 
 
 def test_wrapper_scripts_only_delegate():
-    for name in ("verify-package.sh", "preflight.sh", "update.sh", "rollback.sh", "healthcheck.sh", "finish.sh", "status.sh"):
+    for name in (
+        "verify-package.sh",
+        "preflight.sh",
+        "update.sh",
+        "rollback.sh",
+        "healthcheck.sh",
+        "finish.sh",
+        "status.sh",
+    ):
         text = (ROOT / "scripts" / "offline" / name).read_text()
         assert "exec python3" in text and "rm -" not in text and "down" not in text

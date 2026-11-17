@@ -233,10 +233,7 @@ def test_f14_duplicate_archive_entries_refused(tmp_path):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 T-02: operator precedence makes `(no down and no pull) or '--pull' in c` always true for `up --pull never`",
-)
+# PHASE12D2 T-02 (fixed in Phase 12D3: xfail removed, this is now the regression test)
 def test_t02_existing_safe_calls_oracle_rejects_compose_down():
     dangerous = [
         "compose",

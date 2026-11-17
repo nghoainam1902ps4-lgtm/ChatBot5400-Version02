@@ -199,10 +199,18 @@ from phase12_metrics import (  # noqa: E402,F401
     cer,
     display_lines,
     display_text,
+    expected_units,
+    legal_display_markdown,
     levenshtein,
     lost_words,
     markers_displayed,
     order_accuracy,
+    preservation,
     wer,
     word_recall,
 )
+
+
+def legal_lines(markdown: str) -> list[str]:
+    """Lines the reader sees for a Legal-normalized Source (frontend escape + CommonMark)."""
+    return display_lines(legal_display_markdown(markdown))
