@@ -1,0 +1,2070 @@
+{
+  "schema": "chatbot5400-phase12-benchmark/1",
+  "fixtures": 24,
+  "versions": {
+    "docling": "2.129.0",
+    "docling-core": "2.96.0"
+  },
+  "tesseract": "tesseract 5.3.4",
+  "aggregate": {
+    "standard": {
+      "cer_mean": 0.147,
+      "wer_mean": 0.1849,
+      "recall_mean": 0.9418,
+      "protected_exact": [
+        23,
+        24
+      ],
+      "markers": [
+        14,
+        33
+      ],
+      "order_mean": 0.95,
+      "placeholders": 8,
+      "numeric_only_lines": 27,
+      "renumbered_items": [
+        3,
+        20
+      ],
+      "must_join": [
+        0,
+        3
+      ],
+      "false_merges": 0,
+      "absent_ok": [
+        0,
+        23
+      ],
+      "ms_total": 25.67
+    },
+    "legal": {
+      "cer_mean": 0.0178,
+      "wer_mean": 0.0215,
+      "recall_mean": 0.998,
+      "protected_exact": [
+        24,
+        24
+      ],
+      "markers": [
+        33,
+        33
+      ],
+      "order_mean": 0.95,
+      "placeholders": 1,
+      "numeric_only_lines": 3,
+      "renumbered_items": [
+        0,
+        0
+      ],
+      "must_join": [
+        3,
+        3
+      ],
+      "false_merges": 0,
+      "absent_ok": [
+        23,
+        23
+      ],
+      "ms_total": 53.18,
+      "joins": 3,
+      "join_precision": 1.0,
+      "false_deleted_words": 0,
+      "peak_kib_max": 150.6,
+      "tables_identical": true
+    },
+    "direct_tesseract": {
+      "documents": 24,
+      "cer_mean": 0.1005,
+      "wer_mean": 0.1235,
+      "recall_mean": 0.9625,
+      "protected_exact": [
+        21,
+        24
+      ]
+    }
+  },
+  "rows": [
+    {
+      "name": "f01_one_page_decision",
+      "pages": 1,
+      "standard": {
+        "cer": 0.0889,
+        "wer": 0.0989,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "markers": [
+          2,
+          5
+        ],
+        "order": 1.0,
+        "placeholders": 2,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          3
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.676
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "markers": [
+          5,
+          5
+        ],
+        "order": 1.0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 3.272,
+        "false_deleted_words": 0,
+        "peak_kib": 150.6,
+        "joins": 0,
+        "counts": {
+          "image_placeholder_dropped": 2,
+          "picture_text_items": 0,
+          "list_markers_preserved": 4,
+          "synthesized_number_avoided": 1
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.024,
+        "wer": 0.033,
+        "recall": 0.967,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "seconds": 0.57
+      }
+    },
+    {
+      "name": "f02_clause_across_pages",
+      "pages": 2,
+      "standard": {
+        "cer": 0.0815,
+        "wer": 0.0909,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "order": 1.0,
+        "placeholders": 1,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          3
+        ],
+        "must_join": [
+          0,
+          1
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          2
+        ],
+        "ms_median": 1.16
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "order": 1.0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          1,
+          1
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          2,
+          2
+        ],
+        "ms_median": 2.327,
+        "false_deleted_words": 0,
+        "peak_kib": 127.0,
+        "joins": 1,
+        "counts": {
+          "join_across_pages": 1,
+          "page_number_to_furniture": 2,
+          "image_placeholder_dropped": 1,
+          "picture_text_items": 0,
+          "list_markers_preserved": 3
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.64
+      }
+    },
+    {
+      "name": "f03_missing_word_not_invented",
+      "pages": 2,
+      "standard": {
+        "cer": 0.044,
+        "wer": 0.0952,
+        "recall": 0.9524,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          1,
+          1
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          1
+        ],
+        "must_join": [
+          0,
+          1
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          2
+        ],
+        "ms_median": 0.723
+      },
+      "legal": {
+        "cer": 0.033,
+        "wer": 0.0476,
+        "recall": 0.9524,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          1,
+          1
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          1,
+          1
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          2,
+          2
+        ],
+        "ms_median": 1.548,
+        "false_deleted_words": 0,
+        "peak_kib": 106.0,
+        "joins": 1,
+        "counts": {
+          "join_across_pages": 1,
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0,
+          "list_markers_preserved": 1
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.033,
+        "wer": 0.0476,
+        "recall": 0.9524,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.55
+      }
+    },
+    {
+      "name": "f04_new_clause_not_joined",
+      "pages": 3,
+      "standard": {
+        "cer": 0.0592,
+        "wer": 0.1351,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "markers": [
+          2,
+          4
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 3,
+        "renumbered_items": [
+          0,
+          2
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          3
+        ],
+        "ms_median": 1.337
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "markers": [
+          4,
+          4
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          3,
+          3
+        ],
+        "ms_median": 2.414,
+        "false_deleted_words": 0,
+        "peak_kib": 129.4,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 3,
+          "picture_text_items": 0,
+          "list_markers_preserved": 4
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "seconds": 0.95
+      }
+    },
+    {
+      "name": "f05_list_starts_at_10_not_continuous",
+      "pages": 1,
+      "standard": {
+        "cer": 0.0082,
+        "wer": 0.0364,
+        "recall": 0.9636,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          5
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          2,
+          5
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.699
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          5,
+          5
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 3.487,
+        "false_deleted_words": 0,
+        "peak_kib": 119.9,
+        "joins": 0,
+        "counts": {
+          "picture_text_items": 0,
+          "list_markers_preserved": 5
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.39
+      }
+    },
+    {
+      "name": "f06_multilevel_list",
+      "pages": 1,
+      "standard": {
+        "cer": 0.0695,
+        "wer": 0.1316,
+        "recall": 0.9868,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          2,
+          12
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          4
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 2.57
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          12,
+          12
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 4.458,
+        "false_deleted_words": 0,
+        "peak_kib": 140.5,
+        "joins": 0,
+        "counts": {
+          "picture_text_items": 0,
+          "list_markers_preserved": 10,
+          "synthesized_number_avoided": 2
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.58
+      }
+    },
+    {
+      "name": "f07_parts_chapters_sections",
+      "pages": 2,
+      "standard": {
+        "cer": 0.0205,
+        "wer": 0.0455,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": 1.0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          2
+        ],
+        "ms_median": 1.42
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": 1.0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          2,
+          2
+        ],
+        "ms_median": 2.51,
+        "false_deleted_words": 0,
+        "peak_kib": 109.8,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.84
+      }
+    },
+    {
+      "name": "f08_protected_fields",
+      "pages": 2,
+      "standard": {
+        "cer": 0.0108,
+        "wer": 0.0308,
+        "recall": 1.0,
+        "protected_exact": [
+          12,
+          12
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 4,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          2
+        ],
+        "ms_median": 1.924
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          12,
+          12
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          2,
+          2
+        ],
+        "ms_median": 3.775,
+        "false_deleted_words": 0,
+        "peak_kib": 112.3,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0676,
+        "wer": 0.1077,
+        "recall": 0.8923,
+        "protected_exact": [
+          10,
+          12
+        ],
+        "seconds": 0.8
+      }
+    },
+    {
+      "name": "f09_table",
+      "pages": 1,
+      "standard": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.581
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 3.091,
+        "false_deleted_words": 0,
+        "peak_kib": 105.1,
+        "joins": 0,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [],
+        "tables_identical": true
+      },
+      "recognition": {
+        "cer": 0.0149,
+        "wer": 0.0426,
+        "recall": 0.9787,
+        "protected_exact": [
+          2,
+          2
+        ],
+        "seconds": 0.46
+      }
+    },
+    {
+      "name": "f10_table_across_pages",
+      "pages": 2,
+      "standard": {
+        "cer": 0.026,
+        "wer": 0.0541,
+        "recall": 1.0,
+        "protected_exact": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          2
+        ],
+        "ms_median": 1.833
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          2,
+          2
+        ],
+        "ms_median": 3.212,
+        "false_deleted_words": 0,
+        "peak_kib": 112.4,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        },
+        "warnings": [],
+        "tables_identical": true
+      },
+      "recognition": {
+        "cer": 0.0065,
+        "wer": 0.027,
+        "recall": 0.973,
+        "protected_exact": [
+          4,
+          4
+        ],
+        "seconds": 0.79
+      }
+    },
+    {
+      "name": "f11_blank_page",
+      "pages": 3,
+      "standard": {
+        "cer": 0.0541,
+        "wer": 0.1111,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          2
+        ],
+        "ms_median": 0.922
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          2,
+          2
+        ],
+        "ms_median": 2.071,
+        "false_deleted_words": 0,
+        "peak_kib": 86.1,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.9
+      }
+    },
+    {
+      "name": "f12_two_columns",
+      "pages": 1,
+      "standard": {
+        "cer": 0.232,
+        "wer": 0.3256,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": 0.75,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 0.736
+      },
+      "legal": {
+        "cer": 0.232,
+        "wer": 0.3256,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": 0.75,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.841,
+        "false_deleted_words": 0,
+        "peak_kib": 91.3,
+        "joins": 0,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.3591,
+        "wer": 0.4186,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.36
+      }
+    },
+    {
+      "name": "f13_footnotes",
+      "pages": 2,
+      "standard": {
+        "cer": 0.0282,
+        "wer": 0.0769,
+        "recall": 1.0,
+        "protected_exact": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          2
+        ],
+        "ms_median": 0.732
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          2,
+          2
+        ],
+        "ms_median": 1.481,
+        "false_deleted_words": 0,
+        "peak_kib": 90.0,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          2,
+          2
+        ],
+        "seconds": 0.61
+      }
+    },
+    {
+      "name": "f14_running_header_footer",
+      "pages": 4,
+      "standard": {
+        "cer": 1.1429,
+        "wer": 1.1765,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          3
+        ],
+        "ms_median": 1.385
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          3,
+          3
+        ],
+        "ms_median": 2.328,
+        "false_deleted_words": 0,
+        "peak_kib": 124.2,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 4,
+          "running_header_footer_to_furniture": 4,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 1.1429,
+        "wer": 1.1765,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 1.2
+      }
+    },
+    {
+      "name": "f15_watermark_and_large_picture",
+      "pages": 1,
+      "standard": {
+        "cer": 0.2935,
+        "wer": 0.2857,
+        "recall": 0.8571,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 2,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 0.675
+      },
+      "legal": {
+        "cer": 0.163,
+        "wer": 0.1429,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 1,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.697,
+        "false_deleted_words": 0,
+        "peak_kib": 92.0,
+        "joins": 0,
+        "counts": {
+          "image_placeholder_dropped": 1,
+          "image_placeholder_kept": 1,
+          "picture_text_items": 1
+        },
+        "warnings": [
+          "picture_without_text"
+        ]
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.31
+      }
+    },
+    {
+      "name": "f16_text_inside_picture",
+      "pages": 1,
+      "standard": {
+        "cer": 0.918,
+        "wer": 1.0,
+        "recall": 0.0,
+        "protected_exact": [
+          0,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 1,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 0.31
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.268,
+        "false_deleted_words": 0,
+        "peak_kib": 82.7,
+        "joins": 0,
+        "counts": {
+          "image_placeholder_dropped": 1,
+          "picture_text_items": 2
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.2951,
+        "wer": 0.4286,
+        "recall": 0.5714,
+        "protected_exact": [
+          0,
+          1
+        ],
+        "seconds": 0.36
+      }
+    },
+    {
+      "name": "f17_signature_block",
+      "pages": 1,
+      "standard": {
+        "cer": 0.2689,
+        "wer": 0.2759,
+        "recall": 0.931,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 2,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.075
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 2.274,
+        "false_deleted_words": 0,
+        "peak_kib": 109.9,
+        "joins": 0,
+        "counts": {
+          "image_placeholder_dropped": 2,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.3697,
+        "wer": 0.4828,
+        "recall": 0.9655,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.3
+      }
+    },
+    {
+      "name": "f18_literal_html_comment",
+      "pages": 1,
+      "standard": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 0.362
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.179,
+        "false_deleted_words": 0,
+        "peak_kib": 76.5,
+        "joins": 0,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "seconds": 0.3
+      }
+    },
+    {
+      "name": "f19_hyphen_at_page_break",
+      "pages": 2,
+      "standard": {
+        "cer": 0.0513,
+        "wer": 0.1176,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 0.592
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.538,
+        "false_deleted_words": 0,
+        "peak_kib": 84.9,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "hyphen_at_page_break_not_joined"
+        ]
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.53
+      }
+    },
+    {
+      "name": "f20_finished_sentence_not_joined",
+      "pages": 2,
+      "standard": {
+        "cer": 0.0476,
+        "wer": 0.1111,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 0.536
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.201,
+        "false_deleted_words": 0,
+        "peak_kib": 85.9,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.5
+      }
+    },
+    {
+      "name": "f21_dash_paragraphs",
+      "pages": 1,
+      "standard": {
+        "cer": 0.0217,
+        "wer": 0.0882,
+        "recall": 0.9118,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          1,
+          3
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          1,
+          2
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 0.572
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.575,
+        "false_deleted_words": 0,
+        "peak_kib": 86.4,
+        "joins": 0,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.36
+      }
+    },
+    {
+      "name": "f22_single_page_number_kept",
+      "pages": 1,
+      "standard": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 1,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 0.366
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 1,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.034,
+        "false_deleted_words": 0,
+        "peak_kib": 76.6,
+        "joins": 0,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ]
+      },
+      "recognition": {
+        "cer": 0.1,
+        "wer": 0.2,
+        "recall": 0.8,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.24
+      }
+    },
+    {
+      "name": "f23_heading_at_page_top_not_removed",
+      "pages": 3,
+      "standard": {
+        "cer": 0.0606,
+        "wer": 0.15,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": 1.0,
+        "placeholders": 0,
+        "numeric_only_lines": 3,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          3
+        ],
+        "ms_median": 0.979
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": 1.0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          0
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          3,
+          3
+        ],
+        "ms_median": 2.117,
+        "false_deleted_words": 0,
+        "peak_kib": 101.9,
+        "joins": 0,
+        "counts": {
+          "page_number_to_furniture": 3,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.82
+      }
+    },
+    {
+      "name": "f24_join_chain_and_footer_label",
+      "pages": 3,
+      "standard": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          0,
+          1
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 0.508
+      },
+      "legal": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "order": null,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "must_join": [
+          1,
+          1
+        ],
+        "false_merges": 0,
+        "absent_ok": [
+          0,
+          0
+        ],
+        "ms_median": 1.481,
+        "false_deleted_words": 0,
+        "peak_kib": 90.0,
+        "joins": 1,
+        "counts": {
+          "join_across_pages": 1,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.73
+      }
+    }
+  ]
+}
