@@ -497,3 +497,39 @@ chuẩn trên PDF tổng hợp và một tài liệu thật; chúng là giá tr�
 
 Chi tiết số đo: [OCR_PHASE10G_REPORT.md](OCR_PHASE10G_REPORT.md).
 
+
+## D-34. Chuẩn hóa văn bản pháp lý sau OCR trên DoclingDocument, opt-in hai lớp (Phase 12)
+
+**Bối cảnh.** Văn bản pháp lý OCR bị chèn `<!-- image -->` (chữ ký, con dấu, logo), số trang lọt giữa câu, khoản
+bị cắt qua trang, số khoản/điểm bị đánh lại hoặc bị chèn số vị trí (`5. đ)`). Phân tích (Phase 12A) cho thấy các lỗi
+nằm **sau OCR**: nhãn layout (số trang = TEXT), serializer Markdown (placeholder, số chèn khi Docling không nhận marker
+`đ)` / `a.1)`, cú pháp danh sách bị CommonMark đánh lại số), cơ chế ghép liên trang của Docling chỉ khớp chữ ASCII
+và chỉ TEXT→TEXT; ngoài ra chữ OCR nằm trong vùng ảnh bị bỏ khi xuất (`traverse_pictures=False`).
+
+**Quyết định.** Thêm chế độ "Văn bản pháp lý" (`open_notebook/ocr/legal_normalizer.py`) chạy trên **bản sao
+`DoclingDocument`** của PDF, sau chuyển đổi và trước khi lưu Source: chuyển số trang/header lặp (đủ bằng chứng hình
+học + mẫu lặp) sang lớp furniture của Docling; bỏ placeholder ảnh không mang thông tin (giữ ảnh lớn không chữ + cảnh
+báo); xuất chữ OCR trong vùng ảnh; ghép đoạn liên trang theo quy tắc bảo thủ Unicode-aware; xuất marker gốc dạng
+chữ có escape. Bật bằng **hai lớp**: cổng triển khai `OCR_LEGAL_NORMALIZATION_ENABLED` (mặc định tắt) **và** lựa
+chọn quản trị `ocr_text_normalization` (mặc định `standard`, bảng SCHEMALESS ⇒ không migration). Khi bật, PDF luôn
+đi qua lớp Docling của ChatBot5400 (cùng options với content-core) vì content-core không trả về `DoclingDocument`.
+Lỗi ⇒ fallback Standard, có metadata `failed`.
+
+**Không làm.** Không dùng LLM/AI sửa chữ; không regex trên toàn văn; không đổi Docling/Heron/TableFormer/engine/
+model/RAG/schema/dependency; không áp dụng cho ảnh và định dạng khác PDF; không tự xử lý lại tài liệu cũ; không
+tuyên bố trích dẫn số trang (provenance chưa được lưu theo chunk); không sửa thứ tự đọc.
+
+Chi tiết: [PHASE12B_LEGAL_NORMALIZATION_DESIGN.md](PHASE12B_LEGAL_NORMALIZATION_DESIGN.md).
+
+## D-35. Gói cập nhật offline: image dựng sẵn + git bundle, xác thực bằng chữ ký hoặc hash kênh tin cậy (Phase 12F)
+
+**Quyết định.** Máy chủ Ubuntu offline được cập nhật bằng một gói `.tar.gz` chứa Docker image (`docker save`, dựng
+trên máy có Internet với `OCR_PREINSTALL_RUNTIMES=true` + `OCR_INSTALL_TESSERACT=true` để không phải cài gì lúc khởi
+động), git bundle `v1.2.0..<release>`, archive mã nguồn, manifest, SHA256SUMS và chữ ký tùy chọn
+(`ssh-keygen -Y sign`, namespace `chatbot5400-offline`, khóa công khai cài trước ở máy chủ). Công cụ
+`scripts/offline/offline_package.py` (chỉ thư viện chuẩn Python) kiểm tra an toàn archive trước khi giải nén, toàn
+vẹn, xác thực (chữ ký **hoặc** SHA-256 nhận qua kênh tin cậy — thiếu cả hai ⇒ từ chối), nền tảng, phiên bản, schema;
+cập nhật chỉ tạo lại container ứng dụng (`--no-deps --no-build --pull never`), không đụng database; trọng số RapidOCR
+được chuyển lên volume (SHA-256) trước khi tạo lại để không phải tải lại.
+
+Chi tiết: [../deployment/OFFLINE_UPDATE_PACKAGE.md](../deployment/OFFLINE_UPDATE_PACKAGE.md).
