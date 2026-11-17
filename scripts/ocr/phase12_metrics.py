@@ -353,11 +353,11 @@ def preservation(
                 break
         if not done:
             for t in texts:
-                i = take(t)
-                if i is None:
+                position = take(t)
+                if position is None:
                     missing.append(t)
                 else:
-                    order.append(i)
+                    order.append(position)
     artifacts = Counter(u["text"] for u in units if u["gt"] == "artifact")
     artifacts_left = 0
     false_merges: list[str] = []

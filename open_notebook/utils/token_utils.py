@@ -18,7 +18,9 @@ TIKTOKEN_ENCODING = "o200k_base"
 TIKTOKEN_BLOB_URL = (
     "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken"
 )
-TIKTOKEN_BLOB_SHA256 = "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
+TIKTOKEN_BLOB_SHA256 = (
+    "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
+)
 
 
 def tiktoken_cache_file() -> str:
@@ -30,7 +32,12 @@ def tiktoken_cache_file() -> str:
 
 
 def _offline_declared() -> bool:
-    return os.environ.get("OCR_OFFLINE", "").strip().lower() in ("1", "true", "yes", "on")
+    return os.environ.get("OCR_OFFLINE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def token_count(input_string: str) -> int:
