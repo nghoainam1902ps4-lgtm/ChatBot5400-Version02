@@ -1,0 +1,84 @@
+# Isolated Phase 12 TEST stack (Legal Document normalization, Windows Local
+# acceptance - docs/ocr/PHASE12E_WINDOWS_LOCAL_TEST_GUIDE.md). It never shares
+# anything with another stack on the same machine:
+#
+#   - its own compose project (chatbot5400-phase12-test), network, image tag,
+#     database and data folders (./surreal_data, ./notebook_data next to this file);
+#   - its own credentials (./.env, created by the operator from .env.example -
+#     never committed);
+#   - ports published on the LOOPBACK interface only: web 8504, API 5057;
+#   - CPU and memory limits.
+#
+#   cd deploy/phase12-test
+#   docker compose build
+#   docker compose up -d
+#
+# Never point this file at a production data folder. `docker compose down`
+# keeps the data; nothing here deletes volumes.
+name: chatbot5400-phase12-test
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v2
+    pull_policy: missing
+    command: ["start", "--log", "info", "--user", "${SURREAL_USER:?set SURREAL_USER in .env}", "--pass", "${SURREAL_PASSWORD:?set SURREAL_PASSWORD in .env}", "rocksdb:/mydata/mydatabase.db"]
+    user: root
+    volumes:
+      - ./surreal_data:/mydata
+    # No host port: only the test application reaches the test database.
+    cpus: 1.0
+    mem_limit: 2g
+    restart: unless-stopped
+
+  open_notebook:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        OCR_INSTALL_TESSERACT: "true"
+        # Phase 12F: bake Docling (+ EasyOCR) into the image instead of
+        # installing them at first start, exactly like the offline package.
+        OCR_PREINSTALL_RUNTIMES: "${PHASE12_PREINSTALL_RUNTIMES:-true}"
+    image: ${PHASE12_TEST_IMAGE:-chatbot5400:phase12-test}
+    pull_policy: never
+    ports:
+      - "127.0.0.1:${PHASE12_WEB_PORT:-8504}:8502"
+      - "127.0.0.1:${PHASE12_API_PORT:-5057}:5055"
+    environment:
+      - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY:?set OPEN_NOTEBOOK_ENCRYPTION_KEY in .env}
+      - OPEN_NOTEBOOK_JWT_SECRET=${OPEN_NOTEBOOK_JWT_SECRET:?set OPEN_NOTEBOOK_JWT_SECRET in .env}
+      - SURREAL_URL=ws://surrealdb:8000/rpc
+      - SURREAL_USER=${SURREAL_USER}
+      - SURREAL_PASSWORD=${SURREAL_PASSWORD}
+      - SURREAL_NAMESPACE=phase12_test
+      - SURREAL_DATABASE=phase12_test
+      - OPEN_NOTEBOOK_ENABLE_URL_INGESTION=false
+      - API_URL=http://localhost:${PHASE12_API_PORT:-5057}
+      - OPEN_NOTEBOOK_ENABLE_DOCLING=true
+      - UV_TORCH_BACKEND=cpu
+      - OPEN_NOTEBOOK_WORKER_MAX_TASKS=1
+      - OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT=true
+      - OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR=${OPEN_NOTEBOOK_ENABLE_OCR_EASYOCR:-true}
+      - OCR_AGRI_WITH_ENGLISH=${OCR_AGRI_WITH_ENGLISH:-false}
+      - OCR_AUTO_FULL_PAGE_ON_WATERMARK=${OCR_AUTO_FULL_PAGE_ON_WATERMARK:-false}
+      # Phase 12 (D-34): deployment gate for the Legal Document mode. The mode
+      # itself is chosen in Settings -> OCR Engine Manager (default Standard).
+      - OCR_LEGAL_NORMALIZATION_ENABLED=${OCR_LEGAL_NORMALIZATION_ENABLED:-true}
+      # Phase 12F: keep RapidOCR weights on the data volume (survive recreate).
+      - OCR_RAPIDOCR_PERSISTENT=${OCR_RAPIDOCR_PERSISTENT:-true}
+      - OCR_OFFLINE=${OCR_OFFLINE:-false}
+    volumes:
+      - ./notebook_data:/app/data
+      # Read-only drop folder: vie_agri.traineddata and the PDFs to compare.
+      - ${PHASE12_IMPORT_DIR:-./import}:/import:ro
+      # Diagnostic / comparison output (document text: stays on this machine).
+      - ${PHASE12_OUT_DIR:-./diagnostics}:/phase12-out
+      # Optional: a font folder with Vietnamese glyphs for the fixture generator
+      # (on Windows: C:/Windows/Fonts). Read-only.
+      - ${PHASE12_FONT_DIR:-./fonts}:/fonts:ro
+    depends_on:
+      - surrealdb
+    cpus: ${PHASE12_CPUS:-4.0}
+    mem_limit: ${PHASE12_MEMORY:-10g}
+    restart: unless-stopped
