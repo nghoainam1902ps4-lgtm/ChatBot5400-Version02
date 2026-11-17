@@ -998,9 +998,20 @@ def docker_inspect_image(ref: str) -> Dict[str, Any]:
     return data[0]
 
 
+# The token encoding the application chunks with (open_notebook/utils/token_utils.py
+# holds the same three values; tests/test_offline_package.py keeps them equal).
+TIKTOKEN_ENCODING = "o200k_base"
+TIKTOKEN_BLOB_URL = (
+    "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken"
+)
+TIKTOKEN_BLOB_SHA256 = (
+    "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
+)
+
+
 def _probe_tiktoken(app_root: Path) -> Dict[str, Any]:
     """Can tokens be counted with NO network? (inventory runs with --network none)."""
-    info: Dict[str, Any] = {"encoding": "o200k_base", "loads_offline": False}
+    info: Dict[str, Any] = {"encoding": TIKTOKEN_ENCODING, "loads_offline": False}
     cache = os.environ.get("TIKTOKEN_CACHE_DIR", "")
     info["cache_dir"] = cache
     files = []
@@ -1011,6 +1022,14 @@ def _probe_tiktoken(app_root: Path) -> Dict[str, Any]:
                     {"name": f.name, "size": f.stat().st_size, "sha256": sha256_file(f)}
                 )
     info["files"] = files
+    # tiktoken names its cache file after the SHA-1 of the blob URL.
+    expected_name = hashlib.sha1(TIKTOKEN_BLOB_URL.encode()).hexdigest()  # noqa: S324
+    info["expected_file"] = expected_name
+    info["expected_sha256"] = TIKTOKEN_BLOB_SHA256
+    info["checksum_ok"] = any(
+        f["name"] == expected_name and f["sha256"] == TIKTOKEN_BLOB_SHA256
+        for f in files
+    )
     import threading
 
     result: Dict[str, Any] = {}
@@ -1108,7 +1127,12 @@ def cmd_inventory(args: argparse.Namespace) -> int:
         "docling": deps.get("docling") is not None,
         "easyocr": deps.get("easyocr") is not None,
         "tesseract": tess is not None,
-        "tiktoken_offline": bool(artifacts["tiktoken"].get("loads_offline")),
+        # usable offline = it loads with the network disabled AND the cache file
+        # in the image is the expected encoding, byte for byte
+        "tiktoken_offline": bool(
+            artifacts["tiktoken"].get("loads_offline")
+            and artifacts["tiktoken"].get("checksum_ok")
+        ),
     }
     print(json.dumps(info, indent=2, sort_keys=True))
     return EXIT_OK
@@ -1344,7 +1368,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         if not baked.get("tiktoken_offline"):
             readiness_problems.append(
                 "the tiktoken encoding o200k_base does not load without network inside the "
-                "image: chunking would hang or degrade offline"
+                "image, or its cache file is not the expected one (TIKTOKEN_CACHE_DIR, "
+                "SHA-256): chunking would hang or degrade offline"
             )
         manifest = {
             "package_format_version": FORMAT_VERSION,

@@ -2315,13 +2315,30 @@ def test_token_counting_must_work_offline_in_the_new_container(
     assert _journal(tmp_path)["status"] == "failed"
 
 
-@pytest.mark.parametrize("works", [True, False])
+def test_token_encoding_constants_match_the_application():
+    from open_notebook.utils import token_utils
+
+    assert OP.TIKTOKEN_ENCODING == token_utils.TIKTOKEN_ENCODING
+    assert OP.TIKTOKEN_BLOB_URL == token_utils.TIKTOKEN_BLOB_URL
+    assert OP.TIKTOKEN_BLOB_SHA256 == token_utils.TIKTOKEN_BLOB_SHA256
+    assert (
+        Path(token_utils.tiktoken_cache_file()).name
+        == hashlib.sha1(OP.TIKTOKEN_BLOB_URL.encode()).hexdigest()
+    )
+
+
+@pytest.mark.parametrize(
+    "loads, right_file, ready",
+    [(True, True, True), (False, True, False), (True, False, False)],
+    ids=["usable", "does-not-load", "wrong-cache-file"],
+)
 def test_inventory_reports_the_token_encoding_cache(
-    tmp_path, monkeypatch, capsys, works
+    tmp_path, monkeypatch, capsys, loads, right_file, ready
 ):
-    """The inventory (run with --network none inside the image) records whether
-    o200k_base loads without network and the checksum of every cache file.
-    tiktoken itself is replaced here: the real one would try to download."""
+    """The inventory (run with --network none inside the image) records the
+    encoding, the cache path, every cache file with its SHA-256, whether the
+    expected file is there byte for byte, and whether the encoding loads with
+    no network. tiktoken itself is replaced here: the real one would download."""
     import types
 
     app_root = tmp_path / "app"
@@ -2332,16 +2349,19 @@ def test_inventory_reports_the_token_encoding_cache(
     (app_root / "VERSION").write_text("1.2.0\n")
     cache = tmp_path / "tiktoken-cache"
     cache.mkdir()
-    (cache / "fb374d419588a4632f3f557e76b4b70aebbca790").write_bytes(b"encoding bytes")
+    name = hashlib.sha1(OP.TIKTOKEN_BLOB_URL.encode()).hexdigest()
+    (cache / name).write_bytes(b"encoding bytes")
     monkeypatch.setenv("TIKTOKEN_CACHE_DIR", str(cache))
+    digest = hashlib.sha256(b"encoding bytes").hexdigest()
+    monkeypatch.setattr(OP, "TIKTOKEN_BLOB_SHA256", digest if right_file else "0" * 64)
 
     class Encoding:
         def encode(self, text):
             return text.split()
 
-    def get_encoding(name):
-        assert name == "o200k_base"
-        if not works:
+    def get_encoding(encoding):
+        assert encoding == "o200k_base"
+        if not loads:
             raise OSError("network unreachable")
         return Encoding()
 
@@ -2352,12 +2372,10 @@ def test_inventory_reports_the_token_encoding_cache(
     info = json.loads(capsys.readouterr().out)
     tik = info["runtime_artifacts"]["tiktoken"]
     assert tik["encoding"] == "o200k_base" and tik["cache_dir"] == str(cache)
-    assert tik["files"] == [
-        {"name": "fb374d419588a4632f3f557e76b4b70aebbca790", "size": 14,
-         "sha256": hashlib.sha256(b"encoding bytes").hexdigest()}
-    ]  # fmt: skip
-    assert tik["loads_offline"] is works
-    assert info["runtimes_baked"]["tiktoken_offline"] is works
+    assert tik["files"] == [{"name": name, "size": 14, "sha256": digest}]
+    assert tik["expected_file"] == name
+    assert tik["loads_offline"] is loads and tik["checksum_ok"] is right_file
+    assert info["runtimes_baked"]["tiktoken_offline"] is ready
     assert info["schema_version"] == 33 and info["app_version"] == "1.2.0"
 
 
