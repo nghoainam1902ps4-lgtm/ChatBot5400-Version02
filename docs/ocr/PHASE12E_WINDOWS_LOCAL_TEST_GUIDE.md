@@ -1,5 +1,13 @@
 # Phase 12E — Hướng dẫn nghiệm thu trên Windows Local
 
+> **CẬP NHẬT (Phase 12D3).** Danh sách nghiệm thu hiện hành — gồm các mục mới cho bộ chuẩn hóa v1.1.0, metadata
+> Source, tách đoạn offline, ghim image, cập nhật lần hai với backup mới, chữ ký gói, rollback về v1.2.0 — là
+> [../review/PHASE12D3_WINDOWS_ACCEPTANCE_CHECKLIST.md](../review/PHASE12D3_WINDOWS_ACCEPTANCE_CHECKLIST.md). Hướng
+> dẫn này vẫn đúng cho việc dựng stack thử nghiệm (`chatbot5400-phase12-test`, web 8504, API 5057, chỉ loopback) và
+> cách dùng `phase12-test.ps1`. Gói offline thử nghiệm phải mang phiên bản `1.2.0-phase12.N` (không phải
+> `1.3.0-rc.1`, vì `VERSION` vẫn là `1.2.0`). Ở chế độ Legal, kỳ vọng mới: văn bản 1–2 trang **giữ** số trang; dòng
+> chữ lặp lại **được giữ** kèm cảnh báo.
+
 Mục tiêu: chạy **pipeline thật** (Layout Heron, TableFormer, các engine, **Agri của bạn**) trên tài liệu thật, **chỉ
 trên máy Windows**, với một stack thử nghiệm cô lập, rồi so sánh Direct OCR / Standard / Legal. Không dùng database,
 tài khoản hay dữ liệu production. Kết quả chứa nội dung tài liệu ⇒ **chỉ lưu trên máy này**, không upload.

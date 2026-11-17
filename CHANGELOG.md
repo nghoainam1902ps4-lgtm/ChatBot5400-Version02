@@ -6,19 +6,33 @@ Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh L�
 
 Phase 12 — Legal Document Normalization & Offline Update Package. Chi tiết: `docs/ocr/PHASE12_CLOUD_HANDOVER.md`,
 bản nháp ghi chú phát hành `docs/ocr/OCR_RELEASE_NOTES_V1.3.0_RC1.md`. Chỉ phát hành sau nghiệm thu Windows Local.
+**Phase 12D3** (sau audit độc lập 12D2, 29 finding): `docs/review/PHASE12D3_REMEDIATION_REPORT.md`. Chưa merge, chưa
+phát hành RC, chưa triển khai production; còn chờ review 12D4 và nghiệm thu Local.
 
-- **Chuẩn hóa văn bản pháp lý sau OCR (opt-in)**: chế độ "Văn bản pháp lý" cho PDF — bỏ `<!-- image -->` của chữ
-  ký / con dấu / logo, loại số trang và header/footer lặp có đủ bằng chứng, nối đoạn bị cắt qua trang theo quy tắc
-  bảo thủ, giữ nguyên số Điều/Khoản/Điểm gốc (không còn bị đánh lại số hay chèn số), lấy lại chữ OCR nằm trong vùng
-  ảnh, bảng giữ nguyên. Không dùng AI sửa chữ. Bật bằng `OCR_LEGAL_NORMALIZATION_ENABLED=true` **và** chọn trong
-  Cài đặt → OCR Engine Manager; mặc định Tiêu chuẩn (kết quả giống hệt 1.2.0).
+- **Chuẩn hóa văn bản pháp lý sau OCR (opt-in), bộ chuẩn hóa v1.1.0**: chế độ "Văn bản pháp lý" cho PDF — giữ nội
+  dung trừ khi có bằng chứng mạnh. Bỏ số trang chỉ khi ≥ 3 trang cùng mẫu (≥ 60% số trang, cùng vị trí, ngoài thân);
+  **không bao giờ bỏ dòng chữ lặp lại** (chỉ header/footer do layout gắn nhãn); nối đoạn bị cắt qua trang theo quy tắc
+  bảo thủ và ghi lý do khi không nối; bỏ `<!-- image -->` chỉ với ảnh rất nhỏ, ảnh lớn hơn giữ kèm cảnh báo; giữ
+  nguyên số Điều/Khoản/Điểm gốc; lấy lại chữ và bảng nằm trong vùng ảnh; bảng giữ nguyên. Không dùng AI sửa chữ. Bật
+  bằng `OCR_LEGAL_NORMALIZATION_ENABLED=true` **và** chọn trong Cài đặt → OCR Engine Manager; mặc định Tiêu chuẩn
+  (kết quả giống hệt 1.2.0).
+- **Trang Source ghi rõ cách văn bản được tạo**: *Tiêu chuẩn* / *Đã chuẩn hóa văn bản pháp lý* / *Chuẩn hóa thất bại,
+  sử dụng bản tiêu chuẩn*, kèm phiên bản và số cảnh báo; định dạng phân cấp Điều/Khoản/điểm. Văn bản lưu không còn ký
+  tự thoát Markdown (`9\.`): hiển thị, sao chép và RAG dùng cùng một văn bản.
 - **Cải thiện bố cục OCR / giảm artifact trang**: phân tích nguyên nhân gốc và công cụ chẩn đoán từng tầng
   (`scripts/ocr/phase12_diagnose.py`, `phase12_compare.py`).
-- **Gói cập nhật offline**: `scripts/offline/` — build trên Windows/Linux có Internet, kiểm tra toàn vẹn + xác thực
-  (chữ ký hoặc hash kênh tin cậy), preflight chỉ đọc, cập nhật chỉ tạo lại container ứng dụng, rollback. Build arg
-  mới `OCR_PREINSTALL_RUNTIMES` (mặc định `false`).
+- **Gói cập nhật offline (định dạng 2)**: `scripts/offline/` — build trên Windows/Linux có Internet (kiểm `VERSION`
+  trước mọi lệnh Docker; bundle git có ref đặt tên), **xác thực trước khi giải nén** (chữ ký hoặc hash kênh tin cậy
+  riêng), preflight chỉ đọc, mỗi lần cập nhật là một *attempt* có backup riêng, cập nhật chỉ tạo lại container ứng
+  dụng và chứng minh container database không đổi, `finish`/`rollback` có health check, phát hiện lệch (`status` /
+  `health` mã thoát 7), ghim image tùy chọn (`pin.sh`), rollback theo image ID. Build arg mới
+  `OCR_PREINSTALL_RUNTIMES` (mặc định `false`). **Mới kiểm thử với Docker giả lập** — Docker/Compose/PowerShell thật
+  chưa chạy.
+- Đếm token không còn chờ mạng khi `OCR_OFFLINE=true` và thiếu cache tiktoken (dùng ước lượng theo từ).
 - **Không có migration cơ sở dữ liệu; không đổi phụ thuộc** (`uv.lock`, `pyproject.toml`, `package-lock.json` không
-  đổi). Trường cài đặt mới `ocr_text_normalization` nằm trên bảng SCHEMALESS (thiếu = Tiêu chuẩn).
+  đổi; schema vẫn 33). Trường cài đặt `ocr_text_normalization` nằm trên bảng SCHEMALESS (thiếu = Tiêu chuẩn); bản ghi
+  chuẩn hóa nằm trong `source.asset.extraction` (trường `asset` linh hoạt có từ migration 1; Source Tiêu chuẩn không
+  có khóa này).
 
 ## [1.2.0] - 2026-11-17 — Advanced OCR & Custom Model Manager (bản chính thức)
 

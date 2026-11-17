@@ -1,5 +1,11 @@
 # Phase 12D — Quality benchmark (bộ fixture tổng hợp)
 
+> **ĐÃ BỊ THAY THẾ (Phase 12D3).** Số liệu trong tài liệu này được đo trên bộ chuẩn hóa v1.0.0 bằng một phép đo vòng
+> tròn (audit 12D2, finding T-01): "False deletion = 0", "Join precision 1,00", "Trường nghiệp vụ 24/24" **không
+> còn giá trị** và không được trích dẫn. Đo lại bằng oracle độc lập trên cùng implementation: 53 đơn vị / 170 token
+> bị xóa nhầm, 6 phép nối sai. Số liệu hiện hành: [../review/PHASE12D3_QUALITY_BENCHMARK.md](../review/PHASE12D3_QUALITY_BENCHMARK.md).
+> File `phase12/benchmark_synthetic.json` đã được tạo lại (schema /2). Phần dưới giữ nguyên làm hồ sơ lịch sử.
+
 Số liệu thô: [`phase12/benchmark_synthetic.json`](phase12/benchmark_synthetic.json) — tạo lại bằng
 `uv run python scripts/ocr/phase12_benchmark.py --out … --pdf-dir <thư mục generate_phase12_fixtures.py>`.
 

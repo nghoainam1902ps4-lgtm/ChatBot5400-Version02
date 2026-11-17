@@ -1,5 +1,10 @@
 # Phase 12D — Báo cáo kiểm thử và regression (Cloud)
 
+> **ĐÃ BỊ THAY THẾ (Phase 12D3).** Số test và kết luận trong tài liệu này thuộc về Phase 12 trước audit 12D2
+> (101/144 ca tham số hóa không khẳng định gì — T-03; oracle an toàn Docker luôn đúng — T-02; oracle "0 từ bị mất"
+> vòng tròn — T-01). Kết quả hiện hành: [../review/PHASE12D3_REGRESSION_REPORT.md](../review/PHASE12D3_REGRESSION_REPORT.md).
+> Phần dưới giữ nguyên làm hồ sơ lịch sử.
+
 Môi trường: Claude Code Cloud, Python 3.12 + `uv sync --all-extras` theo `uv.lock` (docling 2.129.0, docling-core
 2.96.0, content-core 2.0.7), Node 22, Tesseract 5.3.4 + `vie` (Ubuntu), không Docker daemon, Hugging Face và host
 tải tiktoken bị chặn. `pytest-timeout` cài **cục bộ** (không thêm vào dependency) để test cần mạng thất bại sau 90 s

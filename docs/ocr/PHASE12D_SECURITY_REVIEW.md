@@ -1,5 +1,10 @@
 # Phase 12D — Rà soát bảo mật (Legal Normalization + công cụ cập nhật offline)
 
+> **CẬP NHẬT (Phase 12D3).** Phần công cụ offline của tài liệu này mô tả định dạng gói 1 (Phase 12). Hành vi hiện
+> hành (định dạng 2: xác thực trước khi giải nén, attempt, phát hiện lệch, ghim image, kiểm container database):
+> [../review/PHASE12D3_OFFLINE_SAFETY_REPORT.md](../review/PHASE12D3_OFFLINE_SAFETY_REPORT.md) và
+> [../deployment/OFFLINE_UPDATE_SECURITY.md](../deployment/OFFLINE_UPDATE_SECURITY.md).
+
 Phạm vi: mọi mã mới / sửa của Phase 12. Không thuộc phạm vi: Phase 11 Security Hardening (chưa bắt đầu), các giới
 hạn bảo mật đã biết của v1.2.0 (CORS mở, xác thực đơn giản — `AGENTS.md`).
 

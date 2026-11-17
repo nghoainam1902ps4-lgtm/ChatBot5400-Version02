@@ -1,5 +1,8 @@
 # Phase 12C — Báo cáo triển khai Legal Document Normalization
 
+> **CẬP NHẬT (Phase 12D3).** Tài liệu này mô tả bộ chuẩn hóa v1.0.0. Bản hiện hành là v1.1.0 (quyết định D-36):
+> [../review/PHASE12D3_REMEDIATION_REPORT.md](../review/PHASE12D3_REMEDIATION_REPORT.md).
+
 Thiết kế: [PHASE12B_LEGAL_NORMALIZATION_DESIGN.md](PHASE12B_LEGAL_NORMALIZATION_DESIGN.md) · quyết định D-34.
 
 ## 1. File thay đổi

@@ -1,7 +1,25 @@
 # Phase 12B — Thiết kế chuẩn hóa văn bản pháp lý sau OCR (Legal Document Normalization)
 
 Quyết định: **D-34** ([DECISIONS.md](DECISIONS.md)). Nguyên nhân gốc: [PHASE12A_ROOT_CAUSE_REPORT.md](PHASE12A_ROOT_CAUSE_REPORT.md).
-Module: `open_notebook/ocr/legal_normalizer.py` (phiên bản normalizer `1.0.0`).
+Module: `open_notebook/ocr/legal_normalizer.py` (phiên bản normalizer **`1.1.0`** từ Phase 12D3; tài liệu này được viết
+cho `1.0.0`).
+
+> **CẬP NHẬT (Phase 12D3, quyết định D-36).** Các quy tắc dưới đây đã thay đổi sau audit độc lập 12D2; khi phần
+> thân tài liệu mâu thuẫn với bảng này thì **bảng này đúng**:
+>
+> | Chủ đề | v1.0.0 (mô tả trong tài liệu này) | v1.1.0 (hiện hành) |
+> |---|---|---|
+> | Dòng lặp ở đầu/cuối trang | chuyển furniture khi lặp ≥ 3 trang, ≥ 50% | **không bao giờ bỏ** theo tần suất; chỉ item layout gắn nhãn PAGE_HEADER/FOOTER; cảnh báo `repeated_line_kept` |
+> | Số trang | cùng độ lệch trên ≥ 2 trang | ≥ 3 trang **và** ≥ 60% số trang, cùng dải, cùng vị trí ngang (hoặc lẻ-chẵn), ngoài mép thân, giá trị trong [trang−10, trang+50]; 1–2 trang: giữ + `page_number_kept` |
+> | Nối qua trang | theo ký tự kết thúc + đầu trang sau | thêm: đoạn trước phải là đoạn thân bị cắt (bề rộng ≥ 85% cột, không trong dải cuối, không có footer bên dưới, không lặp ở trang sau), không footnote, cùng cột, không có bảng/ảnh/trang trắng ở giữa; marker `a.` `a/` `đ.` `(a)` `a.1)` là đơn vị mới; từ chối có lý do (`join_not_made`) |
+> | Phần đã nối | `delete_items` | chuyển `ContentLayer.INVISIBLE` (tuyến tính) |
+> | Ảnh không chữ | bỏ placeholder khi < 15% trang | bỏ (có ghi lại) chỉ khi < 4%; còn lại giữ + cảnh báo có trang/bbox |
+> | Marker danh sách trong văn bản lưu | có ký tự thoát (`9\.`) | **không thoát**; frontend thoát lúc hiển thị (`legalDisplayMarkdown`) |
+> | Bằng chứng chuẩn hóa | chỉ trong log | bản ghi trong `source.asset.extraction` + nhãn trên trang Source |
+> | Giới hạn | số item | số item + ngân sách thời gian 30 s ⇒ fallback Standard, trạng thái `failed` |
+>
+> Kiểm thử: `tests/test_ocr_legal_normalizer.py`, `tests/review_phase12d2/`. Số liệu:
+> [../review/PHASE12D3_QUALITY_BENCHMARK.md](../review/PHASE12D3_QUALITY_BENCHMARK.md).
 
 ## 1. Nguyên tắc
 

@@ -48,65 +48,81 @@ git status
 
 ## 3. Build image + gói (một lệnh)
 
-> **Phiên bản.** Công cụ kiểm tra `VERSION` trong image khớp `-Version`. Trên nhánh Phase 12 `VERSION` vẫn là
-> `1.2.0` cho tới commit phát hành RC (Phase 12G, **sau** nghiệm thu Local). Gói **thử nghiệm** trước thời điểm đó
-> dùng `-Version 1.2.0-phase12.1` (tăng số cuối mỗi lần build); gói `1.3.0-rc.1` chỉ build từ commit phát hành RC.
+> **Phiên bản — kiểm TRƯỚC mọi thao tác Docker.** File `VERSION` của commit phải khớp `-Version`: với
+> `VERSION=1.2.0` chỉ đóng gói được `1.2.0` hoặc `1.2.0-<hậu tố>`. Trên nhánh Phase 12 `VERSION` vẫn là `1.2.0` cho
+> tới commit phát hành RC (**sau** nghiệm thu Local), nên gói **thử nghiệm** dùng `-Version 1.2.0-phase12.1` (tăng
+> số cuối mỗi lần build). `-Version 1.3.0-rc.1` trên nhánh hiện tại bị **từ chối ngay** (mã 2), không build image.
+
+Gói thử nghiệm (nhánh Phase 12 hiện tại):
 
 ```powershell
-.\scripts\offline\build-package.ps1 -Version 1.3.0-rc.1 -SignKey $HOME\.ssh\cb5400_release
+.\scripts\offline\build-package.ps1 -Version 1.2.0-phase12.1
 ```
 
-Không ký:
+Có ký:
 
 ```powershell
-.\scripts\offline\build-package.ps1 -Version 1.3.0-rc.1
+.\scripts\offline\build-package.ps1 -Version 1.2.0-phase12.1 -SignKey $HOME\.ssh\cb5400_release
 ```
 
-Script: kiểm tra Docker (Linux containers), checkout sạch, tag chưa tồn tại → `docker buildx build` với
-`OCR_PREINSTALL_RUNTIMES=true`, `OCR_INSTALL_TESSERACT=true`, label phiên bản + commit → `offline_package.py build`:
-inventory trong image (`--network none`), `docker save`, git bundle `v1.2.0..HEAD` (+ tag nếu đã tạo), `git bundle
-verify`, archive nguồn, chép script + tài liệu, manifest, SHA256SUMS, chữ ký, nén. Dòng cuối in **SHA-256** và
-`readiness` (phải là `READY`).
+Thứ tự của script: kiểm tra Docker (Linux containers), checkout sạch → **`check-version`** (VERSION của commit) →
+base (`-BaseRef`, mặc định `v1.2.0`) tồn tại và là tổ tiên của HEAD → tag image chưa tồn tại → `docker buildx build`
+với `OCR_PREINSTALL_RUNTIMES=true`, `OCR_INSTALL_TESSERACT=true`, label phiên bản + commit → `offline_package.py
+build`: **git bundle trước** (ref tạm `refs/cb5400-offline/build/<version>` trỏ đúng commit, `git bundle verify`,
+`git bundle list-heads`, xóa ref tạm kể cả khi lỗi), archive nguồn, kiểm image, inventory trong image
+(`--network none`), `docker save`, kiểm file image chỉ chứa đúng một tag, chép script + tài liệu, manifest,
+SHA256SUMS, chữ ký, nén. Lỗi ở bất kỳ bước nào ⇒ thư mục đang dựng bị xóa (chạy lại được ngay). Dòng cuối in
+**SHA-256** và `readiness` (phải là `READY`; `NOT_READY` nếu thiếu Docling, Tesseract hoặc bộ mã hóa token
+`o200k_base` không nạp được khi không có mạng).
+
+> `build-package.ps1` **chưa từng được chạy** (Cloud không có PowerShell): lần chạy đầu trên Windows là một mục
+> nghiệm thu (W-OFF-01). Bản Bash đã được kiểm thử với git thật và Docker giả lập.
 
 Bash (WSL2 / Linux) tương đương:
 
 ```bash
-scripts/offline/build-package.sh --version 1.3.0-rc.1 --sign-key ~/.ssh/cb5400_release
+scripts/offline/build-package.sh --version 1.2.0-phase12.1 --sign-key ~/.ssh/cb5400_release
 ```
 
 Đã build image trước đó (chỉ đóng gói lại):
 
 ```powershell
-.\scripts\offline\build-package.ps1 -Version 1.3.0-rc.1 -NoBuild
+.\scripts\offline\build-package.ps1 -Version 1.2.0-phase12.1 -NoBuild
 ```
 
 ## 4. Tự kiểm tra gói trên máy build (trước khi mang đi)
 
 ```powershell
-Get-Content dist\offline\ChatBot5400-1.3.0-rc.1-linux-amd64-offline.tar.gz.sha256
+Get-Content dist\offline\ChatBot5400-1.2.0-phase12.1-linux-amd64-offline.tar.gz.sha256
 ```
 
 ```powershell
-uv run --no-project python scripts\offline\offline_package.py verify dist\offline\ChatBot5400-1.3.0-rc.1-linux-amd64-offline.tar.gz --extract-to $env:TEMP\cb5400-verify --expected-sha256 <giá trị ở trên> --platform linux/amd64
+uv run --no-project python scripts\offline\offline_package.py verify dist\offline\ChatBot5400-1.2.0-phase12.1-linux-amd64-offline.tar.gz --extract-to $env:TEMP\cb5400-verify --expected-sha256 <giá trị ở trên> --platform linux/amd64
 ```
 
 Kết quả `"result": "VERIFIED"`. Kiểm tra nhanh image chạy được mà **không có mạng**:
 
 ```powershell
-docker run --rm --network none --entrypoint /app/.venv/bin/python chatbot5400:1.3.0-rc.1 -c "import docling, easyocr; print('ok')"
+docker run --rm --network none --entrypoint /app/.venv/bin/python chatbot5400:1.2.0-phase12.1 -c "import docling, easyocr; print('ok')"
 ```
 
 ```powershell
-docker run --rm --network none --entrypoint tesseract chatbot5400:1.3.0-rc.1 --version
+docker run --rm --network none --entrypoint tesseract chatbot5400:1.2.0-phase12.1 --version
 ```
 
-Nên chạy thêm bài kiểm thử gói trên stack cô lập (Ubuntu guide §8) trước khi mang sang production.
+Kiểm bộ mã hóa token nạp được khi không có mạng (nếu lệnh treo hoặc lỗi, gói sẽ là `NOT_READY`):
+
+```powershell
+docker run --rm --network none --entrypoint /app/.venv/bin/python chatbot5400:1.2.0-phase12.1 -c "import tiktoken; print(len(tiktoken.get_encoding('o200k_base').encode('kiểm tra')))"
+```
+
+Bắt buộc chạy bài kiểm thử gói trên stack cô lập (Ubuntu guide §9, checklist W-OFF) trước khi mang sang production.
 
 ## 5. Chuyển gói
 
-Chép `*.tar.gz` (và tùy chọn `*.sha256`) bằng phương tiện được phép. Gửi **SHA-256** cho người vận hành bằng kênh
-**khác** với kênh mang gói (ví dụ đọc qua điện thoại / tin nhắn nội bộ đã xác thực). Không gửi `.env`, mật khẩu,
-model Agri, dữ liệu.
+Chép `*.tar.gz` bằng phương tiện được phép. Gửi **SHA-256** cho người vận hành bằng kênh **khác** với kênh mang gói
+(ví dụ đọc qua điện thoại / tin nhắn nội bộ đã xác thực). File `*.sha256` chép cùng gói **không** thay được bước
+này: ai sửa được gói cũng sửa được file đó. Không gửi `.env`, mật khẩu, model Agri, dữ liệu.
 
 ## 6. Không làm
 

@@ -533,3 +533,67 @@ cập nhật chỉ tạo lại container ứng dụng (`--no-deps --no-build --p
 được chuyển lên volume (SHA-256) trước khi tạo lại để không phải tải lại.
 
 Chi tiết: [../deployment/OFFLINE_UPDATE_PACKAGE.md](../deployment/OFFLINE_UPDATE_PACKAGE.md).
+
+## D-36. Sửa đổi D-34 sau audit độc lập: giữ nội dung trừ khi có bằng chứng mạnh (Phase 12D3)
+
+**Bối cảnh.** Audit Phase 12D2 (`docs/review/PHASE12D2_FINDINGS.json`: F-01, F-02, F-03, F-06, F-07, F-10, F-17,
+T-01) cho thấy bộ chuẩn hóa v1.0.0 xóa nhầm nội dung hợp lệ (dòng lặp, năm, số khoản), nối sai qua trang, và phép đo
+"0 từ bị mất" là vòng tròn (cộng lại chính phần đã xóa).
+
+**Quyết định (normalizer v1.1.0).**
+
+1. **Nguyên tắc số 0**: mọi phép biến đổi phải có bằng chứng mạnh; nghi ngờ ⇒ giữ nguyên và ghi cảnh báo. Xóa nhầm
+   nội dung pháp lý nặng hơn để sót artifact.
+2. Dòng chữ lặp lại **không bao giờ** bị bỏ dựa trên suy luận tần suất; chỉ item mà layout model gắn nhãn
+   PAGE_HEADER/PAGE_FOOTER mới chuyển furniture. Giữ mọi lần xuất hiện, không chỉ lần đầu.
+3. Số trang chỉ bị bỏ khi: ≥ 3 trang cùng độ lệch **và** ≥ 60% số trang, cùng dải, cùng vị trí ngang (hoặc đối xứng
+   lẻ-chẵn), ngoài mép thân, giá trị phù hợp số trang. Văn bản 1-2 trang: giữ.
+4. Nối qua trang chỉ khi đoạn trước là đoạn thân bị cắt thật và trang sau không mở đơn vị mới; mọi lý do từ chối được
+   ghi. Phần được nối chuyển sang lớp INVISIBLE (không xóa item ⇒ tuyến tính).
+5. Ảnh không chữ: chỉ ảnh < 4% diện tích trang mới bỏ placeholder (có ghi lại); còn lại giữ + cảnh báo có vị trí.
+6. **Văn bản lưu không chứa ký tự thoát Markdown của marker danh sách**; việc thoát chỉ làm lúc hiển thị ở frontend
+   (`legalDisplayMarkdown`). Nội dung hiển thị, sao chép và RAG là cùng một văn bản.
+7. **Bản ghi chuẩn hóa** (chế độ, trạng thái applied/failed/skipped, phiên bản, bộ đếm, cảnh báo, phép biến đổi =
+   loại + trang + SHA-256, không có văn bản) lưu trong `source.asset.extraction` — trường `asset` là
+   `FLEXIBLE option<object>` từ migration 1 nên **không cần migration**; Source Standard không có khóa này (lưu giống
+   hệt v1.2.0). Phương án thay thế đã cân nhắc và loại: bảng/trường mới (cần migration — bị cấm trong Phase 12).
+8. Ngân sách thời gian 30 s và giới hạn kích thước ⇒ fallback Standard với trạng thái `failed` hiển thị cho người dùng.
+9. **Oracle kiểm thử** dùng ground truth khai báo trong fixture, không dùng đầu ra hay báo cáo của normalizer.
+
+**Hệ quả chấp nhận.** Ít artifact được loại hơn v1.0.0 (24/47 so với 45/47 trên bộ fixture) và ít phép nối hơn
+(3/5), đổi lại 0 xóa nhầm / 0 nối sai trên cùng bộ đo. Văn bản 2 trang giữ số trang nghi ngờ. Header chạy mà layout
+gắn nhãn TEXT được giữ trong nội dung.
+
+Chi tiết: [../review/PHASE12D3_REMEDIATION_REPORT.md](../review/PHASE12D3_REMEDIATION_REPORT.md),
+[../review/PHASE12D3_QUALITY_BENCHMARK.md](../review/PHASE12D3_QUALITY_BENCHMARK.md).
+
+## D-37. Sửa đổi D-35 sau audit độc lập: attempt, phát hiện lệch, ghim image, xác thực trước khi giải nén (Phase 12D3)
+
+**Bối cảnh.** Audit Phase 12D2 (F-04, F-05, F-08, F-09, F-11..F-14, F-20..F-27): lệnh build theo tài liệu không tạo
+được bundle; lần cập nhật thứ hai dùng lại backup cũ; `docker compose up -d` thông thường đưa bản cũ trở lại mà
+không ai biết; `finish`/`rollback` báo thành công không kiểm tra; archive được giải nén trước khi xác thực.
+
+**Quyết định (định dạng gói 2).**
+
+1. Bundle mang **ref có tên** (`refs/cb5400-offline/build/<version>`, tạo tạm lúc build); máy chủ fetch đúng một ref,
+   chỉ fast-forward. `VERSION` của commit được kiểm trước mọi lệnh Docker; `VERSION` của repository vẫn `1.2.0` cho
+   tới commit phát hành nên gói thử nghiệm mang tên `1.2.0-<hậu tố>`.
+2. Mỗi lần cập nhật là một **attempt** (mã, baseline, tag rollback, backup + xác minh khôi phục riêng); không dùng lại
+   gì của attempt đã kết thúc; trạng thái chưa quyết định chặn mọi update.
+3. `status`/`health` so container đang chạy với journal, **mã thoát 7** khi lệch; `finish` ghi lệnh Compose duy nhất.
+4. **Ghim image là tùy chọn và do người vận hành quyết định** (`pin`: dry-run → `--apply` → `--undo`): trỏ tên image
+   của triển khai tới image mới và tạo một file override riêng. Công cụ **không sửa `.env` hay file compose có sẵn**
+   (ràng buộc dự án); phương án "tự sửa `.env`" bị loại vì công cụ không được đọc/ghi file chứa secret.
+5. `finish` và `rollback` chỉ báo thành công sau health check; rollback theo **image ID** đã kiểm chứng; mã nguồn được
+   khôi phục khi an toàn; không bao giờ restore database.
+6. **Xác thực trước, giải nén sau**; từ chối entry trùng; giải nén vào thư mục tạm; file image được đọc trước
+   `docker load` (đúng một tag đã duyệt); image được nhận diện bằng ID, digest cấu hình hoặc danh sách layer.
+7. Container database được chứng minh không đổi bằng `docker inspect` trước/sau mỗi lần tạo lại.
+8. Model vẫn **không** được đóng gói (giữ D-35): gói chỉ **kiểm tra** (readiness đã ghi, kết quả chép RapidOCR, danh
+   sách file model trước/sau, bộ mã hóa token trong image); máy chủ thiếu model bị từ chối.
+
+**Trạng thái.** Logic đã kiểm thử với Docker giả lập + git/tar/ssh-keygen thật. Docker, Compose, PowerShell thật
+**chưa chạy**: [../review/PHASE12D3_WINDOWS_ACCEPTANCE_CHECKLIST.md](../review/PHASE12D3_WINDOWS_ACCEPTANCE_CHECKLIST.md).
+
+Chi tiết: [../review/PHASE12D3_OFFLINE_SAFETY_REPORT.md](../review/PHASE12D3_OFFLINE_SAFETY_REPORT.md),
+[../deployment/OFFLINE_UPDATE_PACKAGE.md](../deployment/OFFLINE_UPDATE_PACKAGE.md).

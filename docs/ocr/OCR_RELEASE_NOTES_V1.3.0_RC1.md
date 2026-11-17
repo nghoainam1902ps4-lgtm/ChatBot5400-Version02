@@ -4,20 +4,31 @@
 > Windows Local đạt ([PHASE12E_WINDOWS_LOCAL_TEST_GUIDE.md](PHASE12E_WINDOWS_LOCAL_TEST_GUIDE.md)). Không merge vào
 > nhánh mặc định, không tạo GitHub Release, không push Docker image, không bật `CB5400_PUBLISH_IMAGES` cho tới khi
 > chủ dự án phê duyệt. Release 1.2.0 giữ nguyên.
+>
+> **Cập nhật Phase 12D3**: nội dung dưới đây đã được chỉnh theo bộ chuẩn hóa v1.1.0 và công cụ offline định dạng 2
+> (sau audit độc lập 12D2). Điều kiện phát hành thêm: review độc lập 12D4 và checklist
+> [../review/PHASE12D3_WINDOWS_ACCEPTANCE_CHECKLIST.md](../review/PHASE12D3_WINDOWS_ACCEPTANCE_CHECKLIST.md). `VERSION`
+> vẫn là `1.2.0`; gói thử nghiệm mang tên `1.2.0-phase12.N`.
 
 ## 1. Điểm mới
 
 ### Chuẩn hóa văn bản pháp lý sau OCR (Legal Document Normalization)
 
 - Chế độ mới **Văn bản pháp lý** trong *Cài đặt → OCR Engine Manager → Chuẩn hóa văn bản sau OCR*, áp dụng cho PDF:
-  - bỏ dòng `<!-- image -->` của chữ ký, con dấu, logo; ảnh lớn không chữ (sơ đồ, biểu đồ) vẫn được đánh dấu;
-  - loại số trang và header/footer lặp khi có đủ bằng chứng (vị trí trên trang + mẫu lặp giữa các trang);
-  - nối đoạn văn / khoản bị cắt bởi phân trang theo quy tắc bảo thủ (không nối khi bắt đầu Điều/Khoản/Điểm mới,
-    bảng, tiêu đề, trang trắng, câu đã kết thúc);
+  - nguyên tắc: **giữ nội dung trừ khi có bằng chứng mạnh**; mọi trường hợp nghi ngờ được giữ nguyên kèm cảnh báo;
+  - bỏ dòng `<!-- image -->` chỉ với ảnh rất nhỏ (< 4% trang) không có chữ; ảnh lớn hơn không chữ vẫn được đánh dấu
+    kèm cảnh báo có vị trí;
+  - loại số trang khi có đủ bằng chứng (≥ 3 trang cùng mẫu, ≥ 60% số trang, cùng vị trí, ngoài phần thân); văn bản
+    1–2 trang giữ nguyên; **dòng chữ lặp lại không bao giờ bị bỏ** trừ khi bố cục đã gắn nhãn header/footer;
+  - nối đoạn văn / khoản bị cắt bởi phân trang theo quy tắc bảo thủ (không nối khi bắt đầu Điều/Khoản/Điểm mới kể
+    cả `a.`, `a/`, `đ)`, `(a)`, `a.1)`; footnote; footer; khác cột; bảng, ảnh, trang trắng; câu đã kết thúc);
   - giữ **đúng số** Điều, Khoản, Điểm gốc (`9.`, `a)`, `đ)`, `1.1`, `a.1)`, gạch đầu dòng) — không còn bị đánh lại
     số hay chèn số vị trí;
-  - lấy lại chữ OCR mà bố cục đặt trong vùng ảnh (trước đây bị bỏ);
+  - lấy lại chữ OCR và bảng mà bố cục đặt trong vùng ảnh (trước đây bị bỏ);
   - bảng giữ nguyên.
+- Trang Source ghi nhãn *Tiêu chuẩn* / *Đã chuẩn hóa văn bản pháp lý* / *Chuẩn hóa thất bại, sử dụng bản tiêu chuẩn*
+  kèm phiên bản bộ chuẩn hóa và số cảnh báo; hiển thị phân cấp Điều/Khoản/điểm. Văn bản lưu (và đưa vào RAG) không
+  chứa ký tự thoát Markdown.
 - **Không dùng AI / LLM sửa nội dung**, không tự thêm từ bị thiếu, không đổi số liệu.
 - Mặc định **Tiêu chuẩn** (kết quả giống hệt 1.2.0). Bật cần **cả hai**: `OCR_LEGAL_NORMALIZATION_ENABLED=true` trên
   máy chủ và lựa chọn của quản trị viên.
@@ -25,8 +36,10 @@
 ### Gói cập nhật offline
 
 - Công cụ `scripts/offline/` để cập nhật máy chủ Ubuntu **không có Internet**: gói gồm Docker image dựng sẵn (Docling,
-  EasyOCR, Tesseract có sẵn trong image), git bundle, manifest, SHA256SUMS, chữ ký tùy chọn; kiểm tra toàn vẹn và
-  nguồn gốc, preflight chỉ đọc, cập nhật chỉ tạo lại container ứng dụng (database không bị đụng), rollback.
+  EasyOCR, Tesseract, bộ mã hóa token có sẵn trong image), git bundle, manifest, SHA256SUMS, chữ ký tùy chọn; xác
+  thực nguồn gốc **trước khi giải nén**, preflight chỉ đọc, mỗi lần cập nhật có backup riêng, cập nhật chỉ tạo lại
+  container ứng dụng (container database được kiểm chứng không đổi), `finish`/`rollback` có health check, phát hiện
+  lệch giữa bản đang chạy và bản đã duyệt, ghim image tùy chọn, rollback theo image ID.
 
 ### Chẩn đoán
 
@@ -47,13 +60,19 @@ cổng), Agri về phiên bản trước, ứng dụng về 1.2.0 (không khôi 
 
 ## 4. Giới hạn đã biết
 
-1. Phụ thuộc nhãn của Layout Heron: số trang bị gộp chung khối với đoạn văn không tách được.
-2. Thứ tự đọc của Docling không thay đổi (văn bản hai cột có thể đọc theo hàng).
-3. Không trích dẫn số trang trong câu trả lời RAG (provenance chưa lưu theo chunk).
-4. Chưa có lựa chọn theo từng tài liệu; chưa hiển thị trạng thái "đã chuẩn hóa" trên trang Source.
-5. Chất lượng trên tài liệu thật và với model Agri: [điền sau nghiệm thu Local].
-6. Gói offline chưa có khóa ký chính thức: xác thực bằng SHA-256 qua kênh tin cậy.
+1. Phụ thuộc nhãn của Layout Heron: số trang bị gộp chung khối với đoạn văn không tách được; header/footer mà bố cục
+   gắn nhãn là đoạn văn thường được **giữ lại** trong nội dung (kèm cảnh báo) và chặn phép nối ở trang đó.
+2. Thứ tự đọc của Docling không thay đổi (văn bản hai cột có thể đọc theo hàng). Docling tự nối một số đoạn qua trang
+   khi đoạn trước kết thúc bằng chữ ASCII thường / dấu phẩy / gạch nối — có ở cả chế độ Tiêu chuẩn và 1.2.0.
+3. Văn bản 1–2 trang giữ số trang nghi ngờ, nên khoản bị cắt qua trang ở các văn bản này không được nối.
+4. Không trích dẫn số trang trong câu trả lời RAG (provenance chưa lưu theo chunk).
+5. Chưa có lựa chọn theo từng tài liệu.
+6. Chất lượng trên tài liệu thật và với model Agri: [điền sau nghiệm thu Local].
+7. Gói offline chưa có khóa ký chính thức: xác thực bằng SHA-256 qua kênh tin cậy riêng (file `.sha256` đi kèm gói
+   không tính). Thư mục triển khai không tự mô tả bản đang chạy: dùng lệnh trong `compose-command.txt`, kiểm bằng
+   `status.sh`, hoặc ghim bằng `pin.sh`. Model OCR không nằm trong gói.
 
 ## 5. Kết quả kiểm thử
 
-[Điền sau nghiệm thu Windows Local — số liệu Cloud: `PHASE12D_TEST_REPORT.md`, `PHASE12D_QUALITY_BENCHMARK.md`.]
+[Điền sau nghiệm thu Windows Local — số liệu Cloud: `../review/PHASE12D3_REGRESSION_REPORT.md`,
+`../review/PHASE12D3_QUALITY_BENCHMARK.md`. Số liệu của `PHASE12D_QUALITY_BENCHMARK.md` (Phase 12) đã bị thay thế.]

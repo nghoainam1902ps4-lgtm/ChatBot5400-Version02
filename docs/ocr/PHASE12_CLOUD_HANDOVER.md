@@ -1,5 +1,9 @@
 # Phase 12 — Báo cáo bàn giao từ Claude Code Cloud
 
+> **CẬP NHẬT (Phase 12D3).** Bàn giao này thuộc về Phase 12 trước audit độc lập. Bàn giao hiện hành:
+> [../review/PHASE12D3_HANDOVER.md](../review/PHASE12D3_HANDOVER.md). Các kết luận "0 từ bị mất" và số test ở đây đã
+> bị thay thế.
+
 Legal Document OCR & Layout Normalization + Offline Update Package. Phiên làm việc Cloud: không truy cập production,
 không có model Agri, không có tài liệu nội bộ, không có Docker daemon, Hugging Face bị chặn.
 
