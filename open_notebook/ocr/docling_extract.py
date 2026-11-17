@@ -98,8 +98,10 @@ async def should_use_native_ocr(
         return False
     from content_core.content.identification import get_file_type
 
-    # Cheap pre-check (is_image=True is the most permissive case).
-    if native_path_required(ocr, is_image=True):
+    # Cheap pre-check (is_image=True is the most permissive case). Legal
+    # Document normalization (D-34) needs the DoclingDocument, which only this
+    # layer has: a PDF then takes it even with the default configuration.
+    if native_path_required(ocr, is_image=True) or ocr.legal_normalization:
         mime = await get_file_type(file_path)
         return _decide(mime, document_engine, ocr)
     # Default configuration: content-core's own path, with ONE exception (D-33).
@@ -151,9 +153,19 @@ def _log_ocr_mode(engine: str, decision: Any) -> None:
 def _decide(mime: str, document_engine: str, ocr: OcrSettings) -> bool:
     return (
         mime in OCR_MIME_TYPES
-        and native_path_required(ocr, is_image=mime.startswith("image/"))
+        and (
+            native_path_required(ocr, is_image=mime.startswith("image/"))
+            or _legal_applies(ocr, mime)
+        )
         and _docling_routes(mime, document_engine)
     )
+
+
+def _legal_applies(ocr: OcrSettings, mime: str) -> bool:
+    """Legal Document normalization covers PDFs only (D-34); images unchanged."""
+    from open_notebook.ocr import legal_normalizer
+
+    return ocr.legal_normalization and legal_normalizer.applies_to(mime)
 
 
 async def should_use_native_ocr_for_url(
@@ -166,7 +178,9 @@ async def should_use_native_ocr_for_url(
     scan would bypass the selected engine (and, once EasyOCR is installed,
     silently switch to it). Web pages / YouTube are unaffected (not OCR MIME).
     """
-    if not url or not native_path_required(ocr, is_image=True):
+    if not url or not (
+        native_path_required(ocr, is_image=True) or ocr.legal_normalization
+    ):
         return False
     from content_core.processors.url import detect_remote_mime
 
@@ -320,10 +334,17 @@ def convert_file(
     result, converter, prep = convert_document(path, cc_config, ocr)
     doc = result.document
     fmt = getattr(cc_config, "docling_output_format", "markdown")
+    normalization: dict[str, Any] = {}
     if fmt == "html":
         output = doc.export_to_html()
     elif fmt == "json":
         output = doc.export_to_json()
+    elif ocr.legal_normalization and _is_pdf(path):
+        # D-34: same DoclingDocument, serialized by the Legal Document
+        # normalizer; any failure falls back to the standard export below.
+        from open_notebook.ocr import legal_normalizer
+
+        output, normalization = legal_normalizer.normalize_or_fallback(doc)
     else:
         output = doc.export_to_markdown()
     meta = {
@@ -335,8 +356,18 @@ def convert_file(
         **prep.as_meta(),
         **pipeline_identity(converter),
         **conversion_outcome(result, path),
+        **normalization,
     }
     return output, meta
+
+
+def _is_pdf(path: str) -> bool:
+    """PDF by content (magic bytes), whatever the file name says."""
+    try:
+        with open(path, "rb") as f:
+            return f.read(1024).lstrip().startswith(b"%PDF-")
+    except OSError:
+        return False
 
 
 def _custom_meta(ocr: OcrSettings) -> dict[str, Any]:

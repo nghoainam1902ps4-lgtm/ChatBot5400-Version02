@@ -518,3 +518,55 @@ describe('OcrEngineManager', () => {
     expect(fast.queryByText('ocr.custom.badge')).toBeNull()
   })
 })
+
+describe('OcrEngineManager — post-OCR text normalization (Phase 12)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  function withConfig(config: Partial<OcrEnginesResponse['config']>) {
+    const payload = data([rapid])
+    ;(useOcrEngines as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { ...payload, config: { ...payload.config, ...config } },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+  }
+
+  it('defaults to Standard and cannot pick Legal when the deployment gate is off', () => {
+    withConfig({})
+    render(<OcrEngineManager />)
+    const panel = screen.getByTestId('ocr-text-normalization')
+    expect(within(panel).getByText('ocr.textNormalization.title')).toBeInTheDocument()
+    expect(within(panel).getByRole('radio', { name: 'ocr.textNormalization.standard' })).toBeChecked()
+    expect(within(panel).getByRole('radio', { name: 'ocr.textNormalization.legal' })).toBeDisabled()
+    expect(screen.getByTestId('ocr-norm-unavailable')).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'ocr.textNormalization.save' })).toBeDisabled()
+  })
+
+  it('saves Legal only (never the engine options) when the gate is on', () => {
+    withConfig({ legal_normalization_available: true, ocr_text_normalization: 'standard', ocr_text_normalization_effective: 'standard' })
+    render(<OcrEngineManager />)
+    const panel = screen.getByTestId('ocr-text-normalization')
+    fireEvent.click(within(panel).getByRole('radio', { name: 'ocr.textNormalization.legal' }))
+    fireEvent.click(within(panel).getByRole('button', { name: 'ocr.textNormalization.save' }))
+    expect(updateConfig).toHaveBeenCalledWith({ ocr_text_normalization: 'legal' })
+    expect(screen.queryByTestId('ocr-norm-unavailable')).toBeNull()
+  })
+
+  it('explains a saved Legal choice that the deployment switched off (rollback by env)', () => {
+    withConfig({ legal_normalization_available: false, ocr_text_normalization: 'legal', ocr_text_normalization_effective: 'standard' })
+    render(<OcrEngineManager />)
+    expect(screen.getByText('ocr.textNormalization.inactive')).toBeInTheDocument()
+    expect(screen.getByTestId('ocr-norm-effective')).toHaveTextContent('ocr.textNormalization.effective')
+  })
+
+  it('rolls back to Standard', () => {
+    withConfig({ legal_normalization_available: true, ocr_text_normalization: 'legal', ocr_text_normalization_effective: 'legal', legal_normalizer_version: '1.0.0' })
+    render(<OcrEngineManager />)
+    const panel = screen.getByTestId('ocr-text-normalization')
+    expect(screen.getByTestId('ocr-norm-effective')).toHaveTextContent('v1.0.0')
+    fireEvent.click(within(panel).getByRole('radio', { name: 'ocr.textNormalization.standard' }))
+    fireEvent.click(within(panel).getByRole('button', { name: 'ocr.textNormalization.save' }))
+    expect(updateConfig).toHaveBeenCalledWith({ ocr_text_normalization: 'standard' })
+  })
+})

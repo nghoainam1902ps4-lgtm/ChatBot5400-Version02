@@ -498,7 +498,14 @@ export interface OcrConfig {
   docling_ocr_device: string
   docling_ocr_num_threads: number | null
   docling_ocr_force_full_page: boolean
+  /** Phase 12 (docs/ocr D-34): saved choice, what jobs really use, deployment gate. */
+  ocr_text_normalization?: OcrTextNormalization
+  ocr_text_normalization_effective?: OcrTextNormalization
+  legal_normalization_available?: boolean
+  legal_normalizer_version?: string | null
 }
+
+export type OcrTextNormalization = 'standard' | 'legal'
 
 export interface OcrGeneralInfo {
   document_engine: string

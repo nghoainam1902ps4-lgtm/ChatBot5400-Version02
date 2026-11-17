@@ -36,6 +36,10 @@ class OcrSettings:
     # Frozen here so that activating another version while a document is being
     # processed never changes the model under it (custom_models.py).
     custom_version: str | None = None
+    # Post-OCR text normalization (Phase 12, D-34): "standard" (unchanged
+    # behaviour) or "legal". Already resolved against the deployment gate
+    # OCR_LEGAL_NORMALIZATION_ENABLED, so "legal" here means it really applies.
+    text_normalization: str = "standard"
 
     @classmethod
     def from_content_settings(cls, settings: Any) -> "OcrSettings":
@@ -44,12 +48,17 @@ class OcrSettings:
             engine = catalog.DEFAULT_ENGINE
         threads = getattr(settings, "docling_ocr_num_threads", None)
         enabled = getattr(settings, "docling_ocr", None)
+        from open_notebook.ocr import legal_normalizer
+
         return cls(
             enabled=True if enabled is None else bool(enabled),
             engine=engine,
             num_threads=int(threads) if threads else None,
             force_full_page=bool(
                 getattr(settings, "docling_ocr_force_full_page", False)
+            ),
+            text_normalization=legal_normalizer.effective_mode(
+                getattr(settings, "ocr_text_normalization", None)
             ),
         ).pinned()
 
@@ -60,6 +69,10 @@ class OcrSettings:
         from open_notebook.ocr import custom_models
 
         return replace(self, custom_version=custom_models.active_version(self.engine))
+
+    @property
+    def legal_normalization(self) -> bool:
+        return self.text_normalization == "legal"
 
     @property
     def uses_default_tuning(self) -> bool:

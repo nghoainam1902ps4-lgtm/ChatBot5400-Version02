@@ -745,6 +745,12 @@ class OcrConfig(BaseModel):
     docling_ocr_device: str = "cpu"
     docling_ocr_num_threads: Optional[int] = None
     docling_ocr_force_full_page: bool = False
+    # Phase 12 (docs/ocr D-34): the saved choice, what jobs really use (the
+    # deployment gate may switch "legal" off) and whether the gate is open.
+    ocr_text_normalization: Literal["standard", "legal"] = "standard"
+    ocr_text_normalization_effective: Literal["standard", "legal"] = "standard"
+    legal_normalization_available: bool = False
+    legal_normalizer_version: Optional[str] = None
 
 
 class OcrConfigUpdate(BaseModel):
@@ -752,6 +758,7 @@ class OcrConfigUpdate(BaseModel):
     # 0 resets to Docling's default thread count.
     docling_ocr_num_threads: Optional[int] = Field(None, ge=0, le=64)
     docling_ocr_force_full_page: Optional[bool] = None
+    ocr_text_normalization: Optional[Literal["standard", "legal"]] = None
 
 
 class OcrGeneralInfo(BaseModel):

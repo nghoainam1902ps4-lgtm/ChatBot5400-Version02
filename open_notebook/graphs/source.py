@@ -177,7 +177,8 @@ async def content_process(state: SourceState) -> dict:
         f"docling_ocr={config_kwargs.get('docling_ocr', 'auto')}, "
         f"docling_formulas={config_kwargs.get('docling_formulas', 'auto')}, "
         f"docling_vision={config_kwargs.get('docling_vision', 'auto')}, "
-        f"ocr_engine={ocr_settings.engine})"
+        f"ocr_engine={ocr_settings.engine}, "
+        f"text_normalization={ocr_settings.text_normalization})"
     )
 
     # Every extraction path (incl. content-core's default RapidOCR path) may
@@ -236,6 +237,18 @@ async def content_process(state: SourceState) -> dict:
         if message:
             raise ValueError(message) from e
         raise
+
+    if ocr_settings.legal_normalization and file_path_only:
+        status = (getattr(processed, "metadata", None) or {}).get(
+            "legal_normalization_status"
+        )
+        if status is None:
+            # Not a PDF the Docling layer converted (other format, Docling not
+            # installed, non-Markdown output): the standard content is kept.
+            logger.info(
+                "Legal document normalization not applied to this source "
+                "(only PDFs converted by Docling are normalized)."
+            )
 
     # content-core signals a soft extraction failure (e.g. an unreachable or
     # invalid URL, via the bs4 fallback) by returning title="Error" and content
