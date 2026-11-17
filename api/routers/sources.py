@@ -259,6 +259,16 @@ def parse_source_form_data(
     return source_data, file
 
 
+def _extraction_record(asset: Any) -> Optional[dict]:
+    """The normalization record stored in ``asset.extraction`` (Phase 12D3, F-07).
+
+    Only a plain mapping is returned: anything else in a FLEXIBLE database
+    object must not break the Source response.
+    """
+    record = getattr(asset, "extraction", None)
+    return record if isinstance(record, dict) else None
+
+
 @router.get("/sources", response_model=List[SourceListResponse])
 async def get_sources(
     notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
@@ -444,7 +454,7 @@ def _source_to_response(
         "asset": AssetModel(
             file_path=source.asset.file_path,
             url=source.asset.url,
-            extraction=source.asset.extraction,
+            extraction=_extraction_record(source.asset),
         )
         if source.asset
         else None,
