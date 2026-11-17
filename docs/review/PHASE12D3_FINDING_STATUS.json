@@ -3,7 +3,7 @@
   "audit": "docs/review/PHASE12D2_FINDINGS.json (Phase 12D2, nhánh review/phase12-fable-audit)",
   "audited_head": "2ef007417eaca0ce41e7aba2e32a201fa243ebf1",
   "remediation_branch": "feature/legal-document-normalization",
-  "generated_at_commit_parent": "830e13ba0403602aecfd0d518016d4d1afce484d",
+  "generated_at_commit_parent": "7c233292c4472d43f21921d7c8b8ec3bc7abc1fe",
   "status_values": [
     "OPEN",
     "FIXED — VERIFIED",
@@ -252,6 +252,8 @@
         "tests/test_offline_package.py::test_undecided_update_blocks_a_new_one",
         "tests/test_offline_package.py::test_another_package_cannot_take_over_an_unfinished_attempt",
         "tests/test_offline_package.py::test_journal_of_the_previous_tool_version",
+        "tests/test_offline_package.py::test_closing_an_attempt_that_recreated_nothing_does_not_restart_the_application",
+        "tests/test_offline_package.py::test_attempt_is_not_resumed_across_a_source_sync",
         "tests/test_offline_package.py::test_old_journal_awaiting_approval_is_not_finished_blindly"
       ],
       "status": "FIXED — LOCAL VERIFICATION REQUIRED",
@@ -272,6 +274,8 @@
         "tests/test_offline_package.py::test_undecided_update_blocks_a_new_one",
         "tests/test_offline_package.py::test_another_package_cannot_take_over_an_unfinished_attempt",
         "tests/test_offline_package.py::test_journal_of_the_previous_tool_version",
+        "tests/test_offline_package.py::test_closing_an_attempt_that_recreated_nothing_does_not_restart_the_application",
+        "tests/test_offline_package.py::test_attempt_is_not_resumed_across_a_source_sync",
         "tests/test_offline_package.py::test_old_journal_awaiting_approval_is_not_finished_blindly"
       ],
       "verification_status": "FIXED — LOCAL VERIFICATION REQUIRED",
@@ -595,7 +599,7 @@
       "root_cause": "Kiểm tra ở tầng khai báo thay vì tầng thực thi; thứ tự lấy đường cơ sở.",
       "reproduction_test": "tests/test_offline_package.py::test_database_container_recreated_by_compose_is_detected",
       "proposed_fix": "Thêm snapshot DB (inspect) vào journal ở preflight; assert sau mỗi `up`; chuyển `before` lên trước sync_source và so cả cấu hình trước/sau đồng bộ; thêm kiểm tra schema + đếm bản ghi vào health_checks.",
-      "actual_fix": "`db_snapshot`, `assert_db_untouched`, `record_counts`, `current_baseline`, `compare_configs` viết lại, `recreate_app`.",
+      "actual_fix": "`db_snapshot`, `assert_db_untouched`, `record_counts`, `current_baseline`, `take_reference`, `counts_verdict`, `compare_configs` viết lại, `recreate_app`.",
       "files_changed": [
         "scripts/offline/offline_package.py",
         "tests/test_offline_package.py"
@@ -604,6 +608,9 @@
         "tests/test_offline_package.py::test_database_container_recreated_by_compose_is_detected",
         "tests/test_offline_package.py::test_database_restarted_before_the_recreate_is_detected",
         "tests/test_offline_package.py::test_schema_or_row_counts_changing_after_the_recreate_fail_the_update",
+        "tests/test_offline_package.py::test_acceptance_uploads_and_a_reboot_before_finish_are_not_reported_as_damage",
+        "tests/test_offline_package.py::test_finish_fails_when_a_table_with_data_is_empty_afterwards",
+        "tests/test_offline_package.py::test_counts_verdict",
         "tests/test_offline_package.py::test_compose_file_changed_by_the_source_sync_cannot_touch_the_database",
         "tests/test_offline_package.py::test_unexpected_config_changes_are_refused",
         "tests/test_offline_package.py::test_preflight_needs_the_database_container"
@@ -613,12 +620,15 @@
       "local_verification_requirement": "docker inspect thật của container database trước/sau mỗi bước; số bản ghi thật.",
       "release_blocker": "Đã sửa trong mã; còn chặn phát hành cho tới khi cổng Local đạt và review 12D4 xác nhận",
       "before": "'Database không bị đụng tới' chỉ được kiểm trên cấu hình Compose; baseline lấy sau khi đồng bộ mã nguồn.",
-      "after": "Snapshot container database THẬT bằng docker inspect (ID, image ID, mount, StartedAt, đang chạy) trong baseline của attempt, lấy trước --sync-source; kiểm lại trước khi tạo lại, ngay sau mỗi `up`, và trong health check. Thêm: hash cấu hình Compose hiệu lực, schema, số bản ghi 5 bảng chính trước/sau. Khác ⇒ 'DATABASE CONTAINER CHANGED', dừng, không cho finish. So cấu hình toàn bộ (mọi dịch vụ khác, volume, network, và mọi khóa của dịch vụ ứng dụng ngoài image/pull_policy/environment đã khai báo/ports loopback).",
+      "after": "Snapshot container database THẬT bằng docker inspect (ID, image ID, mount, StartedAt, đang chạy) trong baseline của attempt, lấy trước --sync-source, kiểm lại trước khi tạo lại. Mỗi lần tạo lại (update, finish, rollback) chụp một mốc đối chiếu ngay trước `up` (container database, schema, số bản ghi 5 bảng chính) và so ngay sau `up` + trong health check; bảo trì: số bản ghi phải bằng nhau, bình thường: chỉ lỗi khi bảng đang có dữ liệu trở thành rỗng. Thêm: hash cấu hình Compose hiệu lực. Khác ⇒ 'DATABASE CONTAINER CHANGED', dừng, không cho finish. So cấu hình toàn bộ (mọi dịch vụ khác, volume, network, và mọi khóa của dịch vụ ứng dụng ngoài image/pull_policy/environment đã khai báo/ports loopback).",
       "code_reference": "scripts/offline/offline_package.py::db_snapshot, assert_db_untouched, current_baseline, compare_configs, recreate_app",
       "test_reference": [
         "tests/test_offline_package.py::test_database_container_recreated_by_compose_is_detected",
         "tests/test_offline_package.py::test_database_restarted_before_the_recreate_is_detected",
         "tests/test_offline_package.py::test_schema_or_row_counts_changing_after_the_recreate_fail_the_update",
+        "tests/test_offline_package.py::test_acceptance_uploads_and_a_reboot_before_finish_are_not_reported_as_damage",
+        "tests/test_offline_package.py::test_finish_fails_when_a_table_with_data_is_empty_afterwards",
+        "tests/test_offline_package.py::test_counts_verdict",
         "tests/test_offline_package.py::test_compose_file_changed_by_the_source_sync_cannot_touch_the_database",
         "tests/test_offline_package.py::test_unexpected_config_changes_are_refused",
         "tests/test_offline_package.py::test_preflight_needs_the_database_container"
@@ -742,7 +752,7 @@
       ],
       "test_evidence": [
         "tests/test_ocr_legal_normalizer.py (385 test)",
-        "tests/test_offline_package.py (166 test)",
+        "tests/test_offline_package.py (172 test)",
         "tests/test_ocr_legal_pipeline.py (35 test)",
         "tests/test_ocr_legal_normalizer.py::test_mixed_page_sizes_and_landscape_pages",
         "tests/test_ocr_legal_normalizer.py::test_items_without_provenance_between_located_items",
@@ -758,7 +768,7 @@
       "code_reference": "tests/test_ocr_legal_normalizer.py::_with; tests/test_offline_package.py::FAKE_DOCKER",
       "test_reference": [
         "tests/test_ocr_legal_normalizer.py (385 test)",
-        "tests/test_offline_package.py (166 test)",
+        "tests/test_offline_package.py (172 test)",
         "tests/test_ocr_legal_pipeline.py (35 test)",
         "tests/test_ocr_legal_normalizer.py::test_mixed_page_sizes_and_landscape_pages",
         "tests/test_ocr_legal_normalizer.py::test_items_without_provenance_between_located_items",
@@ -825,6 +835,7 @@
       "test_evidence": [
         "tests/review_phase12d2/test_offline_counterexamples.py::test_f13_truncated_journal_is_reported_not_a_traceback",
         "tests/test_offline_package.py::test_journal_is_written_atomically_with_a_backup_copy",
+        "tests/test_offline_package.py::test_state_directory_and_journal_are_private",
         "tests/test_offline_package.py::test_damaged_journal_stops_everything_without_a_blind_reset (4 dạng hỏng)",
         "tests/test_offline_package.py::test_damaged_journal_without_a_backup_copy",
         "tests/test_offline_package.py::test_rollback_without_a_journal_after_moving_a_damaged_one_aside"
@@ -839,6 +850,7 @@
       "test_reference": [
         "tests/review_phase12d2/test_offline_counterexamples.py::test_f13_truncated_journal_is_reported_not_a_traceback",
         "tests/test_offline_package.py::test_journal_is_written_atomically_with_a_backup_copy",
+        "tests/test_offline_package.py::test_state_directory_and_journal_are_private",
         "tests/test_offline_package.py::test_damaged_journal_stops_everything_without_a_blind_reset (4 dạng hỏng)",
         "tests/test_offline_package.py::test_damaged_journal_without_a_backup_copy",
         "tests/test_offline_package.py::test_rollback_without_a_journal_after_moving_a_damaged_one_aside"

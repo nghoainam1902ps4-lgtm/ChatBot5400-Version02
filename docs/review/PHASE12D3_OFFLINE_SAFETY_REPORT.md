@@ -78,7 +78,7 @@ riêng, backup + xác minh khôi phục riêng.
 | `completed`, `rolled_back` | lưu trữ journal cũ → **attempt mới, backup mới** |
 | `failed` và container đã về image baseline | lưu trữ → attempt mới, backup mới |
 | `failed` / `in_progress` nhưng container **không** ở image baseline | từ chối: rollback trước |
-| `in_progress`, cùng gói, chưa tạo lại container, baseline còn đúng | tiếp tục **cùng attempt**; backup chỉ dùng lại khi còn trong `BACKUP_MAX_AGE_MINUTES` |
+| `in_progress`, cùng gói, chưa tạo lại container, baseline còn đúng | tiếp tục **cùng attempt**; backup chỉ dùng lại khi còn trong `BACKUP_MAX_AGE_MINUTES`. Ngoại lệ: attempt đã đồng bộ mã nguồn ⇒ **không** tiếp tục (cấu hình trên đĩa đã là của bản mới, phép so database sẽ sai phía) — phải `rollback interrupted` rồi bắt đầu lại |
 | `in_progress` / `failed`, **gói khác** | từ chối |
 | `awaiting_approval`, `deployed_pending_checks`, `finish_failed`, `rollback_failed` | từ chối mọi update (kể cả cùng gói) |
 | journal của công cụ Phase 12 (không có attempt_id / baseline) | `rolled_back`/`completed` ⇒ lưu trữ, attempt mới, **không tin** bước backup cũ; `awaiting_approval` ⇒ `finish` từ chối (không có image ID để xác nhận), rollback cần `--to-image` |
@@ -100,7 +100,17 @@ baseline bị xóa; journal cũ.
 - `rollback legal-on|legal-off`: giữ chế độ mạng hiện tại của container; so cấu hình; kiểm container database;
   health check.
 
+`rollback interrupted` khi **chưa** có gì được tạo lại: không chạy `up`, ứng dụng không bị khởi động lại; chỉ đóng
+attempt và khôi phục mã nguồn (đã kiểm thử).
+
+Cổng Legal do người vận hành bật được **giữ qua** lần cập nhật kế tiếp, kể cả sau rollback hay attempt thất bại: giá
+trị được đọc từ container đang chạy lúc mở attempt, không từ lịch sử journal (đã kiểm thử: completed → gói kế tiếp →
+rollback → cập nhật lại).
+
 ### 3.3 Journal
+
+`STATE_DIR` là `0700`, journal / bản sao / override / danh sách file model là `0600` (đã kiểm thử).
+
 
 Ghi nguyên tử (file tạm, `fsync`, `rename`, `fsync` thư mục) + bản sao `journal.json.bak`. Đã kiểm 4 dạng hỏng (cắt
 ngắn, rỗng, sai kiểu, byte rác) trên 5 lệnh (status, update, finish, rollback, pin): tất cả dừng với mã 5 và hướng
@@ -160,11 +170,18 @@ nào được commit; khóa trong test được tạo tạm trong thư mục tes
 
 ## 6. Database và artifact (F-21, F-22)
 
-- Container database: `docker inspect` (ID, image ID, mount, `StartedAt`, đang chạy) trong baseline (trước
-  `--sync-source`), trước khi tạo lại, sau mỗi `up`, và trong health check. Đã kiểm thử: Compose tạo lại database ⇒
+- Container database: `docker inspect` (ID, image ID, mount, `StartedAt`, đang chạy) trong baseline của attempt (trước
+  `--sync-source`) và kiểm lại trước khi tạo lại; **mỗi lần tạo lại** (update, finish, rollback) chụp một **mốc đối
+  chiếu ngay trước `up`** (container database, schema, số bản ghi) và so ngay sau `up` cũng như trong health check.
+  Mốc theo từng lần tạo lại — không phải mốc đầu attempt — vì giữa cập nhật và `finish`/`rollback` có tài liệu nghiệm
+  thu được tải lên và máy chủ có thể reboot (lỗi thiết kế tôi tự phát hiện khi rà lại và đã sửa: bản đầu của 12D3 so
+  với mốc đầu attempt nên sẽ báo lỗi sai trong hai tình huống đó). Đã kiểm thử: Compose tạo lại database ⇒
   dừng, `db_changed`, không cho `finish`; database khởi động lại giữa hai lần chạy ⇒ dừng trước khi tạo lại; file
   compose của bản mới đổi dịch vụ database ⇒ từ chối trước khi tạo lại.
-- Schema và số bản ghi 5 bảng (`source`, `notebook`, `note`, `source_embedding`, `source_insight`) trước/sau.
+- Schema và số bản ghi 5 bảng (`source`, `notebook`, `note`, `source_embedding`, `source_insight`) trước/sau mỗi lần
+  tạo lại: ở chế độ bảo trì phải bằng nhau; ở chế độ bình thường chỉ ghi nhận, và thất bại khi một bảng đang có dữ
+  liệu trở thành rỗng. Kiểm thử: tải tài liệu nghiệm thu + reboot trước `finish`, rollback nhiều tuần sau, bảng bị
+  rỗng sau `finish`.
 - RapidOCR: kết quả chép được kiểm; lỗi ⇒ dừng trước khi tạo lại.
 - File model trên volume (Heron, TableFormer, Tesseract fast/best/OSD, Agri, RapidOCR, EasyOCR): chụp trước, so sau;
   mất / đổi kích thước / liên kết hỏng ⇒ `failed`.
@@ -193,7 +210,7 @@ preflight **từ chối**, không được gói tự bổ sung.
 2. Ghim image phụ thuộc quy ước đặt tên image của Compose cho dịch vụ `build:` và không bảo vệ trước `--build`.
 3. Biến offline chỉ bền vững khi người vận hành tự thêm dòng `COMPOSE_FILE` (công cụ cố ý không sửa `.env`).
 4. Danh sách file model chỉ so tên + kích thước.
-5. `rollback interrupted` khi chưa tạo lại container vẫn tạo lại container ứng dụng một lần bằng image baseline (an
-   toàn nhưng gây gián đoạn ngắn).
+5. Cổng Legal của lần cập nhật kế tiếp được đọc từ **container đang chạy** (chỉ nhận `true` / `false`); giá trị khác
+   bị bỏ qua và cổng trở về mặc định của cấu hình triển khai.
 6. Chưa có khóa ký chính thức.
 7. Build image không tái lập bit-by-bit (có từ trước Phase 12).

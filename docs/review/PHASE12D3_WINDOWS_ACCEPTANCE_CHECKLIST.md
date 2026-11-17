@@ -234,6 +234,9 @@ scripts/offline/build-package.sh --version 1.2.0-phase12.1
 | W-OFF-26 | (F-05) `<DEPLOY>` là git checkout ở v1.2.0: update `--apply --sync-source`; sau đó `rollback.sh app` | Checkout tới commit của gói bằng fast-forward; `.env` nguyên; rollback đưa checkout về commit cũ. Lặp lại với một commit cục bộ ⇒ từ chối, checkout nguyên; với thay đổi cục bộ xung đột ⇒ từ chối, file nguyên |
 | W-OFF-27 | **Rollback về v1.2.0** khi DB đã lưu `ocr_text_normalization=legal` và có Source Legal (có `asset.extraction`) | Bản 1.2.0 khởi động, health đạt, cài đặt OCR mở được, Source Legal mở được và giữ nguyên nội dung, không OCR lại; `status.sh` = 0 (`rolled_back`) |
 | W-OFF-28 | `ENABLE_CRAWL4AI=true` không có `CRAWL4AI_API_URL` trên máy offline | Ghi thời gian khởi động và log entrypoint |
+| W-OFF-29 | Sau `update --apply` (đang bảo trì): tải 1 PDF thử, **khởi động lại Docker / reboot máy thử**, rồi `finish --approve` | `finish` đạt (`completed`): tài liệu nghiệm thu và reboot không bị báo là hư hại; log có `row counts before …, now … (normal mode: informational)` và `database container unchanged` |
+| W-OFF-30 | Dừng update trước khi tạo lại container (ví dụ `BACKUP_VERIFY_CMD=false`), ghi `docker inspect <container ứng dụng> --format '{{.Id}} {{.State.StartedAt}}'`, chạy `rollback.sh interrupted`, ghi lại lần nữa | Mã 0, `rolled_back`; ID và `StartedAt` của container ứng dụng **không đổi** (không bị khởi động lại). Lặp lại với `--sync-source`: chạy lại `update` bị từ chối cho tới khi `rollback.sh interrupted`; checkout về commit cũ |
+| W-OFF-31 | `ls -ld <STATE_DIR>`; `ls -l <STATE_DIR>` | thư mục `drwx------`, file journal / override `-rw-------` |
 
 ## 7. Biên bản
 
@@ -250,6 +253,6 @@ Quy tắc kết luận:
 
 - "REAL DOCKER BUILD: VERIFIED" chỉ khi W-OFF-01..09 đạt.
 - "REAL OCR PIPELINE: VERIFIED" chỉ khi W-RC và W-LEG đạt trên scan thật.
-- "OFFLINE UPGRADE AND ROLLBACK: VERIFIED" chỉ khi W-OFF-10..27 đạt.
-- Bất kỳ mục **Không đạt** nào ở W-STD, W-LEG-01..08, W-OFF-11..20, W-OFF-27 là **release blocker**.
+- "OFFLINE UPGRADE AND ROLLBACK: VERIFIED" chỉ khi W-OFF-10..27 và W-OFF-29..31 đạt.
+- Bất kỳ mục **Không đạt** nào ở W-STD, W-LEG-01..08, W-OFF-11..20, W-OFF-27, W-OFF-29 là **release blocker**.
 - Checklist này không thay cho review độc lập Phase 12D4 và không cho phép phát hành RC hay triển khai production.

@@ -166,8 +166,8 @@ Mỗi lần cập nhật là một **attempt** có mã riêng, baseline riêng v
 | – | chép trọng số RapidOCR lên volume **và kiểm kết quả** (lỗi/thiếu ⇒ dừng, trừ khi `--accept-missing-rapidocr`) | vẫn chạy |
 | – | chụp danh sách file model trên volume như container cũ nhìn thấy (Layout Heron, TableFormer, Tesseract fast/best/OSD, Agri, RapidOCR, EasyOCR: tên + kích thước) | vẫn chạy |
 | – | kiểm container database **chưa đổi** so với baseline | vẫn chạy |
-| M+N | tạo lại **chỉ** container ứng dụng: `up -d --no-deps --no-build --pull never --force-recreate open_notebook` kèm override bảo trì; ngay sau đó kiểm container database **vẫn là container cũ** (ID, image, mount, thời điểm khởi động) | thay bằng bản mới, bảo trì |
-| O | image ID của container = `expected_image_id`; API health (loopback, **không qua proxy**); `import docling`; `ocr.cli status`; `ocr.cli readiness --check`; `ocr.cli custom status`; **tách đoạn/đếm token khi không có mạng**; schema; **số bản ghi không đổi**; **file model trên volume không mất/không đổi kích thước**; container database không đổi | |
+| M+N | ngay trước khi tạo lại: chụp **mốc đối chiếu** (container database thật, schema, số bản ghi); tạo lại **chỉ** container ứng dụng: `up -d --no-deps --no-build --pull never --force-recreate open_notebook` kèm override bảo trì; ngay sau đó kiểm container database **vẫn là container cũ** (ID, image, mount, thời điểm khởi động) | thay bằng bản mới, bảo trì |
+| O | image ID của container = `expected_image_id`; API health (loopback, **không qua proxy**); `import docling`; `ocr.cli status`; `ocr.cli readiness --check`; `ocr.cli custom status`; **tách đoạn/đếm token khi không có mạng**; schema; **số bản ghi bằng đúng mốc đối chiếu** (đang bảo trì nên không ai đổi dữ liệu); **file model trên volume không mất/không đổi kích thước**; container database không đổi | |
 | P | `awaiting_approval` (OK) hoặc `failed` (giữ bảo trì, hướng dẫn rollback) | |
 
 Database container **không** bị dừng hay tạo lại ở bất kỳ bước nào; nếu Compose vẫn làm điều đó, công cụ phát hiện
@@ -202,6 +202,12 @@ sudo $T/finish.sh --approve "<người phê duyệt>"
 Tạo lại container ứng dụng **không** kèm override bảo trì, rồi **chạy lại toàn bộ kiểm tra của bước O**. Chỉ khi đạt
 mới ghi `completed`. Không đạt ⇒ `finish_failed` (mã thoát 5): sửa nguyên nhân rồi chạy lại `finish.sh`, hoặc
 `rollback.sh app`.
+
+Mỗi lần tạo lại (update, finish, rollback) dùng **mốc đối chiếu riêng, chụp ngay trước lần đó**, không dùng mốc đầu
+attempt: tài liệu thử tải lên trong lúc nghiệm thu hay một lần reboot máy chủ trước `finish` không bị coi là hư hại.
+Ở chế độ bình thường (sau `finish`, hoặc rollback `--no-maintenance`) người dùng đã làm việc trở lại nên số bản ghi
+chỉ được ghi nhận; kiểm tra chỉ thất bại khi một bảng **đang có dữ liệu trở thành rỗng** (dấu hiệu ứng dụng đang nhìn
+vào một database khác).
 
 ## 3. Sau khi hoàn tất: lệnh được phép, kiểm tra lệch, ghim image
 
@@ -276,14 +282,14 @@ sudo $T/status.sh
 
 | Trạng thái journal | Ý nghĩa | Làm gì |
 |---|---|---|
-| `in_progress`, chưa có `N_recreated` | ứng dụng cũ vẫn chạy | chạy lại đúng lệnh `update.sh … --apply …` với **cùng gói**: tiếp tục **cùng attempt**; backup của attempt chỉ được dùng lại nếu còn mới (`BACKUP_MAX_AGE_MINUTES`, mặc định 120), quá hạn ⇒ backup lại |
+| `in_progress`, chưa có `N_recreated` | ứng dụng cũ vẫn chạy | chạy lại đúng lệnh `update.sh … --apply …` với **cùng gói**: tiếp tục **cùng attempt**; backup của attempt chỉ được dùng lại nếu còn mới (`BACKUP_MAX_AGE_MINUTES`, mặc định 120), quá hạn ⇒ backup lại. Lần chạy lại bị **từ chối** nếu (a) container database đã khởi động lại / đổi kể từ lúc mở attempt (ví dụ reboot), hoặc (b) attempt đã đồng bộ mã nguồn (`--sync-source`) trước khi dừng: đóng attempt bằng `rollback.sh interrupted` — ứng dụng **không bị khởi động lại** vì chưa có gì được tạo lại, mã nguồn được đưa về commit cũ — rồi cập nhật lại từ đầu (attempt mới, backup mới) |
 | `in_progress`, đã có `N_recreated` | dừng giữa lúc/ sau khi tạo lại | `rollback.sh interrupted` |
 | `deployed_pending_checks` / `failed` | bản mới chạy ở chế độ bảo trì, kiểm tra không đạt | `rollback.sh interrupted` |
 | `awaiting_approval` | bản mới, bảo trì, kiểm tra đạt | nghiệm thu rồi `finish.sh --approve`, hoặc `rollback.sh app` |
 | `finish_failed` | đã chuyển sang chế độ bình thường nhưng kiểm tra không đạt | sửa nguyên nhân rồi `finish.sh --approve`, hoặc `rollback.sh app` |
 | `completed` | bản mới chạy bình thường | cập nhật tiếp theo = **attempt mới** |
 | `rolled_back` | đã về image baseline, đã kiểm tra | cập nhật lại = **attempt mới, backup mới** |
-| `rollback_failed` | image cũ đã được khởi động nhưng kiểm tra không đạt (hoặc container database bị báo đổi) | điều tra; `rollback.sh app` lại (thêm `--acknowledge-db-change` chỉ sau khi đã điều tra container database) |
+| `rollback_failed` | image cũ đã được khởi động nhưng kiểm tra không đạt, hoặc lần cập nhật từng báo `DATABASE CONTAINER CHANGED` và chưa được xác nhận | điều tra; `rollback.sh app` lại (thêm `--acknowledge-db-change` chỉ sau khi đã điều tra container database) |
 
 Quy tắc:
 
@@ -293,6 +299,8 @@ Quy tắc:
 - Khi còn attempt chưa quyết định (`awaiting_approval`, `deployed_pending_checks`, `finish_failed`,
   `rollback_failed`) mọi `update` — kể cả cùng gói — bị từ chối.
 - Một gói **khác** bị từ chối khi attempt dang dở.
+- `STATE_DIR` và các file trong đó (journal, bản sao, override, danh sách file model) chỉ người chạy công cụ đọc được
+  (thư mục `0700`, file `0600`): journal chứa hash của cấu hình Compose hiệu lực.
 - Journal ghi nguyên tử (file tạm + `fsync` + `rename`) và có bản sao `journal.json.bak`. Journal **hỏng** ⇒ mọi lệnh
   dừng với hướng dẫn khôi phục, **không** tự tạo journal mới (đó là bản ghi duy nhất về image để rollback):
   1. giữ nguyên cả hai file; 2. xem image đang chạy: `docker inspect <container> --format '{{.Image}}'`;

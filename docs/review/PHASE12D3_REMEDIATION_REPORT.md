@@ -86,7 +86,7 @@ Ký hiệu trạng thái: **V** = FIXED — VERIFIED · **L** = FIXED — LOCAL 
 | F-21 | "DB không bị đụng" chỉ kiểm trên cấu hình | `docker inspect` container DB trong baseline (trước sync) và sau mỗi `up`; schema + số bản ghi; so toàn bộ cấu hình | 6 test | L | W-OFF-13 | Có |
 | F-22 | Không kiểm model offline; bỏ qua kết quả chép RapidOCR | Readiness trong preflight; kiểm kết quả RapidOCR; so danh sách file model trước/sau; inventory + guard tiktoken | 10 test công cụ + 4 test `token_utils` | L | W-OFF-08, 21, 22; W-RAG-06 | Có |
 | T-01 | Oracle "0 từ bị mất" vòng tròn | Oracle trên ground truth khai báo; đo deletion / insertion / merge / reordering / trường trọng yếu / bảng | 7 test oracle | V | — | Có |
-| T-03 | Tham số hóa rỗng, fixture nhỏ, đường mã không có test | Lọc theo khóa; 45 fixture; tài liệu 100–300 trang; test cho mọi đường mã chạy được ở Cloud | 385 + 166 + 35 test | V | W-PIPE | Có |
+| T-03 | Tham số hóa rỗng, fixture nhỏ, đường mã không có test | Lọc theo khóa; 45 fixture; tài liệu 100–300 trang; test cho mọi đường mã chạy được ở Cloud | 385 + 172 + 35 test | V | W-PIPE | Có |
 
 ### P3 / P4
 

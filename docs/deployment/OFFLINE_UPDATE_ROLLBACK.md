@@ -60,8 +60,10 @@ sudo $T/rollback.sh app --package-dir <DIR>
   trên file theo dõi. Có thay đổi cục bộ ⇒ **không đụng** mã nguồn, in lệnh để người vận hành tự làm. Không
   `reset --hard`, không di chuyển nhánh, không đụng `.env`/file không theo dõi.
 - Tạo lại **chỉ** container ứng dụng (`--no-deps --no-build --pull never`), mặc định ở chế độ bảo trì.
-- Sau đó: container database phải vẫn là container cũ; container ứng dụng phải chạy đúng image ID baseline; health,
-  `import docling`, `ocr.cli status`, readiness cục bộ, Agri, tách đoạn offline đều phải đạt. Đạt ⇒ `rolled_back`
+- Sau đó: container database phải vẫn là container **của ngay trước lần rollback** (mốc đối chiếu chụp lại lúc này,
+  nên một lần reboot hay dữ liệu mới từ sau khi cập nhật không gây báo lỗi sai); container ứng dụng phải chạy đúng
+  image ID baseline; health, `import docling`, `ocr.cli status`, readiness cục bộ, Agri, tách đoạn offline, schema, số
+  bản ghi (bảo trì: bằng nhau; bình thường: không bảng nào đang có dữ liệu trở thành rỗng) đều phải đạt. Đạt ⇒ `rolled_back`
   (mã 0). Không đạt ⇒ `rollback_failed` (mã 5): **không** báo thành công; điều tra rồi chạy lại.
 - Nếu đã ghim image (`pin.sh --apply`): tên image của triển khai được trỏ về image baseline.
 - Database: **không** dừng, **không** restore.
@@ -82,7 +84,7 @@ sudo $T/status.sh
 
 | Trạng thái journal | Làm gì |
 |---|---|
-| `in_progress`, chưa có `N_recreated` | ứng dụng cũ vẫn chạy; chạy lại `update.sh … --apply` với cùng gói (tiếp tục cùng attempt) **hoặc** `rollback.sh interrupted` để đóng attempt (khôi phục mã nguồn nếu đã đồng bộ) |
+| `in_progress`, chưa có `N_recreated` | ứng dụng cũ vẫn chạy; chạy lại `update.sh … --apply` với cùng gói (tiếp tục cùng attempt) **hoặc** `rollback.sh interrupted` để đóng attempt: ứng dụng **không** bị tạo lại hay khởi động lại, mã nguồn (nếu đã đồng bộ) được đưa về commit cũ. Bắt buộc dùng cách thứ hai nếu attempt đã đồng bộ mã nguồn |
 | `in_progress`, đã có `N_recreated` | `sudo $T/rollback.sh interrupted` |
 | `deployed_pending_checks` / `failed` | `sudo $T/rollback.sh interrupted` → về image baseline, giữ bảo trì |
 | `awaiting_approval` | đang ở bản mới, bảo trì; nghiệm thu rồi `finish.sh --approve`, hoặc `rollback.sh app` |
@@ -90,9 +92,10 @@ sudo $T/status.sh
 | `completed` | bản mới đang chạy bình thường; rollback theo §3 |
 | `rollback_failed` | image cũ đã khởi động nhưng chưa đạt kiểm tra; điều tra, rồi `rollback.sh app` lại |
 
-`rollback.sh interrupted` giống `app`. Nếu công cụ từng báo `DATABASE CONTAINER CHANGED`, rollback tiếp tục báo cho
-tới khi người vận hành đã điều tra container database và chạy lại với `--acknowledge-db-change` (so với container
-hiện tại thay vì với baseline). Cờ này **không** sửa gì ở database.
+`rollback.sh interrupted` giống `app` khi container đã được tạo lại. Nếu lần cập nhật từng báo `DATABASE CONTAINER CHANGED`, rollback vẫn đưa ứng
+dụng về image cũ nhưng **không báo thành công** (`rollback_failed`, mã 5) cho tới khi người vận hành đã điều tra
+container database và chạy lại với `--acknowledge-db-change`. Cờ này chỉ ghi nhận việc đã điều tra; nó **không** sửa
+gì ở database.
 
 Journal hỏng: xem Ubuntu guide §5 (không tự tạo journal mới; có bản sao `journal.json.bak`; đường cuối cùng là đổi
 tên hai file hỏng rồi `rollback.sh app --to-image <tag rollback>`).
