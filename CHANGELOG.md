@@ -2,6 +2,24 @@
 
 Tất cả thay đổi đáng chú ý của ChatBot 5400 (Agribank Chi nhánh Lâm Đồng) được ghi ở đây.
 
+## [Unreleased] — 1.3.0-rc.1 (đang nghiệm thu, CHƯA phát hành)
+
+Phase 12 — Legal Document Normalization & Offline Update Package. Chi tiết: `docs/ocr/PHASE12_CLOUD_HANDOVER.md`,
+bản nháp ghi chú phát hành `docs/ocr/OCR_RELEASE_NOTES_V1.3.0_RC1.md`. Chỉ phát hành sau nghiệm thu Windows Local.
+
+- **Chuẩn hóa văn bản pháp lý sau OCR (opt-in)**: chế độ "Văn bản pháp lý" cho PDF — bỏ `<!-- image -->` của chữ
+  ký / con dấu / logo, loại số trang và header/footer lặp có đủ bằng chứng, nối đoạn bị cắt qua trang theo quy tắc
+  bảo thủ, giữ nguyên số Điều/Khoản/Điểm gốc (không còn bị đánh lại số hay chèn số), lấy lại chữ OCR nằm trong vùng
+  ảnh, bảng giữ nguyên. Không dùng AI sửa chữ. Bật bằng `OCR_LEGAL_NORMALIZATION_ENABLED=true` **và** chọn trong
+  Cài đặt → OCR Engine Manager; mặc định Tiêu chuẩn (kết quả giống hệt 1.2.0).
+- **Cải thiện bố cục OCR / giảm artifact trang**: phân tích nguyên nhân gốc và công cụ chẩn đoán từng tầng
+  (`scripts/ocr/phase12_diagnose.py`, `phase12_compare.py`).
+- **Gói cập nhật offline**: `scripts/offline/` — build trên Windows/Linux có Internet, kiểm tra toàn vẹn + xác thực
+  (chữ ký hoặc hash kênh tin cậy), preflight chỉ đọc, cập nhật chỉ tạo lại container ứng dụng, rollback. Build arg
+  mới `OCR_PREINSTALL_RUNTIMES` (mặc định `false`).
+- **Không có migration cơ sở dữ liệu; không đổi phụ thuộc** (`uv.lock`, `pyproject.toml`, `package-lock.json` không
+  đổi). Trường cài đặt mới `ocr_text_normalization` nằm trên bảng SCHEMALESS (thiếu = Tiêu chuẩn).
+
 ## [1.2.0] - 2026-11-17 — Advanced OCR & Custom Model Manager (bản chính thức)
 
 Bản **chính thức** đầu tiên có OCR Engine Manager và Custom Tesseract Model Manager; gom toàn bộ nội dung của
