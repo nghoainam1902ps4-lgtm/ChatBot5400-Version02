@@ -37,10 +37,8 @@ def _git(checkout: Path, *a: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-04: build-package.sh/.ps1 pass --git-ref <sha>; git refuses an empty bundle",
-)
+# PHASE12D2 F-04 (audit counter-example by the Phase 12D2 review: build-package.sh/.ps1 pass --git-ref <sha>; git refuses an empty bundle).
+# Fixed in Phase 12D3: the xfail marker is removed, this is now a regression test.
 def test_f04_build_with_commit_sha_as_the_wrappers_pass_it(fake_docker, repo, tmp_path):
     sha = _git(repo, "rev-parse", "HEAD")
     rc = OP.main(
@@ -60,10 +58,8 @@ def test_f04_wrappers_really_pass_a_commit_sha():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-05: a bundle built from HEAD carries no refs/*; --sync-source cannot fetch the release commit",
-)
+# PHASE12D2 F-05 (audit counter-example by the Phase 12D2 review: a bundle built from HEAD carries no refs/*; --sync-source cannot fetch the release commit).
+# Fixed in Phase 12D3: the xfail marker is removed, this is now a regression test.
 def test_f05_sync_source_from_a_default_package(deployment, repo, tmp_path):
     conf, pkg_dir, _ = deployment
     manifest = OP.load_package(str(pkg_dir))
@@ -97,10 +93,8 @@ def test_f05_sync_source_from_a_default_package(deployment, repo, tmp_path):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-08: journal steps of the first attempt are reused, the second attempt takes no new backup",
-)
+# PHASE12D2 F-08 (audit counter-example by the Phase 12D2 review: journal steps of the first attempt are reused, the second attempt takes no new backup).
+# Fixed in Phase 12D3: the xfail marker is removed, this is now a regression test.
 def test_f08_second_attempt_after_rollback_takes_a_new_backup(
     deployment, fake_docker, tmp_path
 ):
@@ -126,10 +120,8 @@ def test_f08_second_attempt_after_rollback_takes_a_new_backup(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-09: finish marks the update 'completed' without any health check",
-)
+# PHASE12D2 F-09 (audit counter-example by the Phase 12D2 review: finish marks the update 'completed' without any health check).
+# Fixed in Phase 12D3: the xfail marker is removed, this is now a regression test.
 def test_f09_finish_checks_health_before_reporting_completed(
     deployment, fake_docker, tmp_path
 ):
@@ -162,10 +154,8 @@ def test_f09_finish_checks_health_before_reporting_completed(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-12: image reference is written unquoted into the compose override",
-)
+# PHASE12D2 F-12 (audit counter-example by the Phase 12D2 review: image reference is written unquoted into the compose override).
+# Fixed in Phase 12D3: the xfail marker is removed, this is now a regression test.
 def test_f12_image_reference_cannot_inject_yaml(deployment):
     conf, _, _ = deployment
     dep = OP.Deployment(OP.load_config(str(conf)))
@@ -174,10 +164,8 @@ def test_f12_image_reference_cannot_inject_yaml(deployment):
         OP.write_image_override(dep, evil, {})
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-12: manifest image.tag / source.commit / release_tag are not format-checked",
-)
+# PHASE12D2 F-12 (audit counter-example by the Phase 12D2 review: manifest image.tag / source.commit / release_tag are not format-checked).
+# Fixed in Phase 12D3: the xfail marker is removed, this is now a regression test.
 def test_f12_manifest_rejects_malformed_tag_and_commit(deployment):
     _, pkg_dir, _ = deployment
     manifest = json.loads((Path(pkg_dir) / OP.MANIFEST).read_text())
@@ -193,10 +181,8 @@ def test_f12_manifest_rejects_malformed_tag_and_commit(deployment):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-13: json.JSONDecodeError escapes main(); status/rollback unusable after a torn write",
-)
+# PHASE12D2 F-13 (audit counter-example by the Phase 12D2 review: json.JSONDecodeError escapes main(); status/rollback unusable after a torn write).
+# Fixed in Phase 12D3: the xfail marker is removed, this is now a regression test.
 def test_f13_truncated_journal_is_reported_not_a_traceback(deployment, tmp_path):
     conf, _, _ = deployment
     state = tmp_path / "state"
@@ -213,10 +199,8 @@ def test_f13_truncated_journal_is_reported_not_a_traceback(deployment, tmp_path)
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-14: two entries with the same name; the later one silently wins",
-)
+# PHASE12D2 F-14 (audit counter-example by the Phase 12D2 review: two entries with the same name; the later one silently wins).
+# Fixed in Phase 12D3: the xfail marker is removed, this is now a regression test.
 def test_f14_duplicate_archive_entries_refused(tmp_path):
     pkg = tmp_path / "dup.tar.gz"
     with tarfile.open(pkg, "w:gz") as tar:
