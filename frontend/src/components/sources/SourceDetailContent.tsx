@@ -68,6 +68,7 @@ import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { SourceInsightDialog } from '@/components/sources/SourceInsightDialog'
+import { legalDisplayMarkdown, legalParagraphKind, normalizationState } from '@/lib/utils/legal-display'
 import { NotebookAssociations } from '@/components/sources/NotebookAssociations'
 
 interface SourceDetailContentProps {
@@ -120,6 +121,38 @@ const legalContentComponents = {
     return <li className="mb-1">{children}</li>
   },
 }
+
+// A Source that went through Legal Document normalization has no Markdown
+// lists: every Điều / Khoản / điểm is a paragraph that starts with its own
+// marker (Phase 12D3, F-16). Give those paragraphs the same hierarchy the list
+// styles give a standard Source, from the leading marker only - the text is
+// never changed.
+const LEGAL_PARAGRAPH_STYLE: Record<string, React.CSSProperties> = {
+  article: { textIndent: 0, fontWeight: 700, marginTop: '0.75rem' },
+  clause: { textIndent: 0, paddingLeft: '2em' },
+  point: { textIndent: 0, paddingLeft: '3.5em' },
+  subpoint: { textIndent: 0, paddingLeft: '5em' },
+  bullet: { textIndent: 0, paddingLeft: '3.5em' },
+}
+
+const legalNormalizedComponents = {
+  ...legalContentComponents,
+  p: ({ children }: { children?: React.ReactNode }) => {
+    const kind = legalParagraphKind(leadingText(children))
+    return (
+      <p className="mb-4" data-legal-kind={kind} style={LEGAL_PARAGRAPH_STYLE[kind]}>
+        {children}
+      </p>
+    )
+  },
+}
+
+const NORMALIZATION_LABEL_KEYS = {
+  standard: 'sources.normalization.standard',
+  legal_applied: 'sources.normalization.legalApplied',
+  legal_failed: 'sources.normalization.legalFailed',
+  legal_skipped: 'sources.normalization.legalSkipped',
+} as const
 
 export function SourceDetailContent(props: SourceDetailContentProps) {
   // Remount per source so all per-source UI state (active tab, transient
@@ -368,6 +401,8 @@ function SourceDetailContentInner({
   }
 
   const externalHref = useMemo(() => safeExternalHref(source?.asset?.url), [source?.asset?.url])
+  const extraction = source?.asset?.extraction ?? null
+  const normalization = normalizationState(extraction)
 
   const handleCopyUrl = useCallback(() => {
     if (source?.asset?.url) {
@@ -590,9 +625,36 @@ function SourceDetailContentInner({
                   (justified text + first-line indent) so Vietnamese legal
                   documents (Điều/Khoản/điểm) read closer to the original.
                   Scoped to source content only — chat/notes are unaffected. */}
+              {source.full_text && (
+                <p
+                  className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                  data-testid="source-normalization"
+                  data-state={normalization}
+                >
+                  <span>{t('sources.normalization.label')}:</span>
+                  <Badge variant={normalization === 'legal_failed' ? 'destructive' : 'secondary'}>
+                    {t(NORMALIZATION_LABEL_KEYS[normalization])}
+                  </Badge>
+                  {normalization === 'legal_applied' && extraction?.version && (
+                    <span>v{extraction.version}</span>
+                  )}
+                  {normalization === 'legal_applied' && (extraction?.warnings?.length ?? 0) > 0 && (
+                    <span data-testid="source-normalization-warnings">
+                      {t('sources.normalization.warnings', { count: extraction?.warnings?.length ?? 0 })}
+                    </span>
+                  )}
+                </p>
+              )}
               <div className="source-prose">
-                <MarkdownRenderer components={legalContentComponents}>
-                  {source.full_text || t('sources.noContent')}
+                {/* Legal: the stored text keeps clause markers as printed; they
+                    are escaped only here so Markdown does not renumber them
+                    (F-17). Standard sources render exactly as before. */}
+                <MarkdownRenderer
+                  components={normalization === 'legal_applied' ? legalNormalizedComponents : legalContentComponents}
+                >
+                  {source.full_text
+                    ? (normalization === 'legal_applied' ? legalDisplayMarkdown(source.full_text) : source.full_text)
+                    : t('sources.noContent')}
                 </MarkdownRenderer>
               </div>
             </section>

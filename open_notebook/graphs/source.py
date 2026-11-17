@@ -239,12 +239,18 @@ async def content_process(state: SourceState) -> dict:
         raise
 
     if ocr_settings.legal_normalization and file_path_only:
-        status = (getattr(processed, "metadata", None) or {}).get(
-            "legal_normalization_status"
-        )
-        if status is None:
-            # Not a PDF the Docling layer converted (other format, Docling not
-            # installed, non-Markdown output): the standard content is kept.
+        meta = getattr(processed, "metadata", None)
+        if isinstance(meta, dict) and meta.get("legal_normalization_status") is None:
+            # Legal was requested and this file never reached the normalizer
+            # (other format, Docling not installed): the standard content is
+            # kept, and the Source says so instead of looking normalized.
+            from open_notebook.ocr import legal_normalizer
+
+            meta["text_normalization"] = legal_normalizer.MODE_LEGAL
+            meta["legal_normalization_status"] = "skipped"
+            meta["legal_normalization_record"] = legal_normalizer.skipped_record(
+                "not a PDF converted by the Docling layer"
+            )
             logger.info(
                 "Legal document normalization not applied to this source "
                 "(only PDFs converted by Docling are normalized)."
@@ -299,8 +305,16 @@ async def save_source(state: SourceState) -> dict:
 
     # Update the source with processed content. content-core's ExtractionOutput
     # does not echo url/file_path back, so carry them from the input state.
+    # How this text was produced, when it is not the standard export (Legal
+    # Document normalization applied / failed / skipped - finding F-07). A
+    # re-processed Source always gets the record of the new run (or none).
+    record = (getattr(extraction, "metadata", None) or {}).get(
+        "legal_normalization_record"
+    )
     source.asset = Asset(
-        url=content_state.get("url"), file_path=content_state.get("file_path")
+        url=content_state.get("url"),
+        file_path=content_state.get("file_path"),
+        extraction=record if isinstance(record, dict) else None,
     )
     source.full_text = extraction.content
 

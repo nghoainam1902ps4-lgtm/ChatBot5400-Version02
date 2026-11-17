@@ -752,6 +752,7 @@ function TextNormalizationPanel({ config }: { config: OcrConfig }) {
           <div className="space-y-0.5">
             <Label htmlFor="ocr_norm_legal">{t('ocr.textNormalization.legal')}</Label>
             <p className="text-sm text-muted-foreground">{t('ocr.textNormalization.legalHelp')}</p>
+            <p className="text-xs text-muted-foreground">{t('ocr.textNormalization.legalDetail')}</p>
           </div>
         </div>
       </RadioGroup>

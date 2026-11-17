@@ -239,6 +239,16 @@ class NormalizationResult:
         }
 
 
+def skipped_record(reason: str) -> dict[str, Any]:
+    """Stored when Legal was requested but this input is outside its scope."""
+    return {
+        "mode": MODE_LEGAL,
+        "status": "skipped",
+        "version": NORMALIZER_VERSION,
+        "reason": reason,
+    }
+
+
 def failed_record(error: str) -> dict[str, Any]:
     """Stored when Legal was requested but the standard export was kept."""
     return {

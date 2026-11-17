@@ -181,7 +181,7 @@ async def test_url_pdf_legal(routing, monkeypatch):
 
 @pytest.fixture
 def converted(monkeypatch, tmp_path):
-    fixture = FX.by_name("f02_clause_across_pages")
+    fixture = FX.by_name("f33_five_pages_real_page_numbers_and_join")
     doc = H.build_document(fixture)
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF-1.4\n%synthetic\n")
@@ -233,18 +233,72 @@ def test_convert_file_legal_failure_keeps_standard(converted, monkeypatch):
     assert meta["legal_normalization_status"] == "failed"
 
 
-def test_convert_file_legal_skips_non_pdf_and_non_markdown(converted):
+def test_convert_file_legal_outside_its_scope_says_skipped(converted):
+    """F-07: Legal requested, input not normalizable -> standard text + an explicit status."""
     doc, _, tmp_path = converted
     png = tmp_path / "scan.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\n")
     out, meta = docling_extract.convert_file(
         str(png), _cfg(), OcrSettings(text_normalization="legal")
     )
-    assert out == doc.export_to_markdown() and "legal_normalization_status" not in meta
+    assert out == doc.export_to_markdown()
+    assert meta["legal_normalization_status"] == "skipped"
+    assert meta["legal_normalization_record"]["status"] == "skipped"
     out, meta = docling_extract.convert_file(
         str(png), _cfg("html"), OcrSettings(text_normalization="legal")
     )
     assert out == doc.export_to_html()
+    assert meta["legal_normalization_record"]["reason"] == "html output"
+
+
+def test_convert_file_standard_never_carries_a_record(converted):
+    doc, pdf, tmp_path = converted
+    _, meta = docling_extract.convert_file(pdf, _cfg(), OcrSettings())
+    assert "legal_normalization_record" not in meta
+    assert "legal_normalization_status" not in meta
+
+
+def test_pdf_with_leading_bytes_is_still_normalized(converted, tmp_path):
+    """F-18: the PDF header may sit anywhere in the first 1024 bytes."""
+    odd = tmp_path / "odd.pdf"
+    odd.write_bytes(b"\x00\xef\xbb\xbfJUNK-BYTES\r\n%PDF-1.7\n%synthetic\n")
+    out, meta = docling_extract.convert_file(
+        str(odd), _cfg(), OcrSettings(text_normalization="legal")
+    )
+    assert meta["legal_normalization_status"] == "applied"
+    late = tmp_path / "late.bin"
+    late.write_bytes(b"x" * 2000 + b"%PDF-1.7")
+    assert docling_extract._is_pdf(str(late)) is False
+
+
+@pytest.mark.asyncio
+async def test_legal_changing_the_ocr_path_is_logged(routing, monkeypatch):
+    """F-15: Legal moves a default-configuration PDF to the Docling layer; say so."""
+    from loguru import logger
+
+    from open_notebook.ocr import compat
+
+    seen: list[str] = []
+    sink = logger.add(lambda m: seen.append(str(m)), level="INFO")
+    try:
+        monkeypatch.setattr(compat, "problems", lambda engine: [])
+        ocr = OcrSettings(text_normalization="legal")
+        assert await docling_extract.should_use_native_ocr("x.pdf", "docling", ocr)
+        assert any("instead of content-core's default path" in m for m in seen)
+        seen.clear()
+        monkeypatch.setattr(
+            compat, "problems", lambda engine: ["rapidocr 9.9 unverified"]
+        )
+        monkeypatch.setattr(compat, "override_enabled", lambda: False)
+        assert await docling_extract.should_use_native_ocr("x.pdf", "docling", ocr)
+        assert any("unverified" in m and "WARNING" in m for m in seen)
+        seen.clear()
+        # an engine that takes the Docling layer anyway: nothing to announce
+        other = OcrSettings(engine="tesseract_best", text_normalization="legal")
+        assert await docling_extract.should_use_native_ocr("x.pdf", "docling", other)
+        assert not any("content-core" in m for m in seen)
+    finally:
+        logger.remove(sink)
 
 
 # --------------------------------------------------------------------------- #
@@ -322,6 +376,7 @@ async def test_source_graph_stores_normalized_text_and_embeds_it(
         id = "source:1"
         title = "Processing..."
         full_text = None
+        asset = None
         vectorized_with = None
 
         async def save(self):
@@ -346,7 +401,15 @@ async def test_source_graph_stores_normalized_text_and_embeds_it(
     assert (
         FakeSource.vectorized_with == extraction.content
     )  # embedding reads the same text
-    assert "<!-- image -->" not in saved["source"].full_text
+    # F-07: the Source carries how its text was produced (no document text in it)
+    record = saved["source"].asset.extraction
+    assert record["mode"] == "legal" and record["status"] == "applied"
+    assert record["version"] == legal_normalizer.NORMALIZER_VERSION
+    assert record["counts"]["join_across_pages"] == 1
+    assert "Dịch vụ" not in repr(record)
+    # F-17: what is stored is what is displayed - no Markdown escape of markers
+    assert "9. Dịch vụ phi tài chính" in saved["source"].full_text
+    assert "9\\." not in saved["source"].full_text
 
 
 def test_normalized_text_chunks_without_losing_content():
@@ -451,3 +514,110 @@ def test_config_endpoint_is_admin_only():
 
     deps = [d.dependency.__name__ for d in ocr.router.dependencies]
     assert "require_admin" in deps
+
+
+# --------------------------------------------------------------------------- #
+# F-07: the normalization record on the Source (no migration)
+# --------------------------------------------------------------------------- #
+
+
+def test_asset_record_round_trip_and_v120_compatibility():
+    from open_notebook.domain.notebook import Asset, Source
+
+    # Standard: stored exactly as v1.2.0 stored it (no new key at all).
+    plain = Source(title="t", asset=Asset(file_path="/x.pdf"))._prepare_save_data()
+    assert plain["asset"] == {"file_path": "/x.pdf", "url": None}
+    # Legal: the record travels inside the FLEXIBLE `asset` object.
+    record = legal_normalizer.failed_record("RuntimeError")
+    data = Source(
+        title="t", asset=Asset(file_path="/x.pdf", extraction=record)
+    )._prepare_save_data()
+    assert data["asset"]["extraction"] == record
+    # Read back (what the database returns) and what v1.2.0's Asset does with it.
+    assert Source(title="t", asset=data["asset"]).asset.extraction["status"] == "failed"
+    from pydantic import BaseModel
+
+    class AssetV120(BaseModel):  # v1.2.0 model: unknown keys are ignored
+        file_path: str | None = None
+        url: str | None = None
+
+    assert AssetV120(**data["asset"]).model_dump() == {
+        "file_path": "/x.pdf",
+        "url": None,
+    }
+
+
+def test_source_table_needs_no_migration_for_the_record():
+    """`asset` is FLEXIBLE in migration 1; Phase 12 adds no migration file."""
+    import re
+
+    migrations = (
+        Path(__file__).resolve().parents[1]
+        / "open_notebook"
+        / "database"
+        / "migrations"
+    )
+    first = (migrations / "1.surrealql").read_text()
+    assert re.search(r"asset\s+ON TABLE source\s+FLEXIBLE TYPE option<object>", first)
+    numbers = sorted(
+        int(p.stem) for p in migrations.glob("*.surrealql") if p.stem.isdigit()
+    )
+    assert numbers[-1] == 33  # same schema version as v1.2.0
+
+
+@pytest.mark.asyncio
+async def test_source_graph_marks_failed_and_skipped(monkeypatch):
+    """Fallback and out-of-scope inputs are visible on the Source, not silent."""
+    from content_core.common import ExtractionOutput
+
+    from open_notebook.graphs import source as source_graph
+
+    class FakeSource:
+        id = "source:1"
+        title = "t"
+        full_text = None
+        asset = None
+
+        async def save(self):
+            pass
+
+        async def claim_review_embed(self):
+            return False
+
+    async def get_source(sid):
+        return FakeSource()
+
+    monkeypatch.setattr(source_graph.Source, "get", get_source)
+    for record in (
+        legal_normalizer.failed_record("NormalizationLimitError"),
+        legal_normalizer.skipped_record("not a PDF"),
+        None,
+    ):
+        meta = {"legal_normalization_record": record} if record else {}
+        extraction = ExtractionOutput(
+            content="Nội dung",
+            title="t",
+            source_type="file",
+            identified_type="application/pdf",
+            metadata=meta,
+        )
+        saved = await source_graph.save_source(
+            {
+                "content_state": {"file_path": "/x.pdf"},
+                "extraction": extraction,
+                "source_id": "source:1",
+                "embed": False,
+            }
+        )
+        assert saved["source"].asset.extraction == record
+
+
+def test_api_exposes_the_record():
+    from api.models import AssetModel
+
+    record = legal_normalizer.skipped_record("not a PDF")
+    assert (
+        AssetModel(file_path="/x", extraction=record).model_dump()["extraction"]
+        == record
+    )
+    assert AssetModel(file_path="/x").extraction is None

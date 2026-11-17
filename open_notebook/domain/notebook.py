@@ -14,7 +14,14 @@ from typing import (
 )
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_serializer,
+)
 from surreal_commands import submit_command
 from surrealdb import RecordID
 
@@ -449,6 +456,21 @@ class Notebook(ObjectModel):
 class Asset(BaseModel):
     file_path: Optional[str] = None
     url: Optional[str] = None
+    # Phase 12D3 (finding F-07): how the stored text was produced, when it was
+    # not the standard export - {"mode": "legal", "status": "applied" | "failed"
+    # | "skipped", "version", "counts", "warnings", "operations"} (bounded, no
+    # document text; removed lines are identified by page + SHA-256).
+    # `source.asset` is a FLEXIBLE object: no migration, deleted with the Source,
+    # ignored by v1.2.0 (unknown key). Absent / None = standard export.
+    extraction: Optional[Dict[str, Any]] = None
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_extraction(self, handler: Any) -> Dict[str, Any]:
+        """A standard Source is stored exactly as before: no `extraction` key."""
+        data = handler(self)
+        if data.get("extraction") is None:
+            data.pop("extraction", None)
+        return data
 
 
 class SourceEmbedding(ObjectModel):

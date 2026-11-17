@@ -103,7 +103,10 @@ async def should_use_native_ocr(
     # layer has: a PDF then takes it even with the default configuration.
     if native_path_required(ocr, is_image=True) or ocr.legal_normalization:
         mime = await get_file_type(file_path)
-        return _decide(mime, document_engine, ocr)
+        decided = _decide(mime, document_engine, ocr)
+        if decided:
+            _warn_if_legal_changes_the_ocr_path(ocr, mime)
+        return decided
     # Default configuration: content-core's own path, with ONE exception (D-33).
     # content-core cannot be given an OCR mode, so a PDF that the opt-in rule
     # wants read in full-page mode is converted here, with the same engine.
@@ -159,6 +162,36 @@ def _decide(mime: str, document_engine: str, ocr: OcrSettings) -> bool:
         )
         and _docling_routes(mime, document_engine)
     )
+
+
+def _warn_if_legal_changes_the_ocr_path(ocr: OcrSettings, mime: str) -> None:
+    """Legal mode moves a default-configuration PDF from content-core to this layer.
+
+    Same pipeline options, but RapidOCR is named explicitly instead of being
+    picked by Docling's Auto mode, and pdf_prep runs (finding F-15). Say so, and
+    say it loudly when the RapidOCR dependencies are not the verified set - the
+    case the default routing deliberately leaves to content-core.
+    """
+    if not _legal_applies(ocr, mime) or native_path_required(
+        ocr, is_image=mime.startswith("image/")
+    ):
+        return  # this configuration takes the Docling layer anyway
+    from open_notebook.ocr import compat
+
+    found = compat.problems("rapidocr")
+    if found and not compat.override_enabled():
+        logger.warning(
+            "Legal Document mode routes this PDF through the ChatBot5400 Docling "
+            "layer with explicit RapidOCR options although its dependencies are "
+            f"unverified ({'; '.join(found)}); the OCR text may differ from the "
+            "Standard (content-core) path."
+        )
+    else:
+        logger.info(
+            "Legal Document mode: this PDF is converted by the ChatBot5400 Docling "
+            "layer (explicit RapidOCR options, page preparation) instead of "
+            "content-core's default path."
+        )
 
 
 def _legal_applies(ocr: OcrSettings, mime: str) -> bool:
@@ -347,6 +380,17 @@ def convert_file(
         output, normalization = legal_normalizer.normalize_or_fallback(doc)
     else:
         output = doc.export_to_markdown()
+    if ocr.legal_normalization and not normalization:
+        # Legal was requested but this conversion is outside its scope (not a
+        # PDF, or HTML / JSON output): say so, do not look normalized (F-07).
+        from open_notebook.ocr import legal_normalizer
+
+        why = "not a PDF" if fmt not in ("html", "json") else f"{fmt} output"
+        normalization = {
+            "text_normalization": legal_normalizer.MODE_LEGAL,
+            "legal_normalization_status": "skipped",
+            "legal_normalization_record": legal_normalizer.skipped_record(why),
+        }
     meta = {
         "docling_format": fmt,
         "ocr_engine": ocr.engine,
@@ -362,10 +406,15 @@ def convert_file(
 
 
 def _is_pdf(path: str) -> bool:
-    """PDF by content (magic bytes), whatever the file name says."""
+    """PDF by content, whatever the file name says.
+
+    The PDF specification allows the header anywhere in the first 1024 bytes
+    (some scanners write a few bytes before it), and the MIME sniffing that
+    routed the file here accepts that too (finding F-18).
+    """
     try:
         with open(path, "rb") as f:
-            return f.read(1024).lstrip().startswith(b"%PDF-")
+            return b"%PDF-" in f.read(1024)
     except OSError:
         return False
 

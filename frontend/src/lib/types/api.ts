@@ -29,6 +29,8 @@ export interface SourceListResponse {
   asset: {
     file_path?: string
     url?: string
+    /** Phase 12D3 (F-07): how the stored text was produced when it is not the standard export. */
+    extraction?: import('@/lib/utils/legal-display').SourceExtractionRecord | null
   } | null
   embedded: boolean
   embedded_chunks: number            // ADD: From Python API

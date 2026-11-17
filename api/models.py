@@ -347,6 +347,10 @@ class SettingsUpdate(BaseModel):
 class AssetModel(BaseModel):
     file_path: Optional[str] = None
     url: Optional[str] = None
+    # Phase 12D3 (F-07): how the stored text was produced when it is not the
+    # standard export (Legal Document normalization applied / failed /
+    # skipped). Counts, warnings, page + SHA-256 of removed lines; no text.
+    extraction: Optional[Dict[str, Any]] = None
 
 
 class SourceCreate(BaseModel):

@@ -444,6 +444,7 @@ def _source_to_response(
         "asset": AssetModel(
             file_path=source.asset.file_path,
             url=source.asset.url,
+            extraction=source.asset.extraction,
         )
         if source.asset
         else None,
