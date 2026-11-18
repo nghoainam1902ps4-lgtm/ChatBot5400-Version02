@@ -13,7 +13,10 @@ mode, the engine of ``--engine``), and that very conversion writes
                                  the attached footnotes written
                                  (``docling_patches.evidence_capture``);
 * ``<out>/manifest.json``        document names, input / output SHA-256,
-                                 conversion status, versions, engine, commit.
+                                 conversion status, versions, engine, commit;
+                                 with evidence also two COUNTS for the D8-03
+                                 gate: words with a ``-`` in the raw TSV, and how
+                                 many of them the output shows verbatim.
 
 Run it in the application environment (the container, models installed). On a
 checkout without the evidence capture (v1.2.0, which has no patch module) it
@@ -96,6 +99,30 @@ def _versions() -> dict[str, Optional[str]]:
     return out
 
 
+def hyphen_words(evidence: Path, content: str) -> dict[str, int]:
+    """D8-03 local gate (counts only): the words with a ``-`` Tesseract read in
+    this very conversion, and how many of them the stored content shows
+    verbatim. Fewer in the output = a hyphen may be lost: check that document
+    locally. Never returns or prints a word."""
+    total = found = 0
+    for tsv in sorted((evidence / "tesseract").glob("*.tsv")):
+        lines = tsv.read_text(encoding="utf-8", errors="replace").splitlines()
+        if not lines:
+            continue
+        header = lines[0].split("\t")
+        if "text" not in header or "level" not in header:
+            continue
+        col, lvl = header.index("text"), header.index("level")
+        for line in lines[1:]:
+            cells = line.split("\t")
+            if len(cells) <= max(col, lvl) or cells[lvl] != "5":
+                continue
+            if "-" in cells[col]:
+                total += 1
+                found += cells[col] in content
+    return {"tsv_hyphen_words": total, "tsv_hyphen_words_in_output": found}
+
+
 def export(
     input_dir: Path,
     out: Path,
@@ -104,11 +131,13 @@ def export(
     convert: Any = None,
 ) -> dict[str, Any]:
     """Convert every PDF of ``input_dir``; returns the manifest."""
+    capture: Any = None  # v1.2.0: no evidence capture
     try:
-        from open_notebook.ocr import docling_patches as P
+        from open_notebook.ocr import docling_patches
     except ImportError:  # v1.2.0 has no patch module at all
-        P = None
-    capture = getattr(P, "evidence_capture", None)  # absent on v1.2.0
+        pass
+    else:
+        capture = getattr(docling_patches, "evidence_capture", None)
     if convert is None:
         from content_core import ContentCoreConfig
 
@@ -162,6 +191,8 @@ def export(
             ocr_model_version=meta.get("ocr_model_version"),
             ocr_model_sha256=meta.get("ocr_model_sha256"),
         )
+        if capture is not None:
+            entry.update(hyphen_words(out / f"{name}.evidence", content))
         manifest["documents"].append(entry)
     _write_private(
         out / "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=1)

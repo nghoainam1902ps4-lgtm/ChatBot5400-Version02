@@ -197,6 +197,12 @@ def test_every_real_difference_is_explained_and_the_gate_passes(gate, capsys):
     body = (gate.after.parent / "report" / "standard_diff.json").read_text("utf-8")
     for secret in ("BNNPTNT", "KHTC", "Thông"):
         assert secret not in body, secret  # default report: metadata only
+    # the D8-03 counts of the manifest: every hyphenated TSV word is shown
+    entry = json.loads((gate.after / "manifest.json").read_text(encoding="utf-8"))[
+        "documents"
+    ][0]
+    assert entry["tsv_hyphen_words"] >= 2
+    assert entry["tsv_hyphen_words_in_output"] == entry["tsv_hyphen_words"]
 
 
 @needs_ocr
@@ -497,3 +503,22 @@ def test_the_export_runs_where_the_patch_module_does_not_exist(tmp_path, monkeyp
     assert [d["name"] for d in manifest["documents"]] == ["a"]
     assert (out / "a.md").read_text(encoding="utf-8") == "Số: 1.0"
     assert not list(out.glob("*.evidence"))
+
+
+def test_hyphen_counts_are_numbers_and_see_a_lost_hyphen(tmp_path):
+    folder = tmp_path / "x.evidence" / "tesseract"
+    folder.mkdir(parents=True)
+    head = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num"
+    head += "\tleft\ttop\twidth\theight\tconf\ttext"
+    rows = [
+        head,
+        "4\t1\t1\t1\t1\t0\t0\t0\t90\t10\t-1\t",
+        "5\t1\t1\t1\t1\t1\t0\t0\t40\t10\t91\t05/2024/TT-",
+        "5\t1\t1\t1\t2\t1\t0\t20\t40\t10\t92\tBNNPTNT",
+        "5\t1\t1\t1\t3\t1\t0\t40\t20\t10\t93\tVT-",
+        "5\t1\t1\t1\t3\t2\t30\t40\t20\t10\t94\tKHTC",
+    ]
+    (folder / "0001_001_000001.tsv").write_text("\n".join(rows), encoding="utf-8")
+    counts = X.hyphen_words(tmp_path / "x.evidence", "05/2024/TT-BNNPTNT VTKHTC")
+    assert counts == {"tsv_hyphen_words": 2, "tsv_hyphen_words_in_output": 1}
+    assert all(isinstance(v, int) for v in counts.values())
