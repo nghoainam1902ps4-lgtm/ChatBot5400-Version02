@@ -122,6 +122,9 @@ if argv[0] == "tag":
     state["images"][argv[2]] = iid; save(); sys.exit(0)
 if argv[0] == "save":
     if state.get("save_rc"): sys.exit(state["save_rc"])
+    if state.get("save_hang"):  # an interrupted build (E1-04): say so, then hang until killed
+        import time
+        open(state["save_hang"], "w").write(str(os.getpid())); time.sleep(600)
     path, ref = argv[2], argv[3]
     config = state["image_configs"][image_id(ref)].encode()
     name = hashlib.sha256(config).hexdigest() + ".json"

@@ -448,25 +448,70 @@ def signature_policy(cfg: Dict[str, str], allowed_signers: str) -> str:
     return "required" if allowed_signers and Path(allowed_signers).is_file() else "optional"
 
 
-@contextlib.contextmanager
-def update_lock(state_dir: Path) -> Iterator[None]:
-    """One update at a time (flock); released automatically if the process dies."""
-    import fcntl
+# Lock files (E1-04, Phase 12D7): one mechanism on every platform the tool runs
+# on - flock() on Linux / macOS (the Ubuntu server, a Linux build machine) and
+# the byte-range lock msvcrt.locking() on Windows (the build machine, PowerShell
+# 5.1 / 7; fcntl does not exist there). Both are exclusive between processes,
+# held by the open file, released by the operating system when the process
+# dies, and taken without waiting: a second taker is refused at once. The file
+# is opened WITHOUT truncation (a refused process must not touch what the
+# holder wrote) and is never deleted: removing a lock file another process
+# holds, or is about to take, would let two holders exist.
+LOCK_BYTE_OFFSET = 1 << 30  # Windows: the locked byte, far past the PID text
 
-    ensure_state_dir(state_dir)
-    fh = open(state_dir / "update.lock", "w")
+
+def _lock_holder(fd: int) -> str:
+    with contextlib.suppress(OSError, ValueError):
+        os.lseek(fd, 0, os.SEEK_SET)
+        text = os.read(fd, 32).decode("ascii", "replace").strip()
+        if text.isdigit():
+            return f"process {int(text)}"
+    return "another process"
+
+
+@contextlib.contextmanager
+def exclusive_lock(path: Path, busy: str) -> Iterator[None]:
+    """Hold ``path`` exclusively for the ``with`` block, or refuse with ``busy``."""
     try:
-        try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            raise Refused(
-                "another update / rollback is running (lock held)", EXIT_LOCK
-            ) from None
-        fh.write(str(os.getpid()))
-        fh.flush()
+        fd = os.open(str(path), os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o600)
+    except OSError as e:
+        raise Refused(f"cannot open the lock file {path}: {e.strerror or e}", EXIT_LOCK) from None
+    locked = False
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            os.lseek(fd, LOCK_BYTE_OFFSET, os.SEEK_SET)
+            with contextlib.suppress(OSError):
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                locked = True
+        else:
+            import fcntl
+
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+        if not locked:
+            raise Refused(f"{busy} (lock {path} held by {_lock_holder(fd)})", EXIT_LOCK)
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.write(fd, f"{os.getpid():<19}\n".encode("ascii"))  # fixed width: no truncate
         yield
     finally:
-        fh.close()
+        if locked and sys.platform == "win32":
+            import msvcrt
+
+            with contextlib.suppress(OSError):
+                os.lseek(fd, LOCK_BYTE_OFFSET, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def update_lock(state_dir: Path) -> Iterator[None]:
+    """One update at a time; released automatically if the process dies."""
+    ensure_state_dir(state_dir)
+    with exclusive_lock(state_dir / "update.lock", "another update / rollback is running"):
+        yield
 
 
 def _fsync_dir(path: Path) -> None:
@@ -505,12 +550,18 @@ def atomic_write(path: Path, text: str, private: bool = False) -> None:
             tmp.unlink()
         fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(fd)
-    with open(tmp, "w", encoding="utf-8") as fh:
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:  # LF on Windows too
         fh.write(text)
         fh.flush()
         os.fsync(fh.fileno())
     os.replace(tmp, path)
     _fsync_dir(path.parent)
+
+
+def _write_lf(path: Path, text: str) -> None:
+    """UTF-8 text with LF line ends whatever the platform (no CRLF on Windows)."""
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
 
 
 def write_json_private(path: Path, data: Any) -> None:
@@ -1840,20 +1891,23 @@ VERSION_LABEL = "org.opencontainers.image.version"
 
 @contextlib.contextmanager
 def build_lock(out_root: Path, name: str) -> Iterator[None]:
-    """One build of a given package name at a time in --out (R2-18)."""
-    import fcntl
-
-    fh = open(out_root / f".{name}.lock", "w")
-    try:
-        try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            raise Refused(
-                f"another build of {name} is running in {out_root} (lock held)", EXIT_LOCK
-            ) from None
+    """One build of a given package name at a time in --out (R2-18), on Windows
+    too (E1-04): see :func:`exclusive_lock`."""
+    with exclusive_lock(
+        out_root / f".{name}.lock", f"another build of {name} is running in {out_root}"
+    ):
         yield
-    finally:
-        fh.close()
+
+
+def _remove_stale_partials(out_root: Path, name: str, own: Path) -> None:
+    """Partial archives of THIS package name left by an interrupted build. Called
+    with the build lock held: no other build of this name is running, so every
+    such file belongs to a build that died (E1-04). Nothing else is touched."""
+    for stale in out_root.glob(f".{name}.tar.gz.partial-*"):
+        if stale != own and stale.is_file() and not stale.is_symlink():
+            with contextlib.suppress(OSError):
+                stale.unlink()
+                log(f"removed {stale.name} (left by an interrupted build)")
 
 
 def check_image_provenance(
@@ -1940,14 +1994,17 @@ def cmd_build(args: argparse.Namespace) -> int:
         )
     out_root.mkdir(parents=True, exist_ok=True)
     with build_lock(out_root, name):
+        tmp_package = out_root / f".{name}.tar.gz.partial-{os.getpid()}"
+        _remove_stale_partials(out_root, name, tmp_package)
         # R2-18: the stage is CLAIMED atomically; a second builder gets a clean refusal.
         try:
             stage.mkdir()
         except FileExistsError:
             raise Refused(
-                f"{stage} exists: remove it or choose another --out", EXIT_USAGE
+                f"{stage} exists (no build of {name} is running now: it is the folder "
+                "of a previous or interrupted build): remove it or choose another --out",
+                EXIT_USAGE,
             ) from None
-        tmp_package = out_root / f".{name}.tar.gz.partial-{os.getpid()}"
         try:
             manifest = _build_stage(
                 args, repo, stage, name, commit, base_commit, version, release_tag, tag
@@ -1968,12 +2025,26 @@ def cmd_build(args: argparse.Namespace) -> int:
                     else:
                         tar.addfile(info)
             digest = sha256_file(tmp_package)
-            # A previous package of the same name is replaced only now, by rename; its
-            # .sha256 is removed first so that a package and a stale hash never pair up.
+            # A previous package of the same name is replaced only now, by rename. Its
+            # .sha256 is set aside first so that a package and a stale hash never pair
+            # up, and put back when the rename fails (Windows refuses to replace a file
+            # another program holds open): the previous package keeps its hash (E1-04).
+            previous_sha = sha_file.with_name(f"{sha_file.name}.previous-{os.getpid()}")
+            had_sha = False
             with contextlib.suppress(FileNotFoundError):
-                sha_file.unlink()
-            os.replace(tmp_package, package)
+                os.replace(sha_file, previous_sha)
+                had_sha = True
+            try:
+                os.replace(tmp_package, package)
+            except BaseException:
+                if had_sha:
+                    with contextlib.suppress(OSError):
+                        os.replace(previous_sha, sha_file)
+                raise
             atomic_write(sha_file, f"{digest}  {package.name}\n")
+            if had_sha:
+                with contextlib.suppress(OSError):
+                    previous_sha.unlink()
         except BaseException:
             # Only what THIS run created is removed (F-04, R2-18).
             shutil.rmtree(stage, ignore_errors=True)
@@ -2188,10 +2259,9 @@ def _build_stage(
                 "size": p.stat().st_size,
             }
     validate_manifest(manifest, allow_unverified=bool(args.allow_unlabelled_image))
-    (stage / MANIFEST).write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    (stage / SUMS).write_text(render_sums(manifest["files"]), encoding="utf-8")
+    # LF on every platform: a package built on Windows is byte-identical (E1-04)
+    _write_lf(stage / MANIFEST, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    _write_lf(stage / SUMS, render_sums(manifest["files"]))
     if args.sign_key:
         log("signing manifest.json with ssh-keygen -Y sign")
         run(
