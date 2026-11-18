@@ -5,9 +5,12 @@ that module (there is no Docker daemon in Cloud); git, tar, SHA-256 are real.
 Everything a real Docker engine / Compose would have to confirm is listed in
 docs/review/PHASE12D4_WINDOWS_ACCEPTANCE_CHECKLIST.md.
 
-Phase 12D5, package trust and image identity (package format 3): R2-06, R2-07, R2-08
-and R2-09 are fixed; their strict xfail markers are removed (the tests are regression
-tests now) and the control that recorded the R2-07 defect is inverted (`# was:`).
+Phase 12D5 (offline tool rework, package format 3) fixed R2-04, R2-05, R2-06,
+R2-07, R2-08 and R2-09: their strict xfail markers are
+removed (the tests are regression tests now), the controls that recorded the
+broken behaviour are inverted (`# was:` names the former control), and the two
+`verified` tests that recorded the optional pin of 12D3 assert the deployment
+contract that replaced it.
 """
 
 # ruff: noqa: F811 - pytest fixtures imported from tests/test_offline_package.py are used as parameters
@@ -44,12 +47,8 @@ def _git(checkout: Path, *a: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-04 / F-08 PARTIALLY FIXED: BACKUP_MAX_AGE_MINUTES is a time-to-live, "
-    "not evidence that the data is unchanged; the application keeps serving users between "
-    "the backup and the recreate",
-)
+# PHASE12D4 R2-04 / F-08: fixed in Phase 12D5 (no time-to-live; every run takes its
+# own backup after the quiesce): the xfail marker is removed, this is a regression test.
 def test_r2_04_resume_takes_a_new_backup_when_the_data_changed(
     deployment, fake_docker, tmp_path
 ):
@@ -60,7 +59,7 @@ def test_r2_04_resume_takes_a_new_backup_when_the_data_changed(
         T._server("update", conf, pkg_dir, "--apply") == OP.EXIT_UPDATE
     )  # stops before the recreate
     assert T._backups(marker) == 1
-    # the application was never put into maintenance: users kept working
+    # the data changes before the next run (12D5: the application is in maintenance)
     fake_docker.edit(
         lambda s: s["counts"].update(source=135, note=44, source_embedding=6100)
     )
@@ -72,11 +71,13 @@ def test_r2_04_resume_takes_a_new_backup_when_the_data_changed(
     )  # EXPECTED: the backup that precedes the recreate is new
 
 
-def test_control_r2_04_backup_runs_while_the_application_still_serves_users(
+# was: test_control_r2_04_backup_runs_while_the_application_still_serves_users (PHASE12D4 control, R2-04)
+def test_control_r2_04_backup_runs_while_writes_are_stopped(
     deployment, fake_docker, tmp_path
 ):
-    """Evidence for R2-04: the backup command runs before any recreate, i.e. while
-    the application is in NORMAL mode (ports open); nothing quiesces writes."""
+    """Regression for R2-04: the backup command runs after the quiesce - the APPROVED
+    image in maintenance, ports on loopback - and the journal binds the backup to a
+    fingerprint of the record ids, not only to a row count."""
     conf, pkg_dir, _ = deployment
     probe = tmp_path / "ports-at-backup.json"
     state = fake_docker.path
@@ -88,12 +89,12 @@ def test_control_r2_04_backup_runs_while_the_application_still_serves_users(
     assert T._server("update", conf, pkg_dir, "--apply") == 0
     ports = json.loads(probe.read_text())
     assert (
-        ports["8502/tcp"][0]["HostIp"] == "0.0.0.0"
-    )  # users could still write during the backup
+        ports["8502/tcp"][0]["HostIp"] == "127.0.0.1"
+    )  # nobody can write during the backup
     journal = T._journal(tmp_path)
-    assert (
-        journal["baseline"]["counts"] == journal["reference"]["counts"]
-    )  # only the row COUNT is compared
+    f1 = [s for s in journal["steps"] if s["step"] == "F1_fingerprint"][-1]
+    assert journal["backup"]["fingerprint_sha256"] == f1["sha256"]
+    assert journal["baseline"]["fingerprint"]["source"]["ids_sha256"]  # identity, not a count
 
 
 # --------------------------------------------------------------------------- #
@@ -102,11 +103,8 @@ def test_control_r2_04_backup_runs_while_the_application_still_serves_users(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-05: finish takes a fresh reference, so rows lost between `update` and "
-    "`finish` (while in maintenance, where only the operator works) are not seen",
-)
+# PHASE12D4 R2-05: fixed in Phase 12D5 (immutable attempt baseline, record identity):
+# the xfail marker is removed, this is a regression test.
 def test_r2_05_finish_notices_rows_lost_since_the_update(
     deployment, fake_docker, tmp_path
 ):
@@ -121,11 +119,8 @@ def test_r2_05_finish_notices_rows_lost_since_the_update(
     )  # EXPECTED: not "completed" without an explicit decision
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-05: in normal mode a partial loss during the recreate passes "
-    "(only a table going from rows to zero fails); counts are not record identity",
-)
+# PHASE12D4 R2-05: fixed in Phase 12D5 (every baseline record must still exist, in every
+# mode): the xfail marker is removed, this is a regression test.
 def test_r2_05_partial_loss_during_finish_is_not_success(
     deployment, fake_docker, tmp_path
 ):
@@ -138,16 +133,21 @@ def test_r2_05_partial_loss_during_finish_is_not_success(
     assert T._finish(conf) != 0
 
 
-def test_control_r2_05_counts_verdict_normal_mode():
-    before = {"source": 120, "source_embedding": 5400}
-    assert (
-        OP.counts_verdict(before, {"source": 1, "source_embedding": 1}, False)[0]
-        is True
-    )
-    assert (
-        OP.counts_verdict(before, {"source": 120, "source_embedding": 5400}, True)[0]
-        is True
-    )
+# was: test_control_r2_05_counts_verdict_normal_mode (PHASE12D4 control, R2-05)
+def test_control_r2_05_data_verdict_normal_mode():
+    """Regression for R2-05: a partial loss fails in every mode (12D3's counts_verdict
+    accepted 120 -> 1 in normal mode); an identical state passes the exact check."""
+
+    def fp(sources, embeddings):
+        raw = {t: {"ids": [], "updated": None} for t in OP.RECORD_TABLES}
+        raw["source"]["ids"] = [f"source:{i}" for i in range(1, sources + 1)]
+        raw["source_embedding"]["ids"] = [f"source_embedding:{i}" for i in range(1, embeddings + 1)]
+        return OP.make_fingerprint(raw)
+
+    before = fp(120, 5400)
+    assert OP.data_verdict(before["ids"], fp(1, 1))[0] is False
+    assert OP.data_verdict(before["ids"], fp(120, 5400), exact=before["summary"])[0] is True
+    assert not hasattr(OP, "counts_verdict")
 
 
 # --------------------------------------------------------------------------- #
@@ -384,32 +384,35 @@ def test_verified_three_updates_and_rollbacks_return_to_the_right_images(
     assert len(list((tmp_path / "state" / "journals").glob("*.json"))) == 2
 
 
-def test_verified_pin_does_not_survive_an_explicit_file_list_for_the_environment(
+# was: test_verified_pin_does_not_survive_an_explicit_file_list_for_the_environment (PHASE12D4 verified, F-11)
+def test_verified_approved_image_and_environment_survive_an_explicit_file_list(
     completed, fake_docker, capsys
 ):
-    """F-11 as fixed: after `pin --apply` an operator script that passes `-f
-    docker-compose.yml` explicitly (COMPOSE_FILE is then ignored) keeps the new
-    IMAGE but loses the offline variables. It is detected (exit 7), not prevented."""
+    """F-11 under the 12D5 contract: an operator script that passes `-f
+    docker-compose.yml` explicitly starts the approved image WITH the offline
+    variables - both live in the deployment's own files and DEPLOY_IMAGE_TAG (12D3:
+    the optional pin kept the image and lost the variables, exit 7)."""
     conf, _, deploy = completed
-    assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0
+    assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0  # a no-op repair now
     T._plain_compose_up(deploy)  # == docker compose -f docker-compose.yml up -d
     app = fake_docker.app()
     assert app["image_id"] == T.IMAGE_ID
-    assert (
-        "OCR_OFFLINE" not in app["env"] and "OCR_RAPIDOCR_PERSISTENT" not in app["env"]
-    )
+    assert app["env"]["OCR_OFFLINE"] == "true" and app["env"]["OCR_RAPIDOCR_PERSISTENT"] == "true"
     capsys.readouterr()
-    assert T._status(conf) == OP.EXIT_DRIFT
-    assert "ENVIRONMENT DRIFT" in capsys.readouterr().out
+    assert T._status(conf) == 0
+    assert "DRIFT" not in capsys.readouterr().out
 
 
-def test_verified_without_a_pin_nothing_prevents_the_old_image(completed, fake_docker):
-    """The pin is optional: by default a plain `docker compose up -d` (operator
-    script, boot guard) brings the OLD image back. Only status / health say so."""
+# was: test_verified_without_a_pin_nothing_prevents_the_old_image (PHASE12D4 verified, F-11)
+def test_verified_without_any_pin_a_plain_compose_up_keeps_the_approved_image(
+    completed, fake_docker
+):
+    """There is no optional pin any more: a plain `docker compose up -d` (operator
+    script, boot guard) starts the APPROVED image (12D3: the OLD image came back)."""
     conf, _, deploy = completed
     T._plain_compose_up(deploy)
-    assert fake_docker.app()["image_id"] == T.OLD_ID
-    assert T._status(conf) == OP.EXIT_DRIFT
+    assert fake_docker.app()["image_id"] == T.IMAGE_ID
+    assert T._status(conf) == 0
 
 
 def test_verified_unauthenticated_archive_is_never_written(package, tmp_path):

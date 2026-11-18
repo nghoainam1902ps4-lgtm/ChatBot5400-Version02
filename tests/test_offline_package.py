@@ -1,12 +1,19 @@
 """Offline update package tooling (scripts/offline/offline_package.py).
 
-MOCK VERIFIED ONLY: ``docker`` is a stateful recording fake on PATH (there is
-no Docker daemon in CI / Cloud). It keeps an image store (tags, image IDs,
-layer lists), writes and reads REAL docker-archive tar files for ``save`` /
-``load``, and models the application and database containers (image, env,
-published ports, start time). git, tar, SHA-256 and ssh-keygen signatures are
-real. What a real Docker engine / Compose does with these commands is NOT
-verified here: docs/review/PHASE12D3_WINDOWS_ACCEPTANCE_CHECKLIST.md.
+MOCK VERIFIED ONLY: ``docker`` is a stateful recording fake on PATH. It keeps
+an image store (tags, image IDs, layer lists, image configs), writes and reads
+REAL docker-archive tar files for ``save`` / ``load``, and models the
+application and database containers (image, env, published ports, start time,
+volumes) and the records of the database (one id per row of ``counts``, or the
+explicit ``records`` of a table). git, tar, SHA-256 and ssh-keygen signatures
+are real. The same commands against a REAL Docker daemon + Compose are
+exercised by tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1); what
+neither covers is listed in docs/review/PHASE12D4_WINDOWS_ACCEPTANCE_CHECKLIST.md.
+
+Phase 12D5 contract (see the module docstring of the tool): the operator's
+compose file names ``chatbot5400:local`` (DEPLOY_IMAGE_TAG) and carries
+REQUIRED_APP_ENV; the tool moves that tag only after a verified finish /
+rollback.
 """
 
 from __future__ import annotations
@@ -16,6 +23,7 @@ import copy
 import hashlib
 import http.server
 import io
+import itertools
 import json
 import os
 import shutil
@@ -61,9 +69,13 @@ IMAGE_ID, OLD_ID, NEXT_ID, OTHER_ID = (
 )
 DB_IMAGE_ID = "sha256:" + "d" * 64
 TARGET = "chatbot5400:1.3.0-rc.1"
-
 DEPLOY_TAG = "chatbot5400:local"
-
+# What the operator's own compose files give the application (contract step 2).
+OPERATOR_ENV = {
+    "SURREAL_URL": "ws://surrealdb:8000/rpc",
+    "OCR_RAPIDOCR_PERSISTENT": "true",
+    "OCR_OFFLINE": "true",
+}
 
 FAKE_DOCKER = r"""#!/usr/bin/env python3
 import hashlib, io, json, os, re, sys, tarfile
@@ -128,6 +140,10 @@ if argv[0] == "load":
     state.setdefault("loaded", {})[iid] = True
     for tag in entry["RepoTags"]: state["images"][tag] = iid
     save(); out("Loaded image: " + ", ".join(entry["RepoTags"])); sys.exit(0)
+if argv[0] == "inspect" and "--type" in argv and argv[argv.index("--type") + 1] == "volume":
+    v = state.get("volumes", {}).get(argv[-1])
+    if v is None: sys.exit(1)
+    out(v.get("created", "")); sys.exit(0)
 if argv[0] == "inspect":
     c = state["containers"].get(argv[-1])
     if not c: sys.exit(1)
@@ -179,6 +195,16 @@ if argv[0] == "compose":
             if re.search(needle, joined): sys.exit(1)
         if cmd[:1] == ["cat"]: out(state["versions"].get(running, state["version"])); sys.exit(0)
         if "get_latest_version" in joined: out(str(state["schema"])); sys.exit(0)
+        if "FINGERPRINT" in joined:
+            # one record id per counted row (or the explicit ids of state["records"]);
+            # tables with `updated` report it ("u1" for the ids of state["touched"])
+            raw = {}
+            for t, n in state["counts"].items():
+                ids = state.get("records", {}).get(t) or ["%s:%d" % (t, i) for i in range(1, n + 1)]
+                touched = state.get("touched", {}).get(t, [])
+                upd = None if t == "source_embedding" else ["u1" if i in touched else "u0" for i in ids]
+                raw[t] = {"ids": ids, "updated": upd}
+            out("FINGERPRINT " + json.dumps(raw)); sys.exit(0)
         if "TABLES =" in joined: out(json.dumps(state["counts"])); sys.exit(0)
         if "command WHERE" in joined: out(str(state["jobs"])); sys.exit(0)
         if "import_rapidocr_weights" in joined: out(json.dumps(state["rapidocr"])); sys.exit(0)
@@ -188,6 +214,10 @@ if argv[0] == "compose":
         app = effective()["services"][APP]
         iid = image_id(app["image"])
         if iid is None: sys.stderr.write("pull access denied (pull_policy never)\n"); sys.exit(1)
+        # the quiesce recreate (maintenance file, same image) is not "the recreate" a
+        # test describes with on_up: it gets on_quiesce instead
+        quiesce = (any("maintenance" in os.path.basename(f) for f in files)
+                   and iid == state["containers"]["c1"]["image_id"])
         state["ups"] = state.get("ups", 0) + 1
         ports = {"%s/tcp" % p["target"]: [{"HostIp": p.get("host_ip", "0.0.0.0"), "HostPort": str(p["published"])}]
                  for p in app.get("ports", [])}
@@ -196,7 +226,9 @@ if argv[0] == "compose":
         if state.get("up_recreates_db"):
             state["containers"]["db1"]["id"] = "db-container-recreated"
             state["containers"]["db1"]["started_at"] = "2026-11-18T09:00:00Z"
-        state.update(state.get("on_up", {}))
+        if state.get("up_restarts_db") and not quiesce:  # same container, restarted
+            state["containers"]["db1"]["started_at"] = "2026-11-18T10:00:00Z"
+        state.update(state.get("on_quiesce", {}) if quiesce else state.get("on_up", {}))
         save(); sys.exit(0)
     sys.exit(0)
 sys.exit(0)
@@ -229,7 +261,7 @@ def fake_docker(tmp_path, monkeypatch):
                 "id": "app-container-0",
                 "image": "chatbot5400:local",
                 "image_id": OLD_ID,
-                "env": {"SURREAL_URL": "ws://surrealdb:8000/rpc"},
+                "env": dict(OPERATOR_ENV),
                 "ports": {"8502/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8502"}]},
             },
             "db1": {
@@ -243,6 +275,7 @@ def fake_docker(tmp_path, monkeypatch):
                 "running": True,
             },
         },
+        "volumes": {"cb_surreal": {"created": "2026-10-01T08:00:00Z"}},
         "version": "1.2.0",
         "versions": {OLD_ID: "1.2.0", IMAGE_ID: "1.3.0", NEXT_ID: "1.3.1"},
         "schema": 33,
@@ -304,7 +337,7 @@ def fake_docker(tmp_path, monkeypatch):
             "services": {
                 "open_notebook": {
                     "image": "chatbot5400:local",
-                    "environment": {"SURREAL_URL": "ws://surrealdb:8000/rpc"},
+                    "environment": dict(OPERATOR_ENV),
                     "ports": [
                         {"target": 8502, "published": "8502", "host_ip": "0.0.0.0"}
                     ],
@@ -462,7 +495,7 @@ def test_build_uses_docker_save_and_git_bundle(package, fake_docker, repo):
     for rel in (
         "manifest.json", "SHA256SUMS", "images/chatbot5400-1.3.0-rc.1.tar",
         "source/chatbot5400-1.3.0-rc.1.bundle", "scripts/update.sh", "scripts/pin.sh",
-        "scripts/offline_package.py",
+        "scripts/snapshot.sh", "scripts/offline_package.py",
     ):  # fmt: skip
         assert f"{top}/{rel}" in names
     manifest = _manifest_of(pkg)
@@ -1280,8 +1313,14 @@ def _server(cmd, conf, pkg_dir, *extra):
     return OP.main([cmd, "--config", str(conf), "--package-dir", str(pkg_dir), *extra])
 
 
+_BACKUP_SERIAL = itertools.count(1)
+
+
 def _apply(conf, pkg_dir, *extra):
-    return _server("update", conf, pkg_dir, "--apply", "--backup-reference", "bk", "--backup-verified", *extra)  # fmt: skip
+    """update --apply with a backup the operator took for THIS run (a reference is
+    single-use since Phase 12D5, R2-04)."""
+    ref = f"bk-{next(_BACKUP_SERIAL)}"
+    return _server("update", conf, pkg_dir, "--apply", "--backup-reference", ref, "--backup-verified", *extra)  # fmt: skip
 
 
 def _finish(conf):
@@ -1302,6 +1341,11 @@ def _journal(tmp_path):
 
 def _ups(fake, start=0):
     return [c for c in fake.calls()[start:] if c[0] == "compose" and "up" in c]
+
+
+def _update_ups(fake, start=0):
+    """Recreates that started the NEW image (the per-attempt override is in the file list)."""
+    return [c for c in _ups(fake, start) if any(x.endswith("override-update.yml") for x in c)]
 
 
 def _plain_compose_up(deploy, *files):
@@ -1658,8 +1702,16 @@ def test_update_dry_run_changes_nothing(deployment, fake_docker, tmp_path):
     assert not (tmp_path / "state" / "journal.json").exists()
 
 
+def _approved(tmp_path):
+    return json.loads((tmp_path / "state" / "approved.json").read_text())
+
+
 def test_update_apply_full_flow(deployment, fake_docker, tmp_path):
+    """Phase 12D5: quiesce (the APPROVED image in maintenance) -> own backup -> the new
+    image with the per-attempt override, in maintenance -> finish moves DEPLOY_IMAGE_TAG
+    -> rollback moves it back. No tool file is ever part of the operator's start path."""
     conf, pkg_dir, deploy = deployment
+    state = tmp_path / "state"
     start = len(fake_docker.calls())
     assert _apply(conf, pkg_dir) == 0
     calls = fake_docker.calls()[start:]
@@ -1668,8 +1720,14 @@ def test_update_apply_full_flow(deployment, fake_docker, tmp_path):
     assert kinds.index("load") < kinds.index("tag")
     tag_call = next(c for c in calls if c[0] == "tag")
     assert tag_call[1] == OLD_ID and tag_call[2].startswith("chatbot5400:rollback-")
+    assert not [c for c in calls if c[0] == "tag" and c[-1] == DEPLOY_TAG]  # never by update
     ups = _ups(fake_docker, start)
-    assert len(ups) == 1 and any("maintenance" in x for x in ups[0])
+    assert len(ups) == 2
+    quiesce, recreate = ups
+    assert any("maintenance" in x for x in quiesce)
+    assert not any("override-update" in x for x in quiesce)  # operator files only
+    assert any("maintenance" in x for x in recreate)
+    assert any(x.endswith("override-update.yml") for x in recreate)
     app = fake_docker.app()
     assert app["image_id"] == IMAGE_ID
     assert app["env"]["OCR_OFFLINE"] == "true" and app["env"]["SURREAL_URL"].startswith(
@@ -1677,47 +1735,65 @@ def test_update_apply_full_flow(deployment, fake_docker, tmp_path):
     )
     assert app["ports"]["8502/tcp"][0]["HostIp"] == "127.0.0.1"  # maintenance
     assert fake_docker.get()["containers"]["db1"]["id"] == "db-container-original"
+    assert fake_docker.get()["images"][DEPLOY_TAG] == OLD_ID  # a restart returns to it
 
     journal = _journal(tmp_path)
     assert journal["status"] == "awaiting_approval"
-    assert journal["schema"] == 2 and journal["attempt_id"]
+    assert journal["schema"] == 3 and journal["attempt_id"]
     assert journal["expected_image_id"] == IMAGE_ID
     assert journal["baseline"]["image_id"] == OLD_ID
     assert journal["baseline"]["db"]["container_id"] == "db-container-original"
+    assert journal["baseline"]["db"]["volumes"] == {"cb_surreal": "2026-10-01T08:00:00Z"}
     assert journal["baseline"]["counts"]["source"] == 120
+    assert journal["baseline"]["fingerprint"]["source"]["ids_sha256"]
     assert journal["baseline"]["schema"] == 33
     assert journal["compose_command"][-8:] == SAFE_UP_TAIL
     assert [s["step"] for s in journal["steps"]] == [
-        "G_load", "H_rollback_tag", "I_backup", "J_backup_verified", "RAPIDOCR_weights",
-        "ARTIFACTS_snapshot", "N_recreated", "O_P_checks",
+        "G_load", "H_rollback_tag", "MAINT_intent", "UP_intent", "QUIESCED", "JOBS_idle",
+        "F1_fingerprint", "I_backup", "J_backup_verified", "F2_fingerprint",
+        "RAPIDOCR_weights", "ARTIFACTS_snapshot", "F3_fingerprint", "UP_intent",
+        "N_recreated", "O_P_checks",
     ]  # fmt: skip
-    override = (tmp_path / "state" / "image-override.yml").read_text()
-    assert f'image: "{TARGET}"' in override and "pull_policy: never" in override
-    assert 'OCR_RAPIDOCR_PERSISTENT: "true"' in override
+    attempt = state / "attempts" / journal["attempt_id"]
+    override = (attempt / "override-update.yml").read_text()
+    assert override == (
+        f'services:\n  open_notebook:\n    image: "{TARGET}"\n    pull_policy: never\n'
+    )  # no environment: the operator's files carry it
+    records = json.loads((attempt / "records-baseline.json").read_text())
+    assert len(records["tables"]["source"]) == 120  # ids only
+    assert not (state / "image-override.yml").exists()
+    assert _approved(tmp_path)["how"] == "adopted"
+    assert _approved(tmp_path)["image_id"] == OLD_ID
     assert (
         deploy / ".env"
     ).read_text() == "SURREAL_PASSWORD=do-not-read\n"  # untouched
     assert (deploy / "docker-compose.yml").read_text() == "services: {}\n"
-    assert _status(conf) == 0
+    assert _status(conf) == OP.EXIT_UNDECIDED  # no drift, but awaiting a decision
 
-    # finish (approval) -> normal mode, health-checked, without the maintenance override
+    # finish (approval) -> DEPLOY_IMAGE_TAG moves, normal mode with the operator's files only
     assert OP.main(["finish", "--config", str(conf)]) == OP.EXIT_USAGE
     assert _finish(conf) == 0
     last_up = _ups(fake_docker)[-1]
-    assert not any("maintenance" in x for x in last_up)
+    assert not any("maintenance" in x or "override-update" in x for x in last_up)
     assert fake_docker.app()["ports"]["8502/tcp"][0]["HostIp"] == "0.0.0.0"
+    assert fake_docker.get()["images"][DEPLOY_TAG] == IMAGE_ID
+    assert _approved(tmp_path)["how"] == "finish"
+    assert _approved(tmp_path)["image_id"] == IMAGE_ID
     journal = _journal(tmp_path)
     assert journal["status"] == "completed" and journal["steps"][-1] == {
         "step": "Q_checks", "ok": True, "at": journal["steps"][-1]["at"],
     }  # fmt: skip
-    command = (tmp_path / "state" / "compose-command.txt").read_text()
+    command = (state / "compose-command.txt").read_text()
     assert "--no-deps --no-build --pull never --force-recreate open_notebook" in command
-    assert str(tmp_path / "state" / "image-override.yml") in command
+    assert str(state) not in command.splitlines()[-1]  # no file of the tool
+    assert f"approved image {IMAGE_ID}" in command
     assert _status(conf) == 0
 
-    # rollback to the previous image, by its verified ID
+    # rollback to the previous image, by its verified ID: the deploy tag follows
     assert _rollback(conf, "app", "--package-dir", str(pkg_dir)) == 0
     assert fake_docker.app()["image_id"] == OLD_ID
+    assert fake_docker.get()["images"][DEPLOY_TAG] == OLD_ID
+    assert _approved(tmp_path)["how"] == "rollback"
     assert _journal(tmp_path)["status"] == "rolled_back"
     _assert_safe_calls(fake_docker.calls()[start:])
     assert fake_docker.get()["containers"]["db1"]["id"] == "db-container-original"
@@ -1725,6 +1801,8 @@ def test_update_apply_full_flow(deployment, fake_docker, tmp_path):
 
 
 def test_update_without_backup_refused_then_resumed(deployment, fake_docker, tmp_path):
+    """--no-maintenance needs the operator's --writes-stopped-confirmed (R2-20a); a resumed
+    run takes its own backup, so it names a new backup reference (R2-04)."""
     conf, pkg_dir, _ = deployment
     rc = _server(
         "update",
@@ -1732,6 +1810,7 @@ def test_update_without_backup_refused_then_resumed(deployment, fake_docker, tmp
         pkg_dir,
         "--apply",
         "--no-maintenance",
+        "--writes-stopped-confirmed",
         "--backup-reference",
         "x",
     )
@@ -1741,8 +1820,8 @@ def test_update_without_backup_refused_then_resumed(deployment, fake_docker, tmp
     attempt = journal["attempt_id"]
     assert not _ups(fake_docker)
     loads = sum(1 for c in fake_docker.calls() if c[0] == "load")
-    rc = _server("update", conf, pkg_dir, "--apply", "--no-maintenance",
-                 "--backup-reference", "x", "--backup-verified")  # fmt: skip
+    rc = _server("update", conf, pkg_dir, "--apply", "--no-maintenance", "--writes-stopped-confirmed",
+                 "--backup-reference", "y", "--backup-verified")  # fmt: skip
     assert rc == 0
     assert (
         sum(1 for c in fake_docker.calls() if c[0] == "load") == loads
@@ -1775,34 +1854,46 @@ def test_failed_health_keeps_maintenance_and_reports(deployment, fake_docker, tm
     "name", ["evil-db", "evil-app", "evil-env", "evil-volume", "evil-port"]
 )
 def test_unexpected_config_changes_are_refused(deployment, fake_docker, tmp_path, name):
-    """F-12 / F-21: the override may change the image, pull_policy and the declared
-    environment keys of the application - nothing else, anywhere."""
+    """F-12 / F-21: the per-attempt override may change the image and pull_policy of the
+    application - nothing else, anywhere (12D3 also allowed its own environment keys)."""
     conf, _, _ = deployment
     dep = OP.Deployment(OP.load_config(str(conf)))
     before = dep.config_json()
-    good = OP.write_image_override(dep, "chatbot5400:local", {"OCR_OFFLINE": "true"})
+    good = OP.write_image_override(dep, "chatbot5400:local", attempt_id="t-1")
     evil = tmp_path / f"{name}.yml"
     evil.write_text("x")
-    OP.compare_configs(
-        dep, before, dep.config_json([str(good)]), False, {"OCR_OFFLINE": "true"}
-    )
+    OP.compare_configs(dep, before, dep.config_json([str(good)]), False)
     with pytest.raises(OP.Refused):
-        OP.compare_configs(
-            dep,
-            before,
-            dep.config_json([str(good), str(evil)]),
-            False,
-            {"OCR_OFFLINE": "true"},
-        )
+        OP.compare_configs(dep, before, dep.config_json([str(good), str(evil)]), False)
 
 
-def test_override_values_are_checked_and_quoted(deployment):
+def test_environment_changes_by_a_compose_file_are_refused(deployment, tmp_path):
+    """12D5 contract step 2: environment comes from the operator's files only. What the
+    12D3 override did (set OCR_* variables) is refused as a configuration change."""
     conf, _, _ = deployment
     dep = OP.Deployment(OP.load_config(str(conf)))
-    text = OP.render_override(
-        "open_notebook", "chatbot5400:1.3.0", {"OCR_OFFLINE": "true"}
+    before = dep.config_json()
+    good = OP.write_image_override(dep, "chatbot5400:local", attempt_id="t-1")
+    env_file = tmp_path / "env-override.yml"
+    env_file.write_text(
+        'services:\n  open_notebook:\n    environment:\n      OCR_OFFLINE: "false"\n'
     )
-    assert 'image: "chatbot5400:1.3.0"' in text and 'OCR_OFFLINE: "true"' in text
+    with pytest.raises(OP.Refused, match="environment"):
+        OP.compare_configs(dep, before, dep.config_json([str(good), str(env_file)]), False)
+
+
+def test_override_values_are_checked_and_quoted(deployment, tmp_path):
+    """F-12: every value of the per-attempt override is checked and quoted; it carries NO
+    environment (12D5; the 12D3 override wrote the offline variables)."""
+    conf, _, _ = deployment
+    dep = OP.Deployment(OP.load_config(str(conf)))
+    text = OP.render_override("open_notebook", "chatbot5400:1.3.0")
+    assert text == (
+        'services:\n  open_notebook:\n    image: "chatbot5400:1.3.0"\n    pull_policy: never\n'
+    )
+    path = OP.write_image_override(dep, "chatbot5400:1.3.0", attempt_id="20261118T000000-abcdef")
+    assert path == tmp_path / "state" / "attempts" / "20261118T000000-abcdef" / "override-update.yml"
+    assert path.read_text() == text and (path.stat().st_mode & 0o077) == 0
     for image in (
         "chatbot5400:1.3.0\n    privileged: true",
         "a b:c",
@@ -1812,17 +1903,20 @@ def test_override_values_are_checked_and_quoted(deployment):
         'x:"y"',
     ):
         with pytest.raises(OP.Refused):
-            OP.write_image_override(dep, image, {})
+            OP.write_image_override(dep, image, attempt_id="t-1")
     for env in (
+        {"OCR_OFFLINE": "true"},
         {"A": 'x"\n    privileged: "true'},
         {"bad key": "x"},
-        {"A": "x y"},
         {"A": "$(id)"},
     ):
         with pytest.raises(OP.Refused):
             OP.render_override("open_notebook", "chatbot5400:1.3.0", env)
     with pytest.raises(OP.Refused):
-        OP.render_override("open notebook:\n  x", "chatbot5400:1.3.0", {})
+        OP.render_override("open notebook:\n  x", "chatbot5400:1.3.0")
+    for attempt in (None, "../escape", "a/b"):
+        with pytest.raises(OP.Refused):
+            OP.write_image_override(dep, "chatbot5400:1.3.0", attempt_id=attempt)
     # shapes a real deployment can report
     for ok in (
         "chatbot5400:local",
@@ -1874,12 +1968,20 @@ def test_upgrade_rollback_then_upgrade_again_is_a_new_attempt(
 
 def test_completed_update_then_next_version(deployment, fake_docker, repo, tmp_path):
     """completed -> a later package: its baseline is the image of the FIRST update,
-    it takes its own backup, and its rollback returns to that image, not to v1.2.0."""
-    conf, pkg_dir, _ = deployment
+    it takes its own backup, and its rollback returns to that image, not to v1.2.0.
+    The Legal gate is the operator's own configuration (12D5 contract step 2; 12D3 set it
+    with `rollback legal-on` in its own override)."""
+    conf, pkg_dir, deploy = deployment
     marker = _with_backup_cmd(conf, tmp_path)
     assert _server("update", conf, pkg_dir, "--apply") == 0
     assert _finish(conf) == 0
-    assert _rollback(conf, "legal-on") == 0  # the operator's gate decision
+    fake_docker.edit(
+        lambda s: s["config"]["services"]["open_notebook"]["environment"].update(
+            OCR_LEGAL_NORMALIZATION_ENABLED="true"
+        )
+    )  # the operator's gate decision, in the local override
+    _plain_compose_up(deploy)  # recreated with the operations script
+    assert fake_docker.app()["image_id"] == IMAGE_ID  # the approved image
     assert _backups(marker) == 1
 
     (repo / "VERSION").write_text("1.3.1\n")
@@ -1929,9 +2031,10 @@ def test_failed_attempt_then_retry_takes_a_new_backup(
     assert _backups(marker) == 2 and _journal(tmp_path)["attempt_id"] != first
 
 
-def test_resume_reuses_the_backup_only_while_it_is_fresh(
-    deployment, fake_docker, tmp_path
-):
+def test_resumed_run_takes_its_own_backup(deployment, fake_docker, tmp_path):
+    """R2-04: no backup is reused because it is recent (12D3 reused it for
+    BACKUP_MAX_AGE_MINUTES): every run that has not recreated the application backs up
+    the data as it is then, and the journal binds that backup to its fingerprint F1."""
     conf, pkg_dir, _ = deployment
     marker = _with_backup_cmd(conf, tmp_path)
     fake_docker.edit(
@@ -1942,11 +2045,16 @@ def test_resume_reuses_the_backup_only_while_it_is_fresh(
     assert (
         _server("update", conf, pkg_dir, "--apply") == OP.EXIT_UPDATE
     )  # stops before the recreate
-    assert _backups(marker) == 1 and not _ups(fake_docker)
+    assert _backups(marker) == 1 and not _update_ups(fake_docker)
     attempt = _journal(tmp_path)["attempt_id"]
-    # same attempt, minutes later: the verified backup of THIS attempt is still valid
+    # same attempt, minutes later: a NEW backup, of the data as it is now
     assert _server("update", conf, pkg_dir, "--apply", "--accept-missing-rapidocr") == 0
-    assert _backups(marker) == 1 and _journal(tmp_path)["attempt_id"] == attempt
+    assert _backups(marker) == 2 and _journal(tmp_path)["attempt_id"] == attempt
+    journal = _journal(tmp_path)
+    assert [s["step"] for s in journal["steps"]].count("I_backup") == 2
+    f1 = [s for s in journal["steps"] if s["step"] == "F1_fingerprint"][-1]["sha256"]
+    assert journal["backup"]["fingerprint_sha256"] == f1
+    assert journal["backup"]["step"]["fingerprint_sha256"] == f1
 
 
 def test_resume_takes_a_new_backup_when_the_old_one_is_too_old(
@@ -1961,17 +2069,27 @@ def test_resume_takes_a_new_backup_when_the_old_one_is_too_old(
     assert _backups(marker) == 2
 
 
-def test_closing_an_attempt_that_recreated_nothing_does_not_restart_the_application(
+def test_closing_an_attempt_that_recreated_nothing_returns_to_normal_mode(
     deployment, fake_docker, tmp_path
 ):
+    """An attempt that stopped before the NEW image ran is closed without it: the
+    approved image it put into maintenance for the backup (12D5 quiesce) goes back to
+    normal mode, the deploy tag is not touched. (12D3 had no quiesce: nothing to undo.)"""
     conf, pkg_dir, _ = deployment
     marker = _with_backup_cmd(conf, tmp_path, verify="exit 4")
     assert _server("update", conf, pkg_dir, "--apply") == OP.EXIT_UPDATE  # stops at J
-    container = fake_docker.app()["id"]
+    assert fake_docker.app()["image_id"] == OLD_ID
+    assert fake_docker.app()["ports"]["8502/tcp"][0]["HostIp"] == "127.0.0.1"
+    assert _status(conf) == OP.EXIT_UNDECIDED
+    ups = len(_ups(fake_docker))
     assert _rollback(conf, "interrupted") == 0
-    assert (
-        not _ups(fake_docker) and fake_docker.app()["id"] == container
-    )  # not restarted
+    assert not _update_ups(fake_docker)  # the new image never ran
+    assert len(_ups(fake_docker)) == ups + 1  # one recreate: back to normal mode
+    assert not any("maintenance" in x or "override-update" in x for x in _ups(fake_docker)[-1])
+    assert fake_docker.app()["image_id"] == OLD_ID
+    assert fake_docker.app()["ports"]["8502/tcp"][0]["HostIp"] == "0.0.0.0"
+    assert fake_docker.get()["images"][DEPLOY_TAG] == OLD_ID
+    assert _status(conf) == 0
     journal = _journal(tmp_path)
     assert journal["status"] == "rolled_back"
     assert journal["steps"][-1]["step"] == "ROLLBACK_nothing_recreated"
@@ -1984,23 +2102,33 @@ def test_closing_an_attempt_that_recreated_nothing_does_not_restart_the_applicat
 
 
 def test_state_directory_and_journal_are_private(deployment, tmp_path):
+    """Journal, approved deployment, per-attempt override, record ids, model hashes,
+    trusted verify records, backup references: all private to root."""
     conf, pkg_dir, _ = deployment
     assert _apply(conf, pkg_dir) == 0
     state = tmp_path / "state"
-    assert (state.stat().st_mode & 0o077) == 0
-    for name in ("journal.json", "journal.json.bak", "image-override.yml"):
-        assert ((state / name).stat().st_mode & 0o077) == 0, name
-    assert all((p.stat().st_mode & 0o077) == 0 for p in state.glob("artifacts-*.json"))
+    attempt = state / "attempts" / _journal(tmp_path)["attempt_id"]
+    assert {p.name for p in attempt.iterdir()} >= {
+        "override-update.yml", "records-baseline.json", "artifacts.json",
+    }  # fmt: skip
+    for d in (state, state / "attempts", attempt, state / "verified"):
+        assert (d.stat().st_mode & 0o077) == 0, d
+    names = ("journal.json", "journal.json.bak", "approved.json", "approved.json.bak",
+             "backup-references.json")  # fmt: skip
+    files = [state / n for n in names] + list(attempt.iterdir())
+    files += list((state / "verified").iterdir())
+    for path in files:
+        assert (path.stat().st_mode & 0o077) == 0, path
 
 
 def test_incomplete_backup_stops_the_update(deployment, fake_docker, tmp_path):
     conf, pkg_dir, _ = deployment
     _set_conf(conf, BACKUP_CMD="exit 3", BACKUP_VERIFY_CMD="true")
     assert _server("update", conf, pkg_dir, "--apply") == OP.EXIT_UPDATE
-    assert not _ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
     marker = _with_backup_cmd(conf, tmp_path, verify="exit 4")  # restore check fails
     assert _server("update", conf, pkg_dir, "--apply") == OP.EXIT_UPDATE
-    assert not _ups(fake_docker) and _backups(marker) == 1
+    assert not _update_ups(fake_docker) and _backups(marker) == 1
     assert "J_backup_verified" not in [s["step"] for s in _journal(tmp_path)["steps"]]
 
 
@@ -2072,7 +2200,9 @@ def test_old_journal_awaiting_approval_is_not_finished_blindly(
     assert _finish(conf) == OP.EXIT_UPDATE  # no image id recorded: cannot be confirmed
     assert _apply(conf, pkg_dir) == OP.EXIT_PREFLIGHT
     assert _rollback(conf) == OP.EXIT_UPDATE  # no baseline: an explicit image is needed
-    assert _rollback(conf, "app", "--to-image", "chatbot5400:local") == 0
+    # no baseline and no approved deployment: the operator vouches for it (R2-20b)
+    assert _rollback(conf, "app", "--to-image", "chatbot5400:local") == OP.EXIT_UPDATE
+    assert _rollback(conf, "app", "--to-image", "chatbot5400:local", "--force-image") == 0
     assert _journal(tmp_path)["status"] == "rolled_back"
 
 
@@ -2182,22 +2312,37 @@ def test_finish_failure_is_not_completed_and_can_be_retried(
     _set_conf(conf, HEALTH_URL="http://127.0.0.1:9/health")
     assert _finish(conf) == OP.EXIT_UPDATE
     assert _journal(tmp_path)["status"] == "finish_failed"
-    assert (
-        _status(conf) == 0
-    )  # the right image runs; the state itself says it is not finished
+    # the deploy tag went back to the approved image: a restart returns to it
+    assert fake_docker.get()["images"][DEPLOY_TAG] == OLD_ID
+    assert _journal(tmp_path)["steps"][-2]["step"] == "TAG_reverted"
+    # the right image runs, but the attempt is undecided: exit 8, not 0 (R2-13)
+    assert _status(conf) == OP.EXIT_UNDECIDED
     _set_conf(conf, HEALTH_URL=health.split("=", 1)[1])
     assert _finish(conf) == 0
     assert _journal(tmp_path)["status"] == "completed"
 
 
-def test_finish_refuses_a_changed_override(deployment, fake_docker, tmp_path):
+def test_finish_refuses_compose_files_that_break_the_contract(deployment, fake_docker, tmp_path):
+    """finish recreates with the operator's files ONLY, so they must give the application
+    DEPLOY_IMAGE_TAG and REQUIRED_APP_ENV - otherwise nothing moves, nothing restarts.
+    (12D3: finish used the shared override and refused when it had been edited.)"""
     conf, pkg_dir, _ = deployment
     assert _apply(conf, pkg_dir) == 0
-    override = tmp_path / "state" / "image-override.yml"
-    override.write_text(override.read_text().replace(TARGET, "chatbot5400:local"))
     ups = len(_ups(fake_docker))
+    fake_docker.edit(
+        lambda s: s["config"]["services"]["open_notebook"].update(image="chatbot5400:other")
+    )
+    assert _finish(conf) == OP.EXIT_UPDATE
+    fake_docker.edit(
+        lambda s: s["config"]["services"]["open_notebook"].update(image=DEPLOY_TAG)
+    )
+    fake_docker.edit(
+        lambda s: s["config"]["services"]["open_notebook"]["environment"].pop("OCR_OFFLINE")
+    )
     assert _finish(conf) == OP.EXIT_UPDATE
     assert len(_ups(fake_docker)) == ups
+    assert fake_docker.get()["images"][DEPLOY_TAG] == OLD_ID
+    assert _journal(tmp_path)["status"] == "awaiting_approval"
 
 
 # --- F-13: the journal ---------------------------------------------------------
@@ -2240,7 +2385,8 @@ def test_damaged_journal_stops_everything_without_a_blind_reset(
     assert not _ups(fake_docker, calls)  # nothing was recreated on a guess
     # the documented recovery: the previous good copy
     shutil.copy2(state / "journal.json.bak", state / "journal.json")
-    assert _status(conf) == 0 and _finish(conf) == 0
+    assert _status(conf) == OP.EXIT_UNDECIDED  # readable again: awaiting approval
+    assert _finish(conf) == 0
 
 
 def test_damaged_journal_without_a_backup_copy(deployment, tmp_path, capsys):
@@ -2265,26 +2411,44 @@ def test_database_container_recreated_by_compose_is_detected(
     journal = _journal(tmp_path)
     assert journal["status"] != "awaiting_approval" and journal["db_changed"] is True
     assert _finish(conf) == OP.EXIT_UPDATE
-    # the rollback still restores the application but keeps reporting the database
+    # sticky (R2-05): rollback refuses, changing nothing, until the operator has looked
     fake_docker.set(up_recreates_db=False)
     assert _rollback(conf, "interrupted") == OP.EXIT_UPDATE
-    assert fake_docker.app()["image_id"] == OLD_ID
-    assert _journal(tmp_path)["status"] == "rollback_failed"
+    assert fake_docker.app()["image_id"] == OLD_ID  # the new image never ran
+    assert _journal(tmp_path)["status"] == "in_progress"
+    assert _status(conf) == OP.EXIT_DRIFT  # DATABASE CHANGED is reported
     assert _rollback(conf, "interrupted", "--acknowledge-db-change") == 0
+    assert _journal(tmp_path)["acknowledged"]["flags"]["db_changed"] is True
     assert _journal(tmp_path)["status"] == "rolled_back"
 
 
-def test_database_restarted_before_the_recreate_is_detected(
-    deployment, fake_docker, tmp_path
+def test_database_restart_between_two_runs_is_reported_not_fatal(
+    deployment, fake_docker, tmp_path, capsys
 ):
+    """StartedAt counts only within ONE recreate (R2-05): a reboot between two runs of the
+    same attempt is reported (12D3 refused the update); container, image, mounts and
+    volume must still be the same ones."""
     conf, pkg_dir, _ = deployment
     rc = _server("update", conf, pkg_dir, "--apply", "--backup-reference", "x")
     assert rc == OP.EXIT_UPDATE  # attempt started, baseline taken
     fake_docker.edit(
         lambda s: s["containers"]["db1"].update(started_at="2026-11-17T23:00:00Z")
     )
+    capsys.readouterr()
+    assert _apply(conf, pkg_dir) == 0
+    assert "restarted since" in capsys.readouterr().out
+    assert _journal(tmp_path)["status"] == "awaiting_approval"
+
+
+def test_database_restart_during_a_recreate_stops_the_update(deployment, fake_docker, tmp_path):
+    """Within one recreate the database container must not even restart."""
+    conf, pkg_dir, _ = deployment
+    fake_docker.set(up_restarts_db=True)
     assert _apply(conf, pkg_dir) == OP.EXIT_UPDATE
-    assert not _ups(fake_docker)
+    journal = _journal(tmp_path)
+    assert journal["db_changed"] is True and journal["status"] != "awaiting_approval"
+    assert journal["db_change_reports"][-1]["changed"] == ["started_at"]
+    assert _finish(conf) == OP.EXIT_UPDATE
 
 
 @pytest.mark.parametrize(
@@ -2358,22 +2522,55 @@ def test_finish_fails_when_a_table_with_data_is_empty_afterwards(
     assert _journal(tmp_path)["status"] == "finish_failed"
 
 
-def test_counts_verdict():
-    before = {"source": 120, "note": 0}
-    assert OP.counts_verdict(before, {"source": 120, "note": 0}, True)[0]
-    assert not OP.counts_verdict(before, {"source": 121, "note": 0}, True)[
-        0
-    ]  # maintenance: exact
-    assert OP.counts_verdict(before, {"source": 125, "note": 3}, False)[
-        0
-    ]  # normal: users work
-    assert OP.counts_verdict(before, {"source": 110, "note": 0}, False)[
-        0
-    ]  # a user deleted some
-    assert not OP.counts_verdict(before, {"source": 0, "note": 0}, False)[0]
-    assert not OP.counts_verdict(before, {"note": 0}, False)[0]
-    assert not OP.counts_verdict(before, None, False)[0]
-    assert not OP.counts_verdict(before, None, True)[0]
+def _fp(**tables):
+    raw = {t: {"ids": [], "updated": None} for t in OP.RECORD_TABLES}
+    for t, ids in tables.items():
+        raw[t] = {"ids": ids, "updated": None}
+    return OP.make_fingerprint(raw)
+
+
+def test_data_verdict():
+    """THE verdict of every data check (R2-05; it replaces 12D3's counts_verdict, where a
+    count could drop in normal mode and unreadable counts skipped the check): every
+    reference record must still exist, additions are allowed, unreadable is a FAIL,
+    `exact` demands identical data (one recreate in maintenance / around the backup)."""
+    ref = {"source": ["source:1", "source:2"], "note": []}
+    same = _fp(source=["source:2", "source:1"])
+    assert OP.data_verdict(ref, same)[0]
+    assert OP.data_verdict(ref, same, exact=_fp(source=["source:1", "source:2"])["summary"])[0]
+    added = _fp(source=["source:1", "source:2", "source:3"], note=["note:1"])
+    ok, detail = OP.data_verdict(ref, added)
+    assert ok and "added" in detail
+    assert not OP.data_verdict(ref, added, exact=same["summary"])[0]
+    ok, detail = OP.data_verdict(ref, _fp(source=["source:1", "source:9"]))  # same count
+    assert not ok and "DATA CHANGED" in detail and "1 of 2" in detail
+    assert not OP.data_verdict(ref, _fp(source=["source:1"]))[0]  # partial loss
+    assert not OP.data_verdict(ref, _fp())[0]  # an empty database
+    assert not OP.data_verdict(ref, None)[0]  # unreadable: never "nothing to compare"
+    assert not OP.data_verdict(None, same)[0]  # the reference list is unreadable
+    assert OP.data_verdict({}, same)[0]  # nothing recorded: readability only
+    assert not OP.data_verdict({}, None)[0]
+
+
+def test_make_fingerprint_is_canonical_and_rejects_garbage():
+    raw = {t: {"ids": [], "updated": None} for t in OP.RECORD_TABLES}
+    raw["source"] = {"ids": ["source:b", "source:a"], "updated": ["u2", "u1"]}
+    a = OP.make_fingerprint(raw)
+    assert a["summary"]["tables"]["source"]["count"] == 2
+    assert a["ids"]["source"] == ["source:a", "source:b"]
+    swapped = json.loads(json.dumps(raw))
+    swapped["source"] = {"ids": ["source:a", "source:b"], "updated": ["u1", "u2"]}
+    assert OP.make_fingerprint(swapped)["summary"] == a["summary"]  # order-independent
+    edited = json.loads(json.dumps(raw))
+    edited["source"]["updated"] = ["u2", "u9"]  # a record was changed
+    b = OP.make_fingerprint(edited)["summary"]["tables"]["source"]
+    assert b["ids_sha256"] == a["summary"]["tables"]["source"]["ids_sha256"]
+    assert b["updated_sha256"] != a["summary"]["tables"]["source"]["updated_sha256"]
+    for bad in (
+        None, [], {"source": {"ids": []}},
+        dict(raw, note={"ids": "x"}), dict(raw, note={"ids": [], "updated": ["u"]}),
+    ):  # fmt: skip
+        assert OP.make_fingerprint(bad) is None
 
 
 # --- F-22: offline artifacts -----------------------------------------------------
@@ -2399,7 +2596,7 @@ def test_rapidocr_weights_must_be_on_the_volume_before_the_recreate(
     conf, pkg_dir, _ = deployment
     fake_docker.set(rapidocr=result)
     assert _apply(conf, pkg_dir) == OP.EXIT_UPDATE
-    assert not _ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
     step = [s for s in _journal(tmp_path)["steps"] if s["step"] == "RAPIDOCR_weights"][
         -1
     ]
@@ -2413,7 +2610,7 @@ def test_rapidocr_copy_command_failing_is_not_ignored(deployment, fake_docker):
     conf, pkg_dir, _ = deployment
     fake_docker.set(fail=["import_rapidocr_weights"])
     assert _apply(conf, pkg_dir) == OP.EXIT_UPDATE
-    assert not _ups(fake_docker)
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
 
 
 LOST_AGRI = lambda s: s["artifacts"]["ocr_models"].pop(4)  # noqa: E731
@@ -2451,7 +2648,7 @@ def test_model_files_that_cannot_be_listed_stop_the_update_before_the_recreate(
     conf, pkg_dir, _ = deployment
     fake_docker.set(fail=["ARTIFACTS"])
     assert _apply(conf, pkg_dir) == OP.EXIT_UPDATE
-    assert not _ups(fake_docker)
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
 
 
 def test_new_model_files_are_not_a_loss():
@@ -2585,19 +2782,29 @@ def completed(deployment, fake_docker):
     return conf, pkg_dir, deploy
 
 
-def test_plain_compose_up_is_detected_as_drift(completed, fake_docker, capsys):
-    """The exact failure of F-11: somebody runs `docker compose up -d` in the
-    deployment folder and the OLD image comes back. status and health say so."""
+def test_plain_compose_up_keeps_the_approved_image(completed, fake_docker, capsys):
+    """F-11 under the 12D5 contract: after finish DEPLOY_IMAGE_TAG names the new image, so
+    a plain `docker compose up -d` (operations script, boot guard) starts the APPROVED
+    image with the operator's environment, no tool file in the list. (12D3: the old image
+    came back and only status / health noticed.) A deploy tag moved by hand is reported
+    (exit 7) and repaired with pin --apply."""
     conf, _, deploy = completed
     assert _status(conf) == 0
+    _plain_compose_up(deploy)
+    app = fake_docker.app()
+    assert app["image_id"] == IMAGE_ID and app["env"]["OCR_OFFLINE"] == "true"
+    assert _status(conf) == 0 and OP.main(["health", "--config", str(conf)]) == 0
+    # somebody points the deployment's tag at the old image by hand, then restarts
+    fake_docker.edit(lambda s: s["images"].update({DEPLOY_TAG: OLD_ID}))
     _plain_compose_up(deploy)
     assert fake_docker.app()["image_id"] == OLD_ID
     capsys.readouterr()
     assert _status(conf) == OP.EXIT_DRIFT
     out = capsys.readouterr().out
-    assert "IMAGE DRIFT" in out and "ENVIRONMENT DRIFT" in out
+    assert "IMAGE DRIFT" in out and "DEPLOY TAG DRIFT" in out
     assert OP.main(["health", "--config", str(conf)]) == OP.EXIT_DRIFT
-    # the recorded command brings the approved image back
+    # repair: the tag goes back to the approved image; the recorded command starts it
+    assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0
     command = (
         Path(OP.load_config(str(conf))["STATE_DIR"]) / "compose-command.txt"
     ).read_text()
@@ -2605,17 +2812,21 @@ def test_plain_compose_up_is_detected_as_drift(completed, fake_docker, capsys):
     assert fake_docker.app()["image_id"] == IMAGE_ID and _status(conf) == 0
 
 
-def test_pin_is_a_dry_run_unless_applied(completed, fake_docker, capsys):
+def test_pin_is_a_read_only_report_unless_applied(completed, fake_docker, capsys):
+    """12D5: the optional pin is gone (no docker-compose.offline-pin.yml, no pin
+    bookkeeping); `pin` reports DEPLOY_IMAGE_TAG vs approved.json vs the container."""
     conf, _, deploy = completed
     before = fake_docker.get()["images"]
+    capsys.readouterr()
     assert OP.main(["pin", "--config", str(conf)]) == 0
     out = capsys.readouterr().out
-    assert (
-        "DRY RUN" in out
-        and "COMPOSE_FILE=docker-compose.yml:docker-compose.offline-pin.yml" in out
-    )
+    assert f'"deploy_tag_image_id": "{IMAGE_ID}"' in out
+    assert f'"running_image_id": "{IMAGE_ID}"' in out
     assert fake_docker.get()["images"] == before
     assert not (deploy / OP.PIN_FILE).exists()
+    fake_docker.edit(lambda s: s["images"].update({DEPLOY_TAG: OLD_ID}))
+    assert OP.main(["pin", "--config", str(conf)]) == OP.EXIT_DRIFT  # reported only
+    assert fake_docker.get()["images"][DEPLOY_TAG] == OLD_ID
 
 
 def test_pin_needs_a_completed_update(deployment, fake_docker):
@@ -2625,71 +2836,65 @@ def test_pin_needs_a_completed_update(deployment, fake_docker):
     assert OP.main(["pin", "--config", str(conf), "--apply"]) == OP.EXIT_UPDATE
 
 
-def test_pinned_image_survives_a_plain_compose_up(
-    completed, fake_docker, tmp_path, capsys
-):
+def test_pin_apply_is_an_idempotent_repair(completed, fake_docker, tmp_path):
+    """pin --apply re-points DEPLOY_IMAGE_TAG to approved.json's image: nothing to do when
+    it already does, a recorded repair when somebody moved it - never a decision.
+    (12D3: pin --apply retagged the deployment's image name and wrote a pin file.)"""
     conf, _, deploy = completed
+    steps = len(_journal(tmp_path)["steps"])
     assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0
-    assert fake_docker.get()["images"]["chatbot5400:local"] == IMAGE_ID
-    pin_file = deploy / OP.PIN_FILE
-    assert 'image: "chatbot5400:local"' in pin_file.read_text()
-    assert 'OCR_OFFLINE: "true"' in pin_file.read_text()
-    assert (
-        deploy / ".env"
-    ).read_text() == "SURREAL_PASSWORD=do-not-read\n"  # never edited
+    assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0
+    assert len(_journal(tmp_path)["steps"]) == steps  # nothing to repair, nothing recorded
+    assert fake_docker.get()["images"][DEPLOY_TAG] == IMAGE_ID
+    fake_docker.edit(lambda s: s["images"].update({DEPLOY_TAG: OLD_ID}))
+    assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0
+    assert fake_docker.get()["images"][DEPLOY_TAG] == IMAGE_ID
+    repair = _journal(tmp_path)["steps"][steps:]
+    assert [s["step"] for s in repair] == ["TAG_intent", "TAG_done"]
+    assert repair[0]["why"] == "pin repair" and repair[0]["from_id"] == OLD_ID
+    assert _status(conf) == 0
+    assert not (deploy / OP.PIN_FILE).exists()
+    assert (deploy / ".env").read_text() == "SURREAL_PASSWORD=do-not-read\n"
     assert (deploy / "docker-compose.yml").read_text() == "services: {}\n"
-    assert _journal(tmp_path)["pin"]["applied"] is True
 
-    # restart / recreate / reboot script: the plain command no longer goes back
-    _plain_compose_up(deploy)
-    assert fake_docker.app()["image_id"] == IMAGE_ID
+
+def test_preflight_refuses_compose_files_that_do_not_name_the_deploy_tag(
+    deployment, fake_docker
+):
+    """Contract step 1: the deployment's own compose files must give the application
+    DEPLOY_IMAGE_TAG - otherwise moving the tag would not change what starts. (12D3's pin
+    guessed the name from the replaced container and refused when it could not.)"""
+    conf, pkg_dir, _ = deployment
+
+    def preflight():
+        return _server("preflight", conf, pkg_dir, "--backup-reference", "x")
+
+    assert preflight() == 0
+    for image in ("some-other-name:1", OLD_ID):
+        fake_docker.edit(
+            lambda s, image=image: s["config"]["services"]["open_notebook"].update(image=image)
+        )
+        assert preflight() == OP.EXIT_PREFLIGHT
+    fake_docker.edit(
+        lambda s: s["config"]["services"]["open_notebook"].update(image=DEPLOY_TAG)
+    )
+    assert preflight() == 0
+    _set_conf(conf, DEPLOY_IMAGE_TAG="")
+    assert preflight() == OP.EXIT_PREFLIGHT  # not configured
+    _set_conf(conf, DEPLOY_IMAGE_TAG="chatbot5400:missing")
+    assert preflight() == OP.EXIT_PREFLIGHT  # no such image
+
+
+def test_preflight_refuses_a_build_only_application_service(deployment, fake_docker, capsys):
+    """Production compose may have `build:` and no `image:` (Compose names the image
+    <project>-<service>): contract step 1 asks the operator to declare `image:
+    <DEPLOY_IMAGE_TAG>` (12D3's pin retagged the guessed name). MOCK ONLY."""
+    conf, pkg_dir, _ = deployment
+    fake_docker.edit(lambda s: s["config"]["services"]["open_notebook"].pop("image"))
     capsys.readouterr()
-    assert (
-        _status(conf) == OP.EXIT_DRIFT
-    )  # ...but without the pin file the offline variables are gone
+    assert _server("preflight", conf, pkg_dir, "--backup-reference", "x") == OP.EXIT_PREFLIGHT
     out = capsys.readouterr().out
-    assert "ENVIRONMENT DRIFT" in out and "IMAGE DRIFT" not in out
-    # with the line the tool printed for COMPOSE_FILE there is no drift at all
-    _plain_compose_up(deploy, "docker-compose.yml", OP.PIN_FILE)
-    assert fake_docker.app()["image_id"] == IMAGE_ID and _status(conf) == 0
-    # the previous image is still reachable for a rollback
-    assert fake_docker.get()["images"][_journal(tmp_path)["rollback_tag"]] == OLD_ID
-
-
-def test_pin_refuses_an_image_name_the_deployment_does_not_use(
-    completed, fake_docker, tmp_path
-):
-    """The name is only retargeted when the replaced container was created from it."""
-    conf, _, deploy = completed
-    state = tmp_path / "state" / "journal.json"
-    journal = json.loads(state.read_text())
-    for used in ("some-other-name:1", OLD_ID, ""):
-        journal["baseline"]["image_ref"] = used
-        state.write_text(json.dumps(journal))
-        assert OP.main(["pin", "--config", str(conf), "--apply"]) == OP.EXIT_UPDATE
-        assert fake_docker.get()["images"]["chatbot5400:local"] == OLD_ID
-        assert not (deploy / OP.PIN_FILE).exists()
-
-
-def test_pin_with_a_build_only_service_uses_the_compose_image_name(
-    completed, fake_docker, tmp_path
-):
-    """Production compose has `build:` and no `image:`: Compose v2 names the image
-    <project>-<service>. MOCK ONLY - real Compose behaviour is a local gate."""
-    conf, _, deploy = completed
-
-    def build_only(s):
-        s["config"]["services"]["open_notebook"].pop("image")
-        s["images"]["cb-test-open_notebook:latest"] = OLD_ID
-
-    fake_docker.edit(build_only)
-    state = tmp_path / "state" / "journal.json"
-    journal = json.loads(state.read_text())
-    journal["baseline"]["image_ref"] = "cb-test-open_notebook"
-    state.write_text(json.dumps(journal))
-    assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0
-    assert fake_docker.get()["images"]["cb-test-open_notebook:latest"] == IMAGE_ID
-    assert 'image: "cb-test-open_notebook:latest"' in (deploy / OP.PIN_FILE).read_text()
+    assert f"image: {DEPLOY_TAG}" in out and "contract step 1" in out
 
 
 def test_rollback_without_a_journal_after_moving_a_damaged_one_aside(
@@ -2710,103 +2915,104 @@ def test_rollback_without_a_journal_after_moving_a_damaged_one_aside(
     assert fake_docker.app()["image_id"] == OLD_ID
 
 
-def test_rollback_after_a_pin_points_the_deployment_back(
-    completed, fake_docker, tmp_path
-):
+def test_rollback_after_finish_points_the_deploy_tag_back(completed, fake_docker, tmp_path):
+    """rollback app moves DEPLOY_IMAGE_TAG back to the previous approved image (intent
+    first, verified), so every later start path runs it."""
     conf, _, deploy = completed
-    assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0
-    assert _rollback(conf) == 0
-    assert fake_docker.get()["images"]["chatbot5400:local"] == OLD_ID
-    assert _journal(tmp_path)["pin"]["applied"] is False
-    _plain_compose_up(
-        deploy, "docker-compose.yml", OP.PIN_FILE
-    )  # the pin file stays valid
+    assert fake_docker.get()["images"][DEPLOY_TAG] == IMAGE_ID
+    assert _rollback(conf, "app", "--no-maintenance") == 0
+    assert fake_docker.get()["images"][DEPLOY_TAG] == OLD_ID
+    assert _approved(tmp_path)["how"] == "rollback"
+    assert _approved(tmp_path)["image_id"] == OLD_ID
+    _plain_compose_up(deploy)
     assert fake_docker.app()["image_id"] == OLD_ID and _status(conf) == 0
+    names = [s["step"] for s in _journal(tmp_path)["steps"]]
+    assert names[names.index("ROLLBACK_intent") :] == [
+        "ROLLBACK_intent", "TAG_intent", "TAG_done", "UP_intent", "ROLLBACK_app",
+        "ROLLBACK_done",
+    ]  # fmt: skip
 
 
-def test_pin_undo_and_backup_of_an_existing_file(completed, fake_docker, tmp_path):
+def test_pin_undo_is_refused_and_a_leftover_pin_file_is_only_reported(
+    completed, fake_docker, tmp_path, capsys
+):
+    """pin --undo is gone (an approval is undone with `rollback app`, which is checked);
+    a docker-compose.offline-pin.yml left by the 12D3 tool is reported, never touched."""
     conf, _, deploy = completed
     pin_file = deploy / OP.PIN_FILE
     pin_file.write_text("# the operator's own file\n")
-    assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0
-    backups = list((tmp_path / "state" / "config-backups").rglob(OP.PIN_FILE))
-    assert len(backups) == 1 and backups[0].read_text() == "# the operator's own file\n"
-    assert OP.main(["pin", "--config", str(conf), "--undo"]) == 0
+    images = fake_docker.get()["images"]
+    assert OP.main(["pin", "--config", str(conf), "--undo"]) == OP.EXIT_USAGE
+    assert fake_docker.get()["images"] == images
+    capsys.readouterr()
+    assert _status(conf) == 0
+    assert OP.PIN_FILE in capsys.readouterr().out
     assert pin_file.read_text() == "# the operator's own file\n"
-    assert fake_docker.get()["images"]["chatbot5400:local"] == OLD_ID
-    assert OP.main(["pin", "--config", str(conf), "--undo"]) == 0  # idempotent
-
-    pin_file.unlink()
-    assert OP.main(["pin", "--config", str(conf), "--apply"]) == 0
-    assert OP.main(["pin", "--config", str(conf), "--undo"]) == 0
-    assert not pin_file.exists()
 
 
 def test_drift_is_checked_for_a_rolled_back_deployment(completed, fake_docker):
+    """Image AND environment of a rolled-back deployment are compared (R2-13: 12D3
+    compared only the image in that state)."""
     conf, _, deploy = completed
     assert _rollback(conf) == 0
     assert _status(conf) == 0
-    command = (
-        Path(OP.load_config(str(conf))["STATE_DIR"]) / "compose-command.txt"
-    ).read_text()
-    assert (
-        "rollback-"
-        in (
-            Path(OP.load_config(str(conf))["STATE_DIR"]) / "image-override.yml"
-        ).read_text()
-    )
-    assert "--pull never" in command
+    state = Path(OP.load_config(str(conf))["STATE_DIR"])
+    command = (state / "compose-command.txt").read_text()
+    assert not (state / "image-override.yml").exists()
+    assert "--pull never" in command and f"approved image {OLD_ID}" in command
     # somebody starts the new image again by hand
     fake_docker.edit(lambda s: s["containers"]["c1"].update(image_id=IMAGE_ID))
+    assert _status(conf) == OP.EXIT_DRIFT
+    fake_docker.edit(lambda s: s["containers"]["c1"].update(image_id=OLD_ID))
+    assert _status(conf) == 0
+    fake_docker.edit(lambda s: s["containers"]["c1"]["env"].pop("OCR_OFFLINE"))
     assert _status(conf) == OP.EXIT_DRIFT
 
 
 # --- F-23: the Legal gate keeps the network mode ----------------------------------
 
 
-def test_legal_gate_keeps_normal_mode(completed, fake_docker, tmp_path):
+def test_legal_gate_commands_refuse_and_change_nothing(completed, fake_docker, tmp_path, capsys):
+    """12D5 contract step 2: the Legal gate is the operator's configuration. rollback
+    legal-on / legal-off write no override any more (12D3 rewrote the shared override and
+    recreated the application): they refuse with the procedure and change nothing."""
     conf, _, _ = completed
+    state = tmp_path / "state"
+    before = (fake_docker.get(), _journal(tmp_path), sorted(p.name for p in state.rglob("*")))
     start = len(fake_docker.calls())
-    assert _rollback(conf, "legal-on") == 0
-    up = _ups(fake_docker, start)[-1]
-    assert not any("maintenance" in x for x in up)
-    app = fake_docker.app()
-    assert app["env"]["OCR_LEGAL_NORMALIZATION_ENABLED"] == "true"
-    assert app["env"]["OCR_OFFLINE"] == "true" and app["image_id"] == IMAGE_ID
-    assert app["ports"]["8502/tcp"][0]["HostIp"] == "0.0.0.0"
+    for what, value in (("legal-on", "true"), ("legal-off", "false")):
+        capsys.readouterr()
+        assert _rollback(conf, what) == OP.EXIT_USAGE
+        out = capsys.readouterr().out
+        assert f"OCR_LEGAL_NORMALIZATION_ENABLED={value}" in out and "Nothing was changed" in out
+    assert fake_docker.calls()[start:] == []  # not even an inspect
+    after = (fake_docker.get(), _journal(tmp_path), sorted(p.name for p in state.rglob("*")))
+    assert after == before
     assert _status(conf) == 0
-    assert _rollback(conf, "legal-off") == 0
-    assert fake_docker.app()["env"]["OCR_LEGAL_NORMALIZATION_ENABLED"] == "false"
-    assert fake_docker.app()["ports"]["8502/tcp"][0]["HostIp"] == "0.0.0.0"
-    _assert_safe_calls(fake_docker.calls()[start:])
 
 
-def test_legal_gate_keeps_maintenance_mode(deployment, fake_docker):
+def test_legal_gate_commands_refuse_during_an_update_too(deployment, fake_docker):
     conf, pkg_dir, _ = deployment
     assert _apply(conf, pkg_dir) == 0  # in maintenance, awaiting approval
-    assert _rollback(conf, "legal-on") == 0
+    ups = len(_ups(fake_docker))
+    for extra in ((), ("--no-maintenance",), ("--maintenance",)):
+        assert _rollback(conf, "legal-on", *extra) == OP.EXIT_USAGE
+        assert _rollback(conf, "legal-off", *extra) == OP.EXIT_USAGE
+    assert len(_ups(fake_docker)) == ups
     assert fake_docker.app()["ports"]["8502/tcp"][0]["HostIp"] == "127.0.0.1"
-    assert _rollback(conf, "legal-off", "--no-maintenance") == 0  # explicit decision
-    assert fake_docker.app()["ports"]["8502/tcp"][0]["HostIp"] == "0.0.0.0"
-    assert _rollback(conf, "legal-on", "--maintenance") == 0
-    assert fake_docker.app()["ports"]["8502/tcp"][0]["HostIp"] == "127.0.0.1"
-    assert (
-        _rollback(conf, "legal-on", "--maintenance", "--no-maintenance")
-        == OP.EXIT_USAGE
-    )
 
 
-def test_legal_mode_rollback_via_gate_on_a_fresh_deployment(
+def test_legal_gate_command_on_a_fresh_deployment_changes_nothing(
     deployment, fake_docker, tmp_path
 ):
     conf, _, _ = deployment
     start = len(fake_docker.calls())
-    assert _rollback(conf, "legal-off") == 0
-    override = (tmp_path / "state" / "image-override.yml").read_text()
-    assert 'OCR_LEGAL_NORMALIZATION_ENABLED: "false"' in override
+    assert _rollback(conf, "legal-off") == OP.EXIT_USAGE
+    assert fake_docker.calls()[start:] == []
+    assert not (tmp_path / "state" / "image-override.yml").exists()
+    assert not (tmp_path / "state" / "journal.json").exists()
     assert fake_docker.app()["image_id"] == OLD_ID
-    assert fake_docker.get()["containers"]["db1"]["id"] == "db-container-original"
-    _assert_safe_calls(fake_docker.calls()[start:])
+    assert "OCR_LEGAL_NORMALIZATION_ENABLED" not in fake_docker.app()["env"]
 
 
 # --------------------------------------------------------------------------- #
@@ -3026,11 +3232,12 @@ def test_compose_file_changed_by_the_source_sync_cannot_touch_the_database(
     conf = _write_conf(tmp_path, server, health_server)
     monkeypatch.setattr(OP.time, "sleep", lambda s: None)
     assert _apply(conf, pkg_dir, "--sync-source") == OP.EXIT_UPDATE
-    assert not _ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
     assert fake_docker.get()["containers"]["db1"]["id"] == "db-container-original"
-    # the interrupted attempt is undone: application untouched (not even restarted), source back at v1.2.0
+    # the interrupted attempt is undone: the new image never ran, the approved image
+    # leaves maintenance (quiesce), source back at v1.2.0
     assert _rollback(conf, "interrupted") == 0
-    assert not _ups(fake_docker)
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
     assert _git(server, "rev-parse", "HEAD") == _git(repo, "rev-parse", "v1.2.0")
     assert not (server / "docker-compose.yml").exists()
 
@@ -3052,9 +3259,9 @@ def test_attempt_is_not_resumed_across_a_source_sync(
         _apply(conf, pkg_dir, "--sync-source", "--accept-missing-rapidocr")
         == OP.EXIT_UPDATE
     )
-    assert not _ups(fake_docker)
+    assert not _update_ups(fake_docker)
     assert _rollback(conf, "interrupted") == 0
-    assert not _ups(fake_docker) and _git(server, "rev-parse", "HEAD") == v120
+    assert not _update_ups(fake_docker) and _git(server, "rev-parse", "HEAD") == v120
     assert _apply(conf, pkg_dir, "--sync-source", "--accept-missing-rapidocr") == 0
     assert fake_docker.app()["image_id"] == IMAGE_ID
 
@@ -3063,6 +3270,112 @@ def test_sync_source_needs_a_git_checkout(deployment):
     conf, pkg_dir, _ = deployment
     assert _apply(conf, pkg_dir, "--sync-source") == OP.EXIT_UPDATE
 
+
+# --------------------------------------------------------------------------- #
+# Phase 12D5: interruption at every step that changes something (brief section 4)
+# --------------------------------------------------------------------------- #
+
+
+def _compose_up(argv):
+    return argv[:2] == ["docker", "compose"] and "up" in argv
+
+
+def _new_image_up(argv):
+    return _compose_up(argv) and any(x.endswith("override-update.yml") for x in argv)
+
+
+KILL_POINTS = [
+    ("update", "git fetch", lambda a: a[:1] == ["git"] and "fetch" in a),
+    ("update", "git merge", lambda a: a[:1] == ["git"] and "merge" in a and "--ff-only" in a),
+    ("update", "docker load", lambda a: a[:2] == ["docker", "load"]),
+    ("update", "docker tag rollback-tag", lambda a: a[:2] == ["docker", "tag"] and ":rollback-" in a[-1]),
+    ("update", "compose up quiesce", lambda a: _compose_up(a) and not _new_image_up(a)),
+    ("update", "compose up new image", _new_image_up),
+    ("finish", "docker tag deploy-tag", lambda a: a[:2] == ["docker", "tag"] and a[-1] == DEPLOY_TAG),
+    ("finish", "compose up normal mode", _compose_up),
+    ("rollback", "docker tag deploy-tag", lambda a: a[:2] == ["docker", "tag"] and a[-1] == DEPLOY_TAG),
+    ("rollback", "compose up rollback", _compose_up),
+]
+KILL_CASES = [
+    (command, point, matcher, when)
+    for command, point, matcher in KILL_POINTS
+    for when in ("before", "after")
+] + [("finish", "journal save", None, "before"), ("rollback", "journal save", None, "before")]
+
+
+@pytest.mark.parametrize(
+    "command, point, matcher, when",
+    KILL_CASES,
+    ids=[f"{c}-{p.replace(' ', '-')}-{w}" for c, p, _, w in KILL_CASES],
+)
+def test_interrupted_step_is_reported_and_a_rollback_restores_image_and_source(
+    git_deployment, fake_docker, repo, tmp_path, monkeypatch, capsys, command, point, matcher, when
+):
+    """kill -9 (KeyboardInterrupt) once BEFORE and once AFTER the real call of every
+    step that changes something (git fetch / merge, docker load, docker tag, every
+    compose up, the journal save that closes finish / rollback). Afterwards status is
+    never 0 and names the state; DEPLOY_IMAGE_TAG is the approved image unless the kill
+    came after a successful tag move of finish / rollback (reported as an interrupted
+    transition); a rollback brings back the approved image AND the source commit."""
+    conf, pkg_dir, server = git_deployment
+    v120 = _git(server, "rev-parse", "HEAD")
+    if command in ("finish", "rollback"):
+        assert _apply(conf, pkg_dir, "--sync-source") == 0
+    if command == "rollback":
+        assert _finish(conf) == 0
+    real_run, real_save = OP.run, OP.Journal.save
+    fired = []
+
+    def run(cmd, *a, **k):
+        if matcher is not None and not fired and matcher(cmd):
+            fired.append(cmd)
+            if when == "after":
+                real_run(cmd, *a, **k)
+            raise KeyboardInterrupt(point)
+        return real_run(cmd, *a, **k)
+
+    def save(self):
+        last = (self.data.get("steps") or [{}])[-1].get("step")
+        closing = (last == "Q_checks" and self.data.get("status") == OP.COMPLETED) or (
+            last == "ROLLBACK_done" and self.data.get("status") == OP.ROLLED_BACK
+        )
+        if matcher is None and not fired and closing:
+            fired.append(last)
+            raise KeyboardInterrupt(point)
+        return real_save(self)
+
+    monkeypatch.setattr(OP, "run", run)
+    monkeypatch.setattr(OP.Journal, "save", save)
+    with pytest.raises(KeyboardInterrupt):
+        {"update": lambda: _apply(conf, pkg_dir, "--sync-source"),
+         "finish": lambda: _finish(conf), "rollback": lambda: _rollback(conf)}[command]()  # fmt: skip
+    monkeypatch.setattr(OP, "run", real_run)
+    monkeypatch.setattr(OP.Journal, "save", real_save)
+    assert fired, "the kill point was not reached"
+
+    capsys.readouterr()
+    rc = _status(conf)
+    out = capsys.readouterr().out
+    assert rc in (OP.EXIT_UNDECIDED, OP.EXIT_DRIFT), out
+    assert "INTERRUPTED TRANSITION" in out or "is undecided (status" in out
+    tag, approved = fake_docker.get()["images"][DEPLOY_TAG], _approved(tmp_path)["image_id"]
+    if command == "update":
+        assert tag == approved  # an update never moves the deploy tag
+    elif tag != approved:  # finish / rollback killed after its tag move: reported
+        assert "INTERRUPTED TRANSITION" in out and "was moved to" in out
+    # the way out: `rollback interrupted` for an update, `rollback app` otherwise
+    assert _rollback(conf, "interrupted" if command == "update" else "app") == 0
+    assert fake_docker.app()["image_id"] == OLD_ID
+    assert fake_docker.get()["images"][DEPLOY_TAG] == OLD_ID
+    assert _approved(tmp_path)["image_id"] == OLD_ID
+    assert _git(server, "rev-parse", "HEAD") == v120
+    assert fake_docker.get()["containers"]["db1"]["id"] == "db-container-original"
+    assert _status(conf) == 0
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12D5: image identity with the shapes of a real Docker 29 / containerd store
+# --------------------------------------------------------------------------- #
 
 # Verbatim from `docker save` / `docker image inspect` of a busybox-based image on
 # Docker 29.10 with the containerd image store (lab image, revision label "a" * 40).
@@ -3076,8 +3389,6 @@ REAL_CONFIG_BLOB = (
     '4dffbbc0df2f9942062cb34d","sha256:eb73bb1f2a67cbd1f99fba2b437ae06877ae36a5cc0252dbe7c58'
     'bc7b221244b"]}}'
 )
-
-
 REAL_INSPECT_CONFIG = {
     "ArgsEscaped": True,
     "Cmd": ["sh", "-c", "while true; do sleep 3600; done"],
@@ -3189,6 +3500,29 @@ def test_image_archive_identity_of_a_docker29_containerd_archive(tmp_path, manif
     )
 
 
+def test_the_target_tag_is_checked_again_right_before_the_recreate(deployment, fake_docker, tmp_path):
+    """R2-06 / F-25: the tag of the package moved between `docker load` and the recreate
+    (here: during the backup) -> the update stops before the new image runs."""
+    conf, pkg_dir, _ = deployment
+    st = fake_docker.path
+    script = tmp_path / "retag.py"
+    script.write_text(
+        "import json\n"
+        f"s = json.load(open({str(st)!r}))\n"
+        f"s['images'][{TARGET!r}] = {OTHER_ID!r}\n"
+        f"s['image_configs'][{OTHER_ID!r}] = {OTHER_CONFIG!r}\n"
+        f"json.dump(s, open({str(st)!r}, 'w'))\n"
+    )
+    _set_conf(conf, BACKUP_CMD=f"{sys.executable} {script}", BACKUP_VERIFY_CMD="true")
+    assert _server("update", conf, pkg_dir, "--apply") == OP.EXIT_UPDATE
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12D5: archive pre-scan before authentication (R2-19)
+# --------------------------------------------------------------------------- #
+
+
 def _pax_record(key, value):
     body = f" {key}={value}\n"
     length = len(body) + 1
@@ -3245,6 +3579,11 @@ def _gnu_long_link(tar, size):
     tar.addfile(info)
 
 
+# --------------------------------------------------------------------------- #
+# Phase 12D5: package trust on the server (R2-07)
+# --------------------------------------------------------------------------- #
+
+
 def test_package_folder_writable_by_others_or_without_a_trusted_record_is_refused(
     deployment, tmp_path
 ):
@@ -3295,3 +3634,181 @@ def test_signature_policy_required_is_enforced_on_every_use(
     assert _server("preflight", conf, pkg_dir, "--backup-reference", "y") == OP.EXIT_PREFLIGHT
     u2 = next(p for p in (tmp_path / "u2").iterdir() if p.is_dir())
     assert _server("preflight", conf, u2, "--backup-reference", "z") == OP.EXIT_PREFLIGHT
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12D5: the deployment contract in preflight; leftovers; configuration keys
+# --------------------------------------------------------------------------- #
+
+
+def test_preflight_refuses_every_breach_of_the_contract(deployment, fake_docker, tmp_path, capsys):
+    conf, pkg_dir, _ = deployment
+
+    def preflight():
+        return _server("preflight", conf, pkg_dir, "--backup-reference", "x")
+
+    def breach(edit, undo, needle):
+        fake_docker.edit(edit)
+        capsys.readouterr()
+        assert preflight() == OP.EXIT_PREFLIGHT
+        assert needle in capsys.readouterr().out
+        fake_docker.edit(undo)
+
+    assert preflight() == 0
+    # pre-existing drift: the application does not run the image DEPLOY_IMAGE_TAG names
+    breach(lambda s: s["containers"]["c1"].update(image_id=OTHER_ID),
+           lambda s: s["containers"]["c1"].update(image_id=OLD_ID), "pre-existing drift")
+    # REQUIRED_APP_ENV missing in the effective configuration / in the running container
+    app_env = lambda s: s["config"]["services"]["open_notebook"]["environment"]  # noqa: E731
+    breach(lambda s: app_env(s).pop("OCR_OFFLINE"),
+           lambda s: app_env(s).update(OCR_OFFLINE="true"), "contract step 2")
+    breach(lambda s: s["containers"]["c1"]["env"].update(OCR_RAPIDOCR_PERSISTENT="false"),
+           lambda s: s["containers"]["c1"]["env"].update(OCR_RAPIDOCR_PERSISTENT="true"),
+           "contract step 2")
+    assert preflight() == 0
+    # approved.json names another image than the deploy tag
+    state = tmp_path / "state"
+    (state / "approved.json").write_text(json.dumps({"image_id": OTHER_ID, "how": "finish"}))
+    assert preflight() == OP.EXIT_PREFLIGHT
+    (state / "approved.json").unlink()
+    assert preflight() == 0
+
+
+def test_a_leftover_12d3_override_is_reported_and_removed_only_when_it_is_ours(
+    deployment, fake_docker, tmp_path, capsys
+):
+    conf, pkg_dir, _ = deployment
+    leftover = tmp_path / "state" / "image-override.yml"
+    leftover.write_text(
+        'services:\n  open_notebook:\n    image: "chatbot5400:1.3.0-rc.1"\n    pull_policy: '
+        'never\n    environment:\n      OCR_OFFLINE: "true"\n'
+    )
+    capsys.readouterr()
+    assert _status(conf) == 0
+    assert "image-override.yml" in capsys.readouterr().out and leftover.exists()  # read-only
+    assert _apply(conf, pkg_dir) == 0
+    assert not leftover.exists()  # the tool's own file: removed, logged
+    leftover.write_text("# the operator's own notes\n")
+    assert _finish(conf) == 0
+    assert leftover.read_text() == "# the operator's own notes\n"  # not ours: kept, unused
+
+
+def test_obsolete_and_deprecated_configuration_keys(tmp_path, capsys):
+    conf = tmp_path / "c.conf"
+    conf.write_text("APP_ENV_OVERRIDES=OCR_OFFLINE=true\nBACKUP_MAX_AGE_MINUTES=inf\n")
+    cfg = OP.load_config(str(conf))
+    out = capsys.readouterr().out
+    assert cfg["REQUIRED_APP_ENV"] == "OCR_OFFLINE=true"
+    assert "APP_ENV_OVERRIDES is deprecated" in out and "BACKUP_MAX_AGE_MINUTES is obsolete" in out
+    conf.write_text("REQUIRED_APP_ENV=OCR_X=1\nAPP_ENV_OVERRIDES=OCR_OFFLINE=true\n")
+    assert OP.load_config(str(conf))["REQUIRED_APP_ENV"] == "OCR_X=1"
+    conf.write_text("")
+    assert OP.required_env(OP.load_config(str(conf))) == {
+        "OCR_RAPIDOCR_PERSISTENT": "true", "OCR_OFFLINE": "true",
+    }  # fmt: skip
+    conf.write_text("REQUIRED_APP_ENV=OCR_X=$(id)\n")
+    with pytest.raises(OP.Refused):
+        OP.required_env(OP.load_config(str(conf)))
+
+
+def test_exit_codes_are_documented():
+    assert (OP.EXIT_DRIFT, OP.EXIT_UNDECIDED) == (7, 8)
+    assert "7  DRIFT" in OP.__doc__ and "8  UNDECIDED" in OP.__doc__
+    assert "(exit 0 / 7 / 8)" in " ".join(OP.build_parser().format_help().split())
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12D5: quiesce, fingerprints around the backup (R2-04)
+# --------------------------------------------------------------------------- #
+
+
+def test_jobs_still_running_in_maintenance_stop_the_update_before_the_backup(
+    deployment, fake_docker, tmp_path, capsys
+):
+    conf, pkg_dir, _ = deployment
+    marker = _with_backup_cmd(conf, tmp_path)
+    _set_conf(conf, JOBS_WAIT_SECONDS="20")
+    fake_docker.set(on_quiesce={"jobs": 3})  # work started before maintenance goes on
+    capsys.readouterr()
+    assert _server("update", conf, pkg_dir, "--apply") == OP.EXIT_UPDATE
+    assert "STAYS in maintenance" in capsys.readouterr().out
+    assert _backups(marker) == 0 and not _update_ups(fake_docker)
+    assert fake_docker.app()["ports"]["8502/tcp"][0]["HostIp"] == "127.0.0.1"
+    assert _status(conf) == OP.EXIT_UNDECIDED
+    assert "left there by this attempt" in capsys.readouterr().out
+    fake_docker.set(jobs=0)
+    assert _server("update", conf, pkg_dir, "--apply") == 0 and _backups(marker) == 1
+
+
+def test_a_record_edited_after_the_backup_stops_the_update_before_the_recreate(
+    deployment, fake_docker, tmp_path, monkeypatch
+):
+    """F3 (right before the new image starts) must equal F1 (the backup): an edited
+    record - same ids, same count - is a change too."""
+    conf, pkg_dir, _ = deployment
+    real = OP.rapidocr_to_volume
+
+    def and_somebody_edits_a_note(*a, **k):
+        real(*a, **k)
+        fake_docker.edit(lambda s: s.setdefault("touched", {}).update(note=["note:1"]))
+
+    monkeypatch.setattr(OP, "rapidocr_to_volume", and_somebody_edits_a_note)
+    assert _apply(conf, pkg_dir) == OP.EXIT_UPDATE
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
+    assert "F3_fingerprint" not in [s["step"] for s in _journal(tmp_path)["steps"]]
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12D5: the read-only snapshot helper of the manual fallback procedure
+# --------------------------------------------------------------------------- #
+
+
+def test_snapshot_records_and_compares_without_changing_anything(
+    deployment, fake_docker, tmp_path, capsys
+):
+    conf, _, _ = deployment
+    before = tmp_path / "before.json"
+    start = len(fake_docker.calls())
+    assert OP.main(["snapshot", "--config", str(conf), "--out", str(before)]) == 0
+    calls = fake_docker.calls()[start:]
+    _assert_safe_calls(calls)
+    assert not [c for c in calls if c[0] in ("tag", "load") or "up" in c]
+    assert not (tmp_path / "state" / "journal.json").exists()
+    assert not (tmp_path / "state" / "update.lock").exists()  # no lock either
+    snap = json.loads(before.read_text())
+    assert (before.stat().st_mode & 0o077) == 0  # record ids: private
+    assert snap["counts"]["source"] == 120 and snap["records"]["source"][0] == "source:1"
+    assert snap["db"]["container_id"] == "db-container-original"
+    assert snap["deploy_tag"] == {"ref": DEPLOY_TAG, "image_id": OLD_ID}
+    assert snap["app"]["image_id"] == OLD_ID and snap["app"]["required_env_missing"] == []
+    assert "SURREAL_URL" in snap["app"]["env_keys"]
+    assert "ws://" not in before.read_text()  # environment NAMES only, never values
+
+    def compare():
+        return OP.main(["snapshot", "--config", str(conf), "--compare", str(before)])
+
+    assert compare() == 0
+    fake_docker.edit(lambda s: s["counts"].update(source=125))  # additions: reported, fine
+    capsys.readouterr()
+    assert compare() == 0 and "added source: 5" in capsys.readouterr().out
+    fake_docker.edit(
+        lambda s: s.setdefault("records", {}).update(
+            source=[f"source:{i}" for i in range(2, 126)]
+        )
+    )  # source:1 is gone
+    assert compare() == OP.EXIT_UPDATE
+    fake_docker.edit(lambda s: s["records"].pop("source"))
+    assert compare() == 0
+    fake_docker.edit(lambda s: s["artifacts"]["ocr_models"][0].__setitem__(1, 1))
+    assert compare() == OP.EXIT_UPDATE  # a model file changed (size)
+    fake_docker.set(fail=["FINGERPRINT"])
+    assert compare() == OP.EXIT_VERIFY  # unreadable
+    assert OP.main(["snapshot", "--config", str(conf), "--compare", str(tmp_path / "nope")]) == OP.EXIT_VERIFY
+
+
+def test_snapshot_wrapper_only_delegates():
+    text = (ROOT / "scripts" / "offline" / "snapshot.sh").read_text()
+    code = "\n".join(x for x in text.splitlines() if not x.startswith("#"))
+    assert 'exec python3 "$HERE/offline_package.py" snapshot "$@"' in code
+    assert "rm -" not in code and "down" not in code
+    assert os.access(ROOT / "scripts" / "offline" / "snapshot.sh", os.X_OK)

@@ -7,38 +7,68 @@
 # (chmod 644 or 600) or the tool refuses to start. The same holds for
 # ALLOWED_SIGNERS. Individual keys can no longer be overridden through
 # environment variables; only CB5400_OFFLINE_CONFIG (the path of this file) is read.
+# `verify-package.sh` reads this file too (STATE_DIR, ALLOWED_SIGNERS, SIGNATURE_POLICY).
 
 # Folder that holds the compose files of the deployment (and its .env, never read)
 DEPLOY_DIR=/srv/example/chatbot5400
 COMPOSE_PROJECT=chatbot5400-example
-# Compose files, in the order the deployment uses them (relative to DEPLOY_DIR)
+# Compose files, in the order the deployment's OWN operations script uses them
+# (relative to DEPLOY_DIR). The tool recreates the application with exactly these
+# files (+ the maintenance override / its per-attempt image override where stated).
 COMPOSE_FILES=docker-compose.yml docker-compose.override.yml
 APP_SERVICE=open_notebook
 DB_SERVICE=surrealdb
 IMAGE_REPO=chatbot5400
 
-# Update journal, lock and generated image override (outside DEPLOY_DIR)
+# NEW (12D5, required by update / finish / rollback / pin / status) - contract step 1:
+# the image reference your compose files give the application service
+# (`image: chatbot5400:local` for APP_SERVICE). It is the ONLY pointer to the approved
+# image: the tool moves it only after a verified finish (to the new image) or rollback
+# (back to the previous approved image). Every start path then starts the approved image.
+DEPLOY_IMAGE_TAG=chatbot5400:local
+
+# NEW (12D5) - contract step 2: variables the new version needs. They must be in YOUR
+# compose files / .env (the tool never injects environment) and in the running
+# application before the update (v1.2.0 already understands them).
+REQUIRED_APP_ENV=OCR_RAPIDOCR_PERSISTENT=true OCR_OFFLINE=true
+# DEPRECATED alias of REQUIRED_APP_ENV, read only when REQUIRED_APP_ENV is not set:
+# APP_ENV_OVERRIDES=OCR_RAPIDOCR_PERSISTENT=true OCR_OFFLINE=true
+# The Legal gate (OCR_LEGAL_NORMALIZATION_ENABLED) is also YOUR configuration:
+# `rollback.sh legal-on / legal-off` refuse and print the procedure.
+
+# Journal, lock, approved.json, per-attempt files, trusted verify records
+# (verified/<package sha256>.json) - outside DEPLOY_DIR, private to root
 STATE_DIR=/var/lib/chatbot5400-offline
 
 # Release public key(s) installed beforehand (ssh-keygen allowed_signers format)
 ALLOWED_SIGNERS=/etc/chatbot5400/allowed_signers
 SIGNER_IDENTITY=release@chatbot5400
+# NEW (12D5): required | optional. Default: required when ALLOWED_SIGNERS exists, else
+# optional. With `required` an unsigned package is refused even with --expected-sha256,
+# and every server command checks the signature again.
+#SIGNATURE_POLICY=required
 
-# Existing maintenance override (loopback-only ports, docs/ocr/OCR_OPERATOR_GUIDE.md §11)
+# Existing maintenance override (loopback-only ports, docs/ocr/OCR_OPERATOR_GUIDE.md §11).
+# Required unless --no-maintenance (which needs --writes-stopped-confirmed). It must
+# not change anything but the published ports of the application.
 MAINTENANCE_OVERRIDE=/srv/example/ops/docker-compose.maintenance.yml
 
 # Site backup procedure (must exit 0 only when the backup is complete) and its
-# restore verification. Leave empty to pass --backup-reference / --backup-verified.
+# restore verification. They run AFTER the application is put into maintenance
+# (writes stopped); the data fingerprint must be identical before and after.
+# Leave empty to pass --backup-reference / --backup-verified (a reference is
+# single-use: every run needs its own backup, taken while writes are stopped).
 BACKUP_CMD=
 BACKUP_VERIFY_CMD=
-# Every update ATTEMPT takes its own backup. Only when the SAME attempt is resumed
-# before anything was recreated may its backup be reused, and only this long:
-BACKUP_MAX_AGE_MINUTES=120
+# OBSOLETE (12D5): accepted and ignored - every update run that has not recreated the
+# application takes its own backup; there is no time-to-live any more.
+# BACKUP_MAX_AGE_MINUTES=120
+
+# NEW (12D5): how long the update waits, in maintenance, for running background jobs
+# before the backup (seconds). On timeout it refuses; the application stays in
+# maintenance until the next run or `rollback.sh interrupted`.
+JOBS_WAIT_SECONDS=1800
 
 # Loopback health URL of the API
 HEALTH_URL=http://127.0.0.1:5055/health
 MIN_FREE_GB_EXTRA=5
-
-# Environment added to the application by the generated override (offline:
-# RapidOCR weights on the data volume, never download)
-APP_ENV_OVERRIDES=OCR_RAPIDOCR_PERSISTENT=true OCR_OFFLINE=true

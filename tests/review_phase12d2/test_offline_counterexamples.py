@@ -261,14 +261,16 @@ def test_verified_every_compose_up_is_app_only_no_deps_no_build_pull_never(
         == 0
     )
     assert OP.main(["finish", "--config", str(conf), "--approve", "owner"]) == 0
+    # Phase 12D5: the Legal gate is the operator's configuration; the command refuses
+    # and recreates nothing
     assert (
         OP.main(["rollback", "legal-off", "--config", str(conf), "--no-maintenance"])
-        == 0
+        == OP.EXIT_USAGE
     )
     assert OP.main(["rollback", "app", "--config", str(conf)]) == 0
     calls = fake_docker.calls()[start:]
     ups = [c for c in calls if c[0] == "compose" and "up" in c]
-    assert len(ups) == 4
+    assert len(ups) == 4  # update: quiesce + new image; finish; rollback
     for c in ups:
         tail = c[c.index("up") :]
         assert tail == [
