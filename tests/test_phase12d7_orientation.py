@@ -457,3 +457,32 @@ def test_tool_needs_exactly_one_input(tmp_path):
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+@needs_tesseract
+def test_crops_mode_prepares_the_engine_tessdata_like_ingestion(tmp_path, monkeypatch):
+    """Without --tessdata the tool uses the engine's own folder, prepared the way
+    build_ocr_options prepares it (TESSDATA_PREFIX, configs/tsv)."""
+    models = tmp_path / "models"
+    tessdata = models / "tesseract"
+    tessdata.mkdir(parents=True)
+    for lang in ("vie", "osd"):
+        (tessdata / f"{lang}.traineddata").symlink_to(
+            Path(TESSDATA) / f"{lang}.traineddata"
+        )
+    monkeypatch.setenv("OCR_MODELS_DIR", str(models))
+    monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
+    monkeypatch.setenv("OCR_TESSERACT_REAL", shutil.which("tesseract"))
+    _crops(tmp_path / "crops")
+    out = tmp_path / "out"
+    assert (
+        TOOL.main(
+            ["--crops", str(tmp_path / "crops"), "--out", str(out), "--lang", "vie"]
+        )
+        == 0
+    )
+    assert (tessdata / "configs" / "tsv").is_file()
+    assert os.environ["TESSDATA_PREFIX"] == str(tessdata)
+    crops = json.loads((out / "orientation_crops.json").read_text(encoding="utf-8"))
+    down = {c["file"]: c for c in crops}["b_upside_down.png"]
+    assert down["applied_rotation"] == 180 and down["ocr_applied"]["words"] > 3

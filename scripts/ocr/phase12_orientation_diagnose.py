@@ -633,6 +633,15 @@ def run_crops(args: argparse.Namespace, out: Path) -> dict[str, Any]:
     langs = (
         args.lang.split("+") if args.lang else engine_langs(args.engine, args.version)
     )
+    if not args.tessdata:
+        # what build_ocr_options does: TESSDATA_PREFIX (orientation data) and the
+        # `tsv` config inside the engine's tessdata folder (--tessdata-dir)
+        ok, detail = runtime.ensure_tessdata_prefix()
+        if not ok:
+            raise SystemExit(detail)
+        runtime.ensure_tessdata_layout()
+    if not langs:
+        raise SystemExit(f"{args.engine}: no language (no active custom version?)")
     tessdata = args.tessdata or str(paths.tessdata_dir())
     records = []
     keep = not args.no_text
