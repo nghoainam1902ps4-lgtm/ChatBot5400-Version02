@@ -274,7 +274,13 @@ def _docling_patch_state() -> dict[str, dict[str, Any]]:
 
     docling = P._installed("docling") is not None
     return {
-        "tsv": {"patch": P.PATCH_ID, **one(P.problems, docling)},
+        # P.problems() verifies both Tesseract targets: the TSV parse (E0-07) and
+        # the OCR loop that never drops a failed region (E2-04, Phase 12D9)
+        "tsv": {
+            "patch": P.PATCH_ID,
+            "patches": [P.PATCH_ID, P.REGION_PATCH_ID],
+            **one(P.problems, docling),
+        },
         "text": {
             "patches": [P.HYPHEN_PATCH_ID, P.FOOTNOTE_PATCH_ID],
             **one(P.text_problems, P._docling_present()),
@@ -332,7 +338,12 @@ def cmd_status(args: argparse.Namespace) -> int:
         )
         if r.get("error"):
             print(f"{'':<15} error: {r['error']}")
-    print(_patch_line("docling TSV text patch (E0-07, Tesseract)", patches["tsv"]))
+    print(
+        _patch_line(
+            "docling Tesseract patches (E0-07 TSV text, E2-04 failed OCR region)",
+            patches["tsv"],
+        )
+    )
     print(
         _patch_line(
             "docling text preservation (D8-03 hyphens, D8-02 table / picture footnotes)",

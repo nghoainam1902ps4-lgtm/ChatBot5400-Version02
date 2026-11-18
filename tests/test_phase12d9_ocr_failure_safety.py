@@ -985,3 +985,19 @@ def test_guards_cover_the_ocr_loop(monkeypatch):
     with pytest.raises(P.TsvPatchError, match="OCR region failure patch"):
         P.apply()
     assert not P.is_applied()
+
+
+def test_the_status_command_names_the_e2_04_patch(capsys):
+    """The Windows gate reads it from ``ocr.cli status`` (text and --json)."""
+    from open_notebook.ocr import cli
+
+    assert cli.main(["status", "--no-db"]) == 0
+    text = capsys.readouterr().out
+    line = next(x for x in text.splitlines() if x.startswith("docling Tesseract"))
+    assert "E2-04" in line and "ready (applied at conversion time)" in line
+    assert cli.main(["status", "--no-db", "--json"]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    tess = [r for r in rows if "docling_tsv_patch" in r]
+    assert tess and all(
+        P.REGION_PATCH_ID in r["docling_tsv_patch"]["patches"] for r in tess
+    )
