@@ -3459,10 +3459,23 @@ def cmd_preflight(
             "before and after the backup"
         ),
     )
+    # A backup is mandatory before any recreate (take_backup); WHEN it is taken is
+    # what matters (R2-04): BACKUP_CMD runs after the tool stopped the writes; an
+    # operator backup is requested by the run that stopped them and accepted by
+    # the next run only while the data is unchanged.
     check(
-        "backup procedure configured",
-        bool(cfg["BACKUP_CMD"]) or bool(args.backup_reference),
-        "BACKUP_CMD set" if cfg["BACKUP_CMD"] else (args.backup_reference or "none"),
+        "backup procedure",
+        True,
+        "BACKUP_CMD, run by update after it stops the writes"
+        if cfg["BACKUP_CMD"]
+        else (
+            f"operator backup {args.backup_reference!r}: accepted only by the run after the "
+            "one that stopped the writes and asked for it"
+            if args.backup_reference
+            else "operator backup: update --apply stops the writes, then asks for the backup; "
+            "run it again with --backup-reference <id> --backup-verified"
+        ),
+        fatal=False,
     )
     if args.backup_reference and not cfg["BACKUP_CMD"]:
         try:
@@ -3730,6 +3743,17 @@ def quiesce(
     journal.step("JOBS_idle", ignored=bool(args.ignore_jobs))
 
 
+def _request_backup(dep: Deployment, journal: Journal, sha: str) -> None:
+    """The writes are stopped and F1 is known: the operator may take the backup NOW."""
+    container = dep.app_container()
+    journal.data["backup_requested"] = {
+        "at": now_iso(),
+        "fingerprint_sha256": sha,
+        "container": container,
+    }
+    journal.step("BACKUP_requested", fingerprint_sha256=sha, container=container)
+
+
 def take_backup(
     dep: Deployment,
     cfg: Dict[str, str],
@@ -3737,7 +3761,17 @@ def take_backup(
     args: argparse.Namespace,
     f1: Dict[str, Any],
 ) -> None:
-    """I + J, in THIS run, bound to the attempt and to F1 (R2-04). Never reused."""
+    """I + J, in THIS run, bound to the attempt and to F1 (R2-04). Never reused.
+
+    BACKUP_CMD runs here, after the writes were stopped. A backup the operator
+    takes himself (--backup-reference) can only be bound to stopped writes when
+    the tool asked for it: a run without a backup stops the writes, records F1
+    and asks for one (BACKUP_requested); the NEXT run accepts a new reference
+    only while the same quiesced container runs and the data still equals that
+    F1. A reference passed in the run that has only just stopped the writes
+    names a backup taken BEFORE that, while users could still write: it is
+    refused and registered, so it can never be used later.
+    """
     attempt_id = journal.data["attempt_id"]
     sha = f1["summary"]["sha256"]
     if cfg["BACKUP_CMD"]:
@@ -3756,14 +3790,41 @@ def take_backup(
                 "backup of the data as it is now",
                 EXIT_UPDATE,
             )
+        asked = journal.data.get("backup_requested") or {}
+        why = None
+        if not asked:
+            why = "it was taken before this run stopped the writes"
+        elif asked.get("container") != dep.app_container():
+            why = (
+                f"the application was recreated since the backup was requested at "
+                f"{asked.get('at')}"
+            )
+        elif asked.get("fingerprint_sha256") != sha:
+            why = f"the data changed since the backup was requested at {asked.get('at')}"
         register_backup_reference(dep.state, reference, attempt_id, sha)
+        if why:
+            _request_backup(dep, journal, sha)
+            raise Refused(
+                f"the backup {reference!r} cannot be bound to the data being updated: {why}. "
+                "The writes are stopped NOW and the data is fingerprinted: take a NEW backup "
+                "now and run update again with its NEW --backup-reference <id> "
+                "--backup-verified (or configure BACKUP_CMD, run by the tool itself after it "
+                "stopped the writes). Nothing was recreated.",
+                EXIT_UPDATE,
+            )
         journal.step(
-            "I_backup", method="operator", reference=reference, fingerprint_sha256=sha
+            "I_backup",
+            method="operator",
+            reference=reference,
+            fingerprint_sha256=sha,
+            requested_at=asked.get("at"),
         )
     else:
+        _request_backup(dep, journal, sha)
         raise Refused(
             "no backup: set BACKUP_CMD, or take the approved backup NOW (the application is in "
-            "maintenance) and run update again with --backup-reference <id> --backup-verified",
+            "maintenance and the data is fingerprinted) and run update again with "
+            "--backup-reference <id> --backup-verified",
             EXIT_UPDATE,
         )
     if cfg["BACKUP_VERIFY_CMD"]:

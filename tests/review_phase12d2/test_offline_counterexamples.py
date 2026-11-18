@@ -129,18 +129,9 @@ def test_f09_finish_checks_health_before_reporting_completed(
     deployment, fake_docker, tmp_path
 ):
     conf, pkg_dir, _ = deployment
-    assert (
-        T._server(
-            "update",
-            conf,
-            pkg_dir,
-            "--apply",
-            "--backup-reference",
-            "bk",
-            "--backup-verified",
-        )
-        == 0
-    )
+    # Phase 12D5 (R2-04): an operator backup is taken when the update asks for it,
+    # after the writes are stopped - T._apply runs that two-step protocol.
+    assert T._apply(conf, pkg_dir) == 0
     # The application does not come back after the second recreate (normal mode).
     text = conf.read_text().splitlines()
     conf.write_text(
@@ -248,18 +239,9 @@ def test_verified_every_compose_up_is_app_only_no_deps_no_build_pull_never(
     start = len(
         fake_docker.calls()
     )  # build + verify of the fixture are not server-side calls
-    assert (
-        T._server(
-            "update",
-            conf,
-            pkg_dir,
-            "--apply",
-            "--backup-reference",
-            "bk",
-            "--backup-verified",
-        )
-        == 0
-    )
+    # Phase 12D5 (R2-04): two runs - the first stops the writes and asks for the
+    # operator backup, the second brings its reference (T._apply)
+    assert T._apply(conf, pkg_dir) == 0
     assert OP.main(["finish", "--config", str(conf), "--approve", "owner"]) == 0
     # Phase 12D5: the Legal gate is the operator's configuration; the command refuses
     # and recreates nothing

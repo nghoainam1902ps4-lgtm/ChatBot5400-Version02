@@ -145,7 +145,9 @@ if argv[0] == "inspect" and "--type" in argv and argv[argv.index("--type") + 1] 
     if v is None: sys.exit(1)
     out(v.get("created", "")); sys.exit(0)
 if argv[0] == "inspect":
-    c = state["containers"].get(argv[-1])
+    # by compose key or by container id, as `compose ps -q` reports ids (a new one per recreate)
+    c = state["containers"].get(argv[-1]) or next(
+        (x for x in state["containers"].values() if x.get("id") == argv[-1]), None)
     if not c: sys.exit(1)
     if "--format" in argv:
         fmt = argv[argv.index("--format") + 1]
@@ -185,8 +187,10 @@ if argv[0] == "compose":
         return cfg
     if rest[:1] == ["config"]: out(effective()); sys.exit(0)
     if rest[:2] == ["ps", "-q"]:
+        # like Docker: the container ID, which changes with every recreate
         key = {APP: "c1", DB: "db1"}.get(rest[2])
-        out(key if key in state["containers"] else ""); sys.exit(0)
+        c = state["containers"].get(key)
+        out(c.get("id", key) if c else ""); sys.exit(0)
     if rest[:2] == ["exec", "-T"]:
         cmd = rest[3:]
         joined = " ".join(cmd)
@@ -1322,11 +1326,27 @@ def _server(cmd, conf, pkg_dir, *extra):
 _BACKUP_SERIAL = itertools.count(1)
 
 
+def _journal_at(conf):
+    state = Path(OP.load_config(str(conf))["STATE_DIR"])
+    try:
+        data = json.loads((state / "journal.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}  # a damaged journal can be any JSON
+
+
 def _apply(conf, pkg_dir, *extra):
-    """update --apply with a backup the operator took for THIS run (a reference is
-    single-use since Phase 12D5, R2-04)."""
-    ref = f"bk-{next(_BACKUP_SERIAL)}"
-    return _server("update", conf, pkg_dir, "--apply", "--backup-reference", ref, "--backup-verified", *extra)  # fmt: skip
+    """update --apply as an operator with a site backup procedure runs it (R2-04,
+    Phase 12D5): the first run stops the writes, fingerprints the data and asks
+    for the backup; the operator takes it then; the second run passes its NEW
+    reference (single-use). With BACKUP_CMD one run does both. Returns the code
+    of the run that decided."""
+    rc = _server("update", conf, pkg_dir, "--apply", *extra)
+    steps = _journal_at(conf).get("steps") or [{}]
+    if rc == OP.EXIT_UPDATE and steps[-1].get("step") == "BACKUP_requested":
+        ref = f"bk-{next(_BACKUP_SERIAL)}"
+        rc = _server("update", conf, pkg_dir, "--apply", "--backup-reference", ref, "--backup-verified", *extra)  # fmt: skip
+    return rc
 
 
 def _finish(conf):
@@ -1620,9 +1640,10 @@ def test_preflight_fails_closed(deployment, fake_docker):
     assert preflight() == OP.EXIT_PREFLIGHT
     fake_docker.set(versions={OLD_ID: "1.2.0"})
     assert preflight() == 0
-    assert (
-        _server("preflight", conf, pkg_dir) == OP.EXIT_PREFLIGHT
-    )  # no backup procedure
+    # was: no backup procedure -> EXIT_PREFLIGHT. Phase 12D5 (R2-04): without BACKUP_CMD
+    # the operator's backup is requested by update once it has stopped the writes, so
+    # preflight only reports how the backup will be taken (take_backup enforces it).
+    assert _server("preflight", conf, pkg_dir) == 0
 
 
 def test_preflight_requires_recorded_offline_readiness(deployment, fake_docker):
@@ -1754,12 +1775,17 @@ def test_update_apply_full_flow(deployment, fake_docker, tmp_path):
     assert journal["baseline"]["fingerprint"]["source"]["ids_sha256"]
     assert journal["baseline"]["schema"] == 33
     assert journal["compose_command"][-8:] == SAFE_UP_TAIL
+    # two runs (R2-04, Phase 12D5): the first stops the writes and asks for the
+    # operator's backup; the second brings its reference, bound to an unchanged F1
     assert [s["step"] for s in journal["steps"]] == [
         "G_load", "H_rollback_tag", "MAINT_intent", "UP_intent", "QUIESCED", "JOBS_idle",
-        "F1_fingerprint", "I_backup", "J_backup_verified", "F2_fingerprint",
+        "F1_fingerprint", "BACKUP_requested",
+        "JOBS_idle", "F1_fingerprint", "I_backup", "J_backup_verified", "F2_fingerprint",
         "RAPIDOCR_weights", "ARTIFACTS_snapshot", "F3_fingerprint", "UP_intent",
         "N_recreated", "O_P_checks",
     ]  # fmt: skip
+    requested = journal["backup_requested"]["fingerprint_sha256"]
+    assert journal["backup"]["fingerprint_sha256"] == requested
     attempt = state / "attempts" / journal["attempt_id"]
     override = (attempt / "override-update.yml").read_text()
     assert override == (
@@ -1820,8 +1846,11 @@ def test_update_without_backup_refused_then_resumed(deployment, fake_docker, tmp
         "--backup-reference",
         "x",
     )
-    assert rc == OP.EXIT_UPDATE  # restore not verified
+    # the reference of the FIRST run names a backup taken before the writes were
+    # stopped: refused (R2-04, Phase 12D5); the run asks for the backup instead
+    assert rc == OP.EXIT_UPDATE
     journal = _journal(tmp_path)
+    assert journal["steps"][-1]["step"] == "BACKUP_requested"
     assert journal["status"] == "in_progress"
     attempt = journal["attempt_id"]
     assert not _ups(fake_docker)
@@ -2061,6 +2090,73 @@ def test_resumed_run_takes_its_own_backup(deployment, fake_docker, tmp_path):
     f1 = [s for s in journal["steps"] if s["step"] == "F1_fingerprint"][-1]["sha256"]
     assert journal["backup"]["fingerprint_sha256"] == f1
     assert journal["backup"]["step"]["fingerprint_sha256"] == f1
+
+
+def _update_with(conf, pkg_dir, *extra):
+    return _server("update", conf, pkg_dir, "--apply", *extra)
+
+
+def test_an_operator_backup_is_accepted_only_after_the_tool_stopped_the_writes(
+    deployment, fake_docker, tmp_path, capsys
+):
+    """R2-04 (Phase 12D5): a reference passed in the run that has only just stopped the
+    writes names a backup taken BEFORE that, while users could still write. Refused and
+    burnt; the run asks for the backup (writes stopped, F1 recorded); the next run's NEW
+    reference is accepted and bound to that F1."""
+    conf, pkg_dir, _ = deployment
+    capsys.readouterr()
+    assert _update_with(conf, pkg_dir, "--backup-reference", "early", "--backup-verified") == OP.EXIT_UPDATE
+    out = capsys.readouterr().out
+    assert "taken before this run stopped the writes" in out
+    journal = _journal(tmp_path)
+    assert journal["steps"][-1]["step"] == "BACKUP_requested"
+    assert "I_backup" not in [s["step"] for s in journal["steps"]]
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
+    # the early backup can never be used later (refused by the preflight of the run)
+    assert _update_with(conf, pkg_dir, "--backup-reference", "early", "--backup-verified") == OP.EXIT_PREFLIGHT
+    assert "already used" in capsys.readouterr().out
+    # the backup taken after the request is accepted and bound to the requested F1
+    assert _update_with(conf, pkg_dir, "--backup-reference", "after", "--backup-verified") == 0
+    journal = _journal(tmp_path)
+    asked = journal["backup_requested"]["fingerprint_sha256"]
+    step = journal["backup"]["step"]
+    assert step["reference"] == "after" and step["fingerprint_sha256"] == asked
+    assert fake_docker.app()["image_id"] == IMAGE_ID
+
+
+def test_an_operator_backup_is_refused_when_the_data_changed_since_it_was_requested(
+    deployment, fake_docker, tmp_path, capsys
+):
+    """R2-04: between the request and the run that brings the reference somebody wrote
+    (an edited note: same ids, same count). The backup may not hold that write: refused,
+    nothing recreated, a new backup is requested for the data as it is now."""
+    conf, pkg_dir, _ = deployment
+    assert _update_with(conf, pkg_dir) == OP.EXIT_UPDATE  # asks for the backup
+    first = _journal(tmp_path)["backup_requested"]["fingerprint_sha256"]
+    fake_docker.edit(lambda st: st.setdefault("touched", {}).update(note=["note:1"]))
+    capsys.readouterr()
+    assert _update_with(conf, pkg_dir, "--backup-reference", "b1", "--backup-verified") == OP.EXIT_UPDATE
+    assert "the data changed since the backup was requested" in capsys.readouterr().out
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
+    again = _journal(tmp_path)["backup_requested"]["fingerprint_sha256"]
+    assert again != first
+    assert _update_with(conf, pkg_dir, "--backup-reference", "b2", "--backup-verified") == 0
+    assert _journal(tmp_path)["backup"]["fingerprint_sha256"] == again
+
+
+def test_an_operator_backup_is_refused_when_the_application_was_recreated_since(
+    deployment, fake_docker, tmp_path, capsys
+):
+    """R2-04: the operator's script put the application back into normal mode between the
+    request and the reference (users could write): refused, the writes are stopped again."""
+    conf, pkg_dir, deploy = deployment
+    assert _update_with(conf, pkg_dir) == OP.EXIT_UPDATE
+    _plain_compose_up(deploy)  # normal mode, approved image, a new container
+    capsys.readouterr()
+    assert _update_with(conf, pkg_dir, "--backup-reference", "b1", "--backup-verified") == OP.EXIT_UPDATE
+    assert "recreated since the backup was requested" in capsys.readouterr().out
+    assert not _update_ups(fake_docker) and fake_docker.app()["image_id"] == OLD_ID
+    assert _update_with(conf, pkg_dir, "--backup-reference", "b2", "--backup-verified") == 0
 
 
 def test_resume_takes_a_new_backup_when_the_old_one_is_too_old(

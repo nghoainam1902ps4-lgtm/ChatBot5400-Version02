@@ -153,6 +153,9 @@ def test_resume_takes_a_new_backup_of_the_data_as_it_is_now(deployment, fake_doc
 # was: test_same_backup_reference_is_accepted_for_two_attempts (PHASE12D4 evidence, R2-04)
 def test_same_backup_reference_is_refused_for_a_second_attempt(deployment, fake_docker, tmp_path):
     conf, pkg_dir, _ = deployment
+    # Phase 12D5 (R2-04): a first run stops the writes and asks for the backup; the
+    # reference of the backup taken then comes with the second run
+    assert T._server("update", conf, pkg_dir, "--apply") == OP.EXIT_UPDATE
     assert T._server("update", conf, pkg_dir, "--apply", "--backup-reference", "bk", "--backup-verified") == 0
     first = T._journal(tmp_path)
     assert T._rollback(conf, "app", "--no-maintenance") == 0
