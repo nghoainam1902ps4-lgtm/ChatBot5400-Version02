@@ -124,7 +124,35 @@ W-12D7-06a, 06b, 06d (Auto Full Page on Watermark, Custom Model Manager, PDF Pre
 | **[mới]** G-12a | đọc gói đã build: `docs/RELEASE_NOTES.md`, `offline_package.py --help` | dẫn production tới quy trình thủ công; updater ghi rõ EXPERIMENTAL (sau khi sửa D8-OFF-01 / 02) |
 | **[mới]** G-12b | biên bản nghiệm thu | không lệnh `update.sh` / `finish.sh` / `rollback.sh` nào được chạy trong đường production |
 
+## Phase 12D9 — bổ sung cho commit cuối
+
+12D9 đã sửa trong mã các blocker D8-03, D8-01, D8-02, E2-04 và cổng Standard (D8-STD-01 … 05). Các cổng G-01 … G-12 ở
+trên **giữ nguyên**; Nhóm 2 nay chạy được — trên **cùng một commit cuối** của 12D9. Lệnh chi tiết, công cụ và kỳ vọng:
+[PHASE12D9_LOCAL_ACCEPTANCE_CHECKLIST.md](PHASE12D9_LOCAL_ACCEPTANCE_CHECKLIST.md). Cột "Cloud" ở đó chỉ ghi bằng chứng
+tổng hợp; **không đóng cổng Local nào từ Cloud**.
+
+| Cổng 12D9 | Gắn với | Nội dung |
+|---|---|---|
+| D9-00a … c | G-01 | build commit cuối; `status` có 3 dòng ready / active (bản vá Tesseract E0-07 + E2-04, bản vá chữ D8-03 + D8-02, cổng hướng xoay) |
+| **G-H1** gạch nối đầu-cuối | G-03b, G-04 | số từ có `-` trong TSV thô của chính lần chuyển đổi = số từ đó trong nội dung (manifest công cụ xuất); RapidOCR / EasyOCR / lớp chữ qua G-04 |
+| **G-H2** footnote gắn kèm | G-05b | ghi chú dưới bảng / ảnh có trong Standard **và** Legal, một lần, đúng chỗ |
+| **G-H3** khổ trang khác nhau | G-05a | phần tách đứng ngay sau phần đầu |
+| **G-H4** thứ tự hai cột | G-05a, G-05d | tách cặp đảo "do Docling" / "do Legal" |
+| **G-H5** bằng chứng mức crop | G-03a | `<tên>.evidence\tesseract\` = TSV thô của từng lần gọi + sidecar provenance |
+| **G-04-EXIT** mã thoát cổng Standard | G-04 | 0 ở mọi engine; 1 / 2 / 3 không được chấp nhận |
+| **G-07a** PowerShell không có `uv` | G-07a | build đạt trên PS 5.1 và 7 |
+| **G-09-TRUST** tin cậy gói | G-09b, G-07f | chữ ký; mọi file đúng manifest đã ký; file bị thay ⇒ dừng |
+| **G-09-RB** rollback thủ công | G-09c | mã nguồn về trước, ứng dụng sau; DB không đổi |
+| **E2-G1** lỗi OCR thật của môi trường | — | 3 tài liệu mất chữ ở 12E2: đủ token hoặc `failed`, không bao giờ `completed` thiếu |
+| **E2-G2** lỗi tạm thời, thử lại thành công | — | công cụ tiêm lỗi `fail-once`: đầu ra giống hệt lần không lỗi |
+| **E2-G3** thử lại thất bại | — | `fail-always`: Source `failed`, không nội dung, không embedding |
+| **E2-G4** không ghi đè Source cũ | — | xử lý lại thất bại: nội dung + embedding cũ giữ nguyên |
+| **E2-G5** OSD lỗi một mình | — | `fail-osd`: Source đầy đủ |
+| **E2-G6** không lộ stderr | — | log / giao diện không có stderr của công cụ tiêm lỗi |
+| E2-G7, E2-G8 | E2-01, E2-02 | chỉ số liệu chẩn đoán; không đổi PSM, không fallback |
+
 ## Điều kiện để chuyển sang phát hành
 
-Mọi cổng G-01 … G-12 **Đạt** trên cùng một commit; ba blocker D8-03, D8-01, D8-02 đã sửa hoặc đã có quyết định ghi
-nhận của chủ dự án; không finding P0 / P1 mới từ Local. Cho tới khi đó: READY FOR RELEASE = NO, READY FOR PRODUCTION = NO.
+Mọi cổng G-01 … G-12 **và** các cổng 12D9 ở mục trên **Đạt** trên cùng một commit; ba blocker D8-03, D8-01, D8-02 đã
+sửa hoặc đã có quyết định ghi nhận của chủ dự án (12D9: đã sửa trong mã, chờ G-H1 … G-H4); E2-G1 không có Source
+`completed` thiếu nội dung; không finding P0 / P1 mới từ Local. Cho tới khi đó: READY FOR RELEASE = NO, READY FOR PRODUCTION = NO.

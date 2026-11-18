@@ -654,3 +654,92 @@ chữ, không thuộc fingerprint readiness). (4) `scripts/ocr/phase12_orientati
 
 **Hệ quả.** Nếu Windows xác nhận cổng đã chạy mà vẫn còn vùng xoay sai với độ tin cậy ≥ 2.0, đó là một finding mới cần
 benchmark trước khi đổi ngưỡng (D-25: mọi câu trả lời sai đo được đều ≤ 1.44 trên 1 340 hướng).
+
+**Cập nhật Phase 12D9 (bằng chứng Windows 12E2).** Đuôi CRLF của image cũ đã được xác nhận và đã sửa (cổng chạy được).
+CRLF **không** phải nguyên nhân của 11 cụm chữ rác: OSD của các vùng đó trả 0° và Windows xác nhận không cụm nào do hướng
+xoay hay watermark. Hai finding tách riêng: (a) lỗi build của cổng hướng xoay (E1-05, toàn vẹn lúc chạy) — ĐÃ SỬA;
+(b) chất lượng OCR của 11 vùng (E2-02: crop / layout / nhận dạng) — CHƯA XÁC MINH, cần bằng chứng Local. Một checkout
+Windows đã có vẫn có thể hiện `w/crlf` sau khi pull (blob không đổi nên Git không ghi lại file) — điều đó chỉ chứng minh
+khả năng, không chứng minh nguyên nhân (D8-ORI-03 / 04).
+
+## D-41. Giữ mọi dấu gạch nối mà Docling bỏ khi ghép chữ (Phase 12D9, D8-03)
+
+**Bối cảnh.** Review 12D8 (D8-03, P1): Docling 2.129.0 bỏ dấu `-` của số hiệu văn bản ở hai chỗ —
+`PageAssembleModel.sanitize_text` khi ghép các ô của một vùng layout (`05/2024/TT-` + `BNNPTNT` →
+`05/2024/TTBNNPTNT`, `2021-` + `2025` → `20212025`; ô Tesseract là TỪ nên bỏ cả giữa dòng: `VT- KHTC` → `VTKHTC`,
+`1- Điều 5` → `1Điều 5`) và `ReadingOrderModel._merge_elements` khi nối hai khối qua trang / cột trước chữ thường.
+Có từ v1.2.0, mọi engine và lớp chữ PDF, cả Standard lẫn Legal.
+
+**Quyết định (chủ dự án, 12D9).** Bản vá có kiểm soát thứ hai, cùng khuôn D-39 (đúng `docling 2.129.0`, SHA-256 của
+từng hàm upstream, tất cả hoặc không gì, idempotent, có khóa, fingerprint theo nguồn upstream, test AST so từng hàm
+với upstream): không bao giờ bỏ `-`. Hai phần chỉ ghép liền khi **hộp chữ của chính các ô** cho thấy xuống dòng
+(ô sau bắt đầu một dòng thấp hơn); hai ô cạnh nhau trên một dòng, hoặc không có bằng chứng hình học, giữ ranh giới ô
+là một khoảng trắng — không bao giờ suy diễn hai ô là một từ. Khối nối qua trang giữ `-`, charspan ghi đúng chỗ phần
+tiếp bắt đầu. Gạch nối mềm (U+00AD), dấu nháy, bullet, ligature: giữ quy tắc upstream (giới hạn riêng, có test ghi
+nhận). Không thêm `-`, không sửa theo từ điển (`docu-` + `ment` → `docu-ment`). Áp dụng trước MỌI chuyển đổi Docling
+của ứng dụng (`build_converter`, đồ thị source trước đường content-core, Legal); Docling khác phiên bản ⇒ PDF / scan bị
+từ chối (không chạy khi chưa vá).
+
+**Hệ quả.** Standard khác v1.2.0 đúng ở các chỗ này (lớp `expected hyphen fix` của cổng D-44). Legal 1.3.1 hiểu phép
+nối có giữ `-` và vẫn tách mọi phép nối qua trang (D-38).
+
+## D-42. Footnote gắn với bảng / ảnh có trong nội dung Markdown — Standard và Legal (Phase 12D9, D8-02)
+
+**Bối cảnh.** docling-core 2.96.0 viết caption của bảng / ảnh nhưng không viết footnote của chúng, còn footnote bị bỏ
+qua tại chỗ của nó ("do item chứa nó xử lý"): footnote ngay dưới bảng biến mất khỏi mọi đầu ra Markdown.
+
+**Quyết định.** Bản vá có kiểm soát (đúng `docling-core 2.96.0` + SHA-256 của hai serializer): mỗi footnote gắn vào
+bảng / ảnh được viết **một lần**, ngay sau item, bằng đúng cách Docling viết một đoạn văn (escape như đoạn văn của
+chế độ đó); tham chiếu hỏng bị bỏ qua, không lặp; bộ lọc nhãn của người gọi được tôn trọng. Chỉ Markdown: đầu ra
+HTML vẫn như upstream (giới hạn ghi nhận); JSON vốn giữ mọi text item.
+
+## D-43. Legal 1.3.1: phần tách ra đứng ngay sau phần đầu theo thứ tự đọc của chính Docling (Phase 12D9, D8-01)
+
+**Quyết định.** Khi tách một phép nối qua trang của Docling, phần sau được đặt ngay sau phần trước, chỉ vượt qua các
+item mà phép nối của Docling bỏ qua (header, footer, bảng, ảnh, caption, footnote) VÀ đứng trước nó trong thứ tự đọc
+mà Docling tự tính cho trang đó; không bao giờ vượt qua đoạn văn, list item hay tiêu đề. Hộp của phần sau được giải mã
+bằng chiều cao trang của phần đầu (quy ước của Docling). Không xác định được vị trí ⇒ giữ phép nối và cảnh báo
+(`upstream_merge_kept`). Không sắp lại tài liệu theo tọa độ.
+
+## D-44. Cổng Standard expected-diff: mọi khác biệt phải được chứng minh bằng bằng chứng của chính lần chuyển đổi (Phase 12D9, D8-STD-01..05, E2-03)
+
+**Quyết định.** `phase12_standard_diff.py` v2: `unchanged` chỉ khi byte giống hệt; khoảng trắng và cấu trúc là token.
+Bằng chứng do `phase12d9_standard_export.py` ghi trong cùng lần chuyển đổi tạo ra đầu ra (TSV thô từng lần gọi
+Tesseract + provenance, văn bản v1.2.0 / ứng viên của từng vùng, phép nối khối, footnote đã viết; quyền chủ sở hữu,
+chỉ cục bộ). Văn bản v1.2.0 được TÍNH LẠI bằng chính mã upstream (pandas, `sanitize_text`), mỗi thay đổi được duyệt
+dùng một lần và gắn với ngữ cảnh crop; crop "sở hữu" vị trí mà không dự đoán thay đổi ⇒ hồi quy. Một hunk có thể mang
+nhiều nguyên nhân nhưng phải được lát kín bởi các thay đổi được duyệt. Lớp hướng xoay chỉ khi có bằng chứng hướng
+xoay (chưa có công cụ ghi ⇒ hunk đó `not verified`, xem tay). Mã thoát khác 0 cho mọi kết quả không chứng minh được
+gì. Báo cáo mặc định không chứa chữ.
+
+## D-45. Lỗi thực thi OCR không bao giờ cho ra Source "hoàn tất" thiếu nội dung (Phase 12D9, E2-04)
+
+**Bối cảnh.** Windows 12E2: khi tiến trình NHẬN DẠNG của Tesseract lỗi, Docling bỏ cả vùng và vẫn báo SUCCESS,
+errors = 0; Source hoàn tất thiếu chữ (Best 13/49, Agri v2 63/100, tài liệu thật 445/1220 token). OSD lỗi một mình
+không làm mất vùng khi nhận dạng thành công. Nguyên nhân cụ thể chưa rõ (stderr bị bỏ); mount 9p **không** được kết
+luận là nguyên nhân.
+
+**Quyết định.** Bản vá có kiểm soát của vòng OCR Tesseract (cùng khuôn D-39): lỗi có thể tạm thời được thử lại tối đa
+2 lần trên CÙNG crop, lệnh, ngôn ngữ và file model (phiên bản model của job không đổi); thiếu chương trình / thiếu
+file model thì không thử lại; vẫn lỗi ⇒ vùng không bị bỏ mà trang thất bại. Ứng dụng từ chối mọi kết quả Docling
+không phải SUCCESS không lỗi — **kể cả `PARTIAL_SUCCESS` của mọi engine, trước đây được lưu kèm cảnh báo** (thay đổi
+hành vi có chủ đích): `IncompleteConversionError` (ValueError: job dừng, không tự thử lại, người dùng thử lại bằng cơ
+chế sẵn có), thông báo tiếng Việt, không lưu nội dung, không tạo embedding, Source cũ hợp lệ giữ nguyên. stderr chỉ
+được đọc (phần cuối) để phân loại; log chỉ ghi trang, vùng, ngôn ngữ / model, loại lỗi, mã thoát, số lần thử, kết quả.
+
+## D-46. Không mở rộng bộ cập nhật tự động; production dùng quy trình thủ công (Phase 12D9, D8-OFF-01 / 02)
+
+**Quyết định.** `update` / `finish` / `rollback` / `pin` vẫn EXPERIMENTAL; chính công cụ nói điều đó (`--help`, mỗi
+lần chạy, các wrapper), release notes dẫn production tới `OFFLINE_UPDATE_MANUAL_FALLBACK.md`. Không mở rộng state
+machine. Các sửa trong 12D9 chỉ là an toàn: cặp gói + hash luôn nhất quán (D8-OFF-03 / 04), khóa báo đúng lỗi
+(D8-OFF-09), `migration_required` tự phát hiện migration mới so với base-ref (D8-OFF-06), và quy trình thủ công ràng
+buộc file với manifest đã ký, thư mục làm việc mới, so dữ liệu không ghi sau §7, rollback mã nguồn trước ứng dụng.
+
+## D-47. Công cụ chẩn đoán mặc định chỉ ghi metadata; không có fallback chữ ngắn trong 1.3.0 (Phase 12D9)
+
+**Quyết định.** Sau sự cố 12E2 (một vùng OCR thật lọt vào ngữ cảnh AI), mọi công cụ chẩn đoán mới hoặc sửa trong 12D9
+mặc định không ghi chữ của tài liệu ra stdout / stderr / báo cáo: chỉ loại token, số lượng, trang, bbox, loại lỗi,
+thống kê độ tin cậy, trạng thái. Chữ chỉ có khi người vận hành yêu cầu rõ (`--with-text`), ghi vào file quyền chủ sở
+hữu, cục bộ, không upload, không commit. E2-01 (token ngắn một mình trong crop): không đổi PSM mặc định; fallback PSM 7
+**không được cài** — benchmark tổng hợp ở Cloud cho thấy nó chèn chữ lên 4 / 6 crop không có chữ (con dấu, chữ ký, ảnh,
+nhiễu); cần benchmark Windows trước mọi đề xuất bật.

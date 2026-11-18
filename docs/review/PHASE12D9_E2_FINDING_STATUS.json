@@ -1,0 +1,130 @@
+{
+ "schema": "chatbot5400-finding-status/12D9-E2",
+ "phase": "12D9 (bổ sung Phase 12E2 / 12E2 Follow-up)",
+ "evidence_source": "Báo cáo Windows 12E2 và 12E2 Follow-up do chủ dự án tóm tắt trong yêu cầu 12D9; không truy cập đường dẫn Windows, không có tài liệu thật, không có model Agri ở Cloud.",
+ "windows_retest": "PENDING — chạy trên commit cuối của 12D9 (PHASE12D9_LOCAL_ACCEPTANCE_CHECKLIST.md: E2-G1 … E2-G8, G-04-MIX)",
+ "kinds": {
+  "E2-04": "OCR execution failure (lỗi THỰC THI tiến trình nhận dạng Tesseract)",
+  "E2-01": "OCR segmentation / recognition limitation (giới hạn phân đoạn / nhận dạng của PSM 3 với crop ngắn)",
+  "E2-02": "crop / layout / recognition quality (chất lượng crop, layout, nhận dạng — chưa có ground truth)",
+  "E1-05": "orientation gate runtime integrity (tính toàn vẹn khi chạy của cổng hướng xoay)"
+ },
+ "findings": [
+  {
+   "finding_id": "E2-04",
+   "severity": "P1",
+   "kind": "OCR execution failure",
+   "title": "Tiến trình nhận dạng Tesseract lỗi ⇒ Docling bỏ cả vùng, vẫn báo SUCCESS / errors=0; Source completed thiếu nội dung",
+   "windows_evidence": "Best mất 13/49 token, Agri v2 63/100, D22 445/1220; D22 embed=false (không có bằng chứng về embedding thiếu); OSD lỗi riêng lẻ KHÔNG làm mất vùng nếu nhận dạng thành công; thư mục dữ liệu là mount 9p từ Windows; nguyên nhân gốc chưa biết vì upstream đưa stderr vào DEVNULL.",
+   "root_cause": "CHƯA XÁC ĐỊNH. Không kết luận mount 9p là nguyên nhân gốc khi chưa có bằng chứng (D-44). Bản vá 12D9 giữ phần cuối stderr (≤ 4096 byte) chỉ để phân loại, để lần chạy Windows tới có category.",
+   "status": "FIXED IN CODE",
+   "fixed_in": "691fac9; ac34bb9 (status nêu bản vá); c4ea65a (công cụ tiêm lỗi cho cổng Windows)",
+   "fix": [
+    "TesseractOcrCliModel.__call__ (bản vá có kiểm soát, SHA-256 98ecbc91…): lỗi NHẬN DẠNG được thử lại tối đa 2 lần (0,5 s, 1,5 s) trên CÙNG crop, cùng model, cùng cấu hình; hết lượt ⇒ OcrRegionError ⇒ Docling đánh dấu trang lỗi ⇒ convert_file từ chối tài liệu (IncompleteConversionError).",
+    "OSD lỗi riêng lẻ: vẫn giữ vùng và tài liệu (nhận dạng chạy với ngôn ngữ đã cấu hình), như upstream; chỉ ở chế độ auto-script (không cấu hình ngôn ngữ) vùng bị bỏ ⇒ nay thành lỗi vùng thay vì mất lặng lẽ.",
+    "Không thử lại lỗi vĩnh viễn: thiếu file model, thiếu / không được chạy tesseract, lỗi không phân loại được.",
+    "_run_tesseract: stderr=PIPE (chỉ giữ 4096 byte cuối), timeout 600 s; log và thông báo chỉ có trang, vùng, engine, category, mã thoát, số lần thử — không stderr thô, không chữ tài liệu.",
+    "convert_file: mọi kết quả Docling khác SUCCESS hoặc có ErrorItem ⇒ từ chối trước khi lưu; process_source: lỗi vĩnh viễn (ValueError), không lưu nội dung, không xếp hàng embedding, Source cũ có nội dung được giữ nguyên.",
+    "Engine, model Agri, Layout Heron, TableFormer, ngưỡng OSD: không đổi."
+   ],
+   "tests": "tests/test_phase12d9_ocr_failure_safety.py — 25 test, đạt 25/25 trên commit 12D9 (test thứ 25: ocr.cli status nêu bản vá E2-04). RED trên 4587eb7 (24 test lúc đó): 23 failed, 1 passed (docs/review/phase12d9/red_4587eb7_ocr_failure_safety.txt). Test đạt ở RED là control 'OCR thành công mà không có chữ không phải lỗi'. Test control 'upstream bỏ vùng lỗi và báo SUCCESS' cũng fail ở RED chỉ vì dùng P.call_upstream() (hàm chỉ có trong bản vá); ở GREEN nó chạy CHÍNH vòng OCR upstream và chứng minh việc mất vùng lặng lẽ (SUCCESS, errors=0, thiếu chữ của vùng).",
+   "source_and_embedding_safety": "VERIFIED IN CLOUD — qua command process_source thật, Source thật, hàng đợi embed_source trên SurrealDB thật (engine nhúng của SDK, migration của ứng dụng). Model embedding không chạy (không có provider): kiểm tra là không job embedding nào được xếp và các bản ghi source_embedding cũ không đổi. Đường API đồng bộ: command lỗi ⇒ Source mới bị xóa (mã có sẵn, đọc lại ở 12D9).",
+   "windows_gates": [
+    "E2-G1",
+    "E2-G2",
+    "E2-G3",
+    "E2-G4",
+    "E2-G5",
+    "E2-G6"
+   ],
+   "open_risk": "Nếu lỗi trên Windows là kéo dài (không tạm thời), tài liệu sẽ bị từ chối thay vì lưu thiếu — đúng yêu cầu, nhưng người dùng phải xử lý lại sau khi khắc phục môi trường. Category trong log 12D9 là dữ liệu để chẩn đoán nguyên nhân gốc."
+  },
+  {
+   "finding_id": "E2-01",
+   "severity": "chưa được nêu trong yêu cầu — 12D9 không tự gán",
+   "kind": "OCR segmentation / recognition limitation",
+   "title": "Crop ngắn (số điều, ký hiệu) đọc rỗng với PSM 3",
+   "windows_evidence": "15 crop ngắn: PSM 3 ⇒ 2 rỗng; padding không ổn định; PSM 6 và 7 đúng 15/15 với Best, Fast, Agri v1, Agri v2; PSM 8 và 13 lỗi với Agri.",
+   "cloud_evidence": "Benchmark tổng hợp (Tesseract Best, 18 trường hợp, docs/review/phase12d9/e2_01_cloud_synthetic_benchmark.json): PSM 3 rỗng 7/11 token ngắn; PSM 6 / 7 đúng 11/11; nhưng PSM 7 chèn chữ giả 5/6 crop không có chữ; luật hình học thử nghiệm vẫn chèn chữ giả 4/6.",
+   "status": "NEEDS LOCAL EVIDENCE",
+   "decision": "Không đổi PSM mặc định. KHÔNG cài đặt fallback (kể cả cờ OCR_TESSERACT_SHORT_TEXT_FALLBACK tắt mặc định): luật hình học không loại được crop không chữ (D-47). Chỉ có công cụ chẩn đoán metadata-only.",
+   "tool": "scripts/ocr/phase12d9_crop_diagnose.py (benchmark | crops; mặc định chỉ số liệu)",
+   "tests": "tests/test_phase12d9_crop_diagnose.py (4)",
+   "release_requirement": false,
+   "windows_gate": "E2-G7"
+  },
+  {
+   "finding_id": "E2-02",
+   "severity": "chưa được nêu trong yêu cầu — 12D9 không tự gán",
+   "kind": "crop / layout / recognition quality",
+   "title": "11 cụm OCR nhiễu",
+   "windows_evidence": "Không cụm nào do xoay hoặc watermark (OSD 0°).",
+   "possible_causes_not_verified": [
+    "crop bị cắt",
+    "chồng lấn layout",
+    "crop quá nhỏ",
+    "chữ nhỏ",
+    "nhiễu mép",
+    "khác biệt model OCR theo vùng",
+    "chồng lấn ảnh / dấu / chữ ký"
+   ],
+   "status": "NEEDS LOCAL EVIDENCE",
+   "decision": "Không đổi Layout Heron, TableFormer, ngưỡng OSD; không fine-tune Agri; không xóa theo confidence; không tự bỏ nội dung vùng ảnh. Chỉ thêm chẩn đoán cần thiết (crops mode: kích thước, độ tương phản, mực ở mép, số từ và confidence theo PSM — không chữ).",
+   "tool": "scripts/ocr/phase12d9_crop_diagnose.py crops",
+   "release_requirement": false,
+   "windows_gate": "E2-G8"
+  },
+  {
+   "finding_id": "E2-03",
+   "severity": "chưa được nêu trong yêu cầu — 12D9 không tự gán",
+   "kind": "Standard expected-diff gate",
+   "title": "Một hunk có nhiều nguyên nhân (TSV + gạch nối …) bị phân loại sai",
+   "status": "FIXED",
+   "fixed_in": "75c9455",
+   "fix": "Gate v2: mỗi hunk được ghép bằng các đơn vị bằng chứng (DP), một hunk có thể mang nhiều class; một hunk chỉ được chứng minh một phần ⇒ NOT VERIFIED; không miễn trừ cả tài liệu.",
+   "tests": "tests/test_phase12d9_standard_gate.py::test_two_causes_in_one_hunk_are_both_proven_and_attributed, ::test_a_hunk_only_partly_proven_is_not_accepted",
+   "windows_note": "Windows 12E2 đã tái hiện bằng fixture tổng hợp; chạy lại trên commit cuối (G-04).",
+   "windows_gate": "G-04-MIX"
+  },
+  {
+   "finding_id": "E1-05",
+   "severity": "chưa được nêu trong yêu cầu — 12D9 không tự gán",
+   "kind": "orientation gate runtime integrity",
+   "title": "Cổng hướng xoay không chạy trong image cũ (CRLF)",
+   "split": {
+    "orientation_gate_build_defect": "FIXED — CRLF của image cũ được xác nhận và đã sửa (12D7: .gitattributes, bước tự kiểm trong Dockerfile; 12D9: test chứng minh bước tự kiểm làm hỏng build được).",
+    "ocr_quality_of_the_11_regions": "NOT FULLY VERIFIED — CRLF không phải nguyên nhân 11 cụm (OSD 0°); chuyển sang E2-02 (NEEDS LOCAL EVIDENCE)."
+   },
+   "note": "Hai kết luận tách riêng, không gộp thành một kết luận 'đã giải quyết'."
+  },
+  {
+   "finding_id": "E1-01",
+   "status": "EVIDENCE REQUIRED",
+   "note": "Windows đã tái hiện bằng fixture tổng hợp. Chưa nhận PHASE12E2_FOLLOWUP_SANITIZED.md (không có trong repo / nhánh nào) ⇒ không suy diễn chi tiết."
+  },
+  {
+   "finding_id": "E1-02",
+   "status": "EVIDENCE REQUIRED",
+   "note": "Như E1-01."
+  },
+  {
+   "finding_id": "E1-06",
+   "status": "EVIDENCE REQUIRED",
+   "note": "Như E1-01."
+  },
+  {
+   "finding_id": "E1-08",
+   "status": "EVIDENCE REQUIRED",
+   "note": "Như E1-01."
+  }
+ ],
+ "verdict": {
+  "E2-04 SILENT OCR REGION LOSS": "FIXED IN CODE",
+  "E2-04 SOURCE AND EMBEDDING SAFETY": "VERIFIED (Cloud, Source + hàng đợi embedding trên SurrealDB thật; Windows chưa chạy)",
+  "E2-01 SHORT TOKEN OCR": "NEEDS LOCAL EVIDENCE",
+  "E2-02 NOISY OCR CROPS": "NEEDS LOCAL EVIDENCE",
+  "E2-03 MIXED-HUNK EXPECTED-DIFF": "PASS",
+  "OCR FAILURE INJECTION": "PASS",
+  "WINDOWS RETEST": "PENDING"
+ }
+}

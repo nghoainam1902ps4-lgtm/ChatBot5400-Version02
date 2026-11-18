@@ -14,14 +14,14 @@ Không kết luận Agri chính xác hơn chỉ vì confidence cao hơn hay gi�
 |---|---|---|---|
 | W-12D7-00a | Ghi lại image ID của v1.2.0 và của ứng viên 12D5 `904c15c` (`docker image ls --no-trunc`) | còn nguyên, **không xóa** image / volume nào | ☐ |
 | W-12D7-00b | `git fetch origin feature/legal-document-normalization` → checkout đầu nhánh 12D7; ghi commit | commit = đầu nhánh trong PR #50 | ☐ |
-| W-12D7-00c | `git ls-files --eol open_notebook/ocr/tesseract_gate.py` **trước và sau** khi pull | ghi lại `w/crlf` hay `w/lf` (bằng chứng E1-05) | ☐ |
+| W-12D7-00c | `git ls-files --eol open_notebook/ocr/tesseract_gate.py` **trước và sau** khi pull | ghi lại `w/crlf` hay `w/lf`. Checkout **đã có** vẫn có thể hiện `w/crlf` sau pull — bình thường, chỉ checkout mới / file được ghi lại mới hiện `w/lf` (Phase 12D9, D8-ORI-03); image build từ đó vẫn đúng nhờ bước chuẩn hóa của Dockerfile | ☐ |
 | W-12D7-00d | `.\scripts\windows\phase12-test.ps1 build` rồi `restart-app` | build đạt (bước tự kiểm cổng trong Dockerfile) | ☐ |
 
 ## 1. E1-05 — cổng hướng xoay (xác nhận nguyên nhân rồi kiểm sửa)
 
 | # | Việc | Kỳ vọng | Kết quả |
 |---|---|---|---|
-| W-12D7-01a | Trên image **cũ** 12E1 (nếu còn): `docker compose -p chatbot5400-phase12-test -f deploy\phase12-test\docker-compose.yml exec -T open_notebook sh -c "head -c 40 /app/open_notebook/ocr/tesseract_gate.py \| od -c"` và tìm `runs without orientation gating` trong `logs` | có `\r` và/hoặc có dòng log ⇒ **nguyên nhân E1-05 xác nhận**; không có ⇒ ghi lại, nguyên nhân khác (W-12D7-01d) | ☐ |
+| W-12D7-01a | Trên image **cũ** 12E1 (nếu còn): `docker compose -p chatbot5400-phase12-test -f deploy\phase12-test\docker-compose.yml exec -T open_notebook sh -c "head -c 40 /app/open_notebook/ocr/tesseract_gate.py \| od -c"` và tìm `runs without orientation gating` trong `logs` | có `\r` và/hoặc có dòng log ⇒ chỉ xác nhận **"cổng đã tắt"** trên image đó (Phase 12D9, D8-ORI-04: không chứng minh 11 cụm bị xoay vì thế — 12E2 cho thấy OSD của chúng là 0°); không có ⇒ ghi lại, nguyên nhân khác (W-12D7-01d) | ☐ |
 | W-12D7-01b | Image mới: `.\scripts\windows\phase12-test.ps1 status` | dòng cuối `orientation gate: active (min confidence 2.0)` | ☐ |
 | W-12D7-01c | `orientation -Pdf <tài liệu> -Engine tesseract_best -Suspect '<trang>:<l>,<t>,<r>,<b>'` cho **11 cụm nghi ngờ** (trang / bbox từ `03_layout_clusters.json`) | mỗi cụm: `rotated` rỗng, hoặc góc xoay có `raw_confidence ≥ 2.0` và chữ đọc được đúng | ☐ |
 | W-12D7-01d | Nếu vẫn còn vùng xoay sai với độ tin cậy ≥ 2.0 | ghi finding mới kèm `orientation_summary.json` (`-NoText`); **không** đổi ngưỡng khi chưa có benchmark | ☐ |
