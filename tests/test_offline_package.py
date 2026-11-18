@@ -430,6 +430,9 @@ def repo(tmp_path):
     (r / "docs" / "deployment" / "OFFLINE_UPDATE_UBUNTU_GUIDE.md").write_text(
         "# guide\n"
     )
+    (r / "docs" / "deployment" / "OFFLINE_UPDATE_MANUAL_FALLBACK.md").write_text(
+        "# manual procedure\n"
+    )
     _git(r, "add", ".")
     _git(r, "commit", "-qm", "phase 12")
     return r
@@ -503,6 +506,7 @@ def test_build_uses_docker_save_and_git_bundle(package, fake_docker, repo):
         "manifest.json", "SHA256SUMS", "images/chatbot5400-1.3.0-rc.1.tar",
         "source/chatbot5400-1.3.0-rc.1.bundle", "scripts/update.sh", "scripts/pin.sh",
         "scripts/snapshot.sh", "scripts/offline_package.py",
+        "docs/OFFLINE_UPDATE_MANUAL_FALLBACK.md",  # 12D5: the manual procedure travels with it
     ):  # fmt: skip
         assert f"{top}/{rel}" in names
     manifest = _manifest_of(pkg)
@@ -693,6 +697,18 @@ def test_build_package_sh_builds_a_package_with_a_usable_bundle(
         repo_with_scripts, "rev-parse", "HEAD"
     )
     assert not any(c[0] in ("buildx", "build") for c in fake_docker.calls())
+
+
+def test_build_refuses_a_checkout_without_the_manual_procedure(fake_docker, repo, tmp_path):
+    """Phase 12D5: every package carries docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md
+    (the production path); a checkout without it is refused before any Docker call."""
+    (repo / "docs" / "deployment" / "OFFLINE_UPDATE_MANUAL_FALLBACK.md").unlink()
+    _git(repo, "commit", "-qam", "drop the manual procedure")
+    _label_image(repo)
+    start = len(fake_docker.calls())
+    assert _build_rc(repo, tmp_path / "out") == OP.EXIT_USAGE
+    assert fake_docker.calls()[start:] == []
+    assert not (tmp_path / "out").exists() or not any((tmp_path / "out").iterdir())
 
 
 def test_build_package_ps1_has_the_same_order_static():
@@ -1543,6 +1559,57 @@ def test_config_writable_by_others_is_refused(deployment):
     assert _status(conf) == OP.EXIT_USAGE
     conf.chmod(0o644)
     assert _status(conf) == 0
+
+
+def test_config_in_a_folder_writable_by_others_is_refused(deployment, tmp_path):
+    """F-26 rest (Phase 12D5): whoever can write a folder above the configuration can
+    replace it (BACKUP_CMD runs as root) - its folders are checked too; a sticky folder
+    such as /tmp may be world-writable."""
+    conf, _, _ = deployment
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    moved = shared / "offline-update.conf"
+    moved.write_text(conf.read_text())
+    moved.chmod(0o600)
+    shared.chmod(0o777)
+    try:
+        with pytest.raises(OP.Refused, match="folder .* writable by group / others"):
+            OP.load_config(str(moved))
+        shared.chmod(0o1777)  # sticky: nobody else can replace the file
+        assert OP.load_config(str(moved))["COMPOSE_PROJECT"] == "cb-test"
+    finally:
+        shared.chmod(0o755)
+
+
+def test_compose_files_writable_by_anybody_are_refused(deployment, fake_docker, capsys):
+    """F-26 rest: the compose files and the maintenance override decide what Docker runs
+    as root. Writable by anybody: preflight, finish and rollback refuse before changing
+    anything. Group-writable (Ubuntu user-private groups) is only reported."""
+    conf, pkg_dir, deploy = deployment
+    compose = deploy / "docker-compose.yml"
+    compose.chmod(0o666)
+    capsys.readouterr()
+    assert _server("preflight", conf, pkg_dir) == OP.EXIT_PREFLIGHT
+    assert "writable by anybody" in capsys.readouterr().out
+    start = len(fake_docker.calls())
+    assert _apply(conf, pkg_dir) == OP.EXIT_PREFLIGHT
+    assert not _ups(fake_docker, start)
+    compose.chmod(0o664)
+    capsys.readouterr()
+    assert _server("preflight", conf, pkg_dir) == 0
+    assert "WARN compose file ownership" in capsys.readouterr().out
+    compose.chmod(0o644)
+    maintenance = Path(OP.load_config(str(conf))["MAINTENANCE_OVERRIDE"])
+    maintenance.chmod(0o666)
+    assert _server("preflight", conf, pkg_dir) == OP.EXIT_PREFLIGHT
+    maintenance.chmod(0o644)
+    assert _apply(conf, pkg_dir) == 0
+    compose.chmod(0o666)
+    assert _finish(conf) == OP.EXIT_UPDATE  # refused, nothing changed
+    assert _journal_at(conf)["status"] == "awaiting_approval"
+    assert OP.main(["rollback", "app", "--config", str(conf)]) == OP.EXIT_UPDATE
+    compose.chmod(0o644)
+    assert _finish(conf) == 0
 
 
 def test_config_keys_cannot_be_replaced_through_the_environment(

@@ -102,6 +102,7 @@ LEGACY_OVERRIDE = "image-override.yml"
 APPROVED = "approved.json"
 BACKUP_REFERENCES = "backup-references.json"
 COMPOSE_COMMAND = "compose-command.txt"
+MANUAL_PROCEDURE = "OFFLINE_UPDATE_MANUAL_FALLBACK.md"  # shipped in every package (12D5)
 
 # Archive safety limits (overridable for tests / very large images).
 MAX_MEMBERS = 5000
@@ -304,7 +305,9 @@ DEFAULT_CONFIG = {
 
 
 def _check_trusted_file(path: Path, what: str) -> None:
-    """A file (or folder) that decides what runs as root must not be writable by others (F-26c)."""
+    """A file (or folder) that decides what runs as root must not be writable by others
+    (F-26c) - nor any folder above it (Phase 12D5, F-26 rest): whoever can write a parent
+    folder can replace the file. A sticky folder (/tmp) is allowed above it."""
     try:
         st = path.stat()
     except OSError as e:
@@ -318,6 +321,59 @@ def _check_trusted_file(path: Path, what: str) -> None:
             f"{what} {path} is writable by group / others (chmod go-w it): refused",
             EXIT_USAGE,
         )
+    for folder in path.resolve().parents:
+        try:
+            fst = folder.stat()
+        except OSError as e:
+            raise Refused(f"folder of the {what} unreadable: {folder} ({e.strerror})", EXIT_USAGE) from None
+        if fst.st_uid not in (0, os.geteuid()) or (
+            fst.st_mode & 0o022 and not fst.st_mode & stat.S_ISVTX
+        ):
+            raise Refused(
+                f"the folder {folder} above the {what} {path.name} is owned by another user or "
+                "writable by group / others: whoever can write it can replace the file (it must "
+                "belong to root, chmod go-w)",
+                EXIT_USAGE,
+            )
+
+
+def operator_file_problems(dep: "Deployment", cfg: Dict[str, str]) -> Tuple[List[str], List[str]]:
+    """(fatal, warnings) for the files that decide what Docker runs as root: the
+    deployment's compose files and the maintenance override (F-26). stat only.
+
+    Writable by OTHERS (the file or a non-sticky folder above it) is fatal. Group-writable
+    or owned by another account is only reported: deployments are often owned by the
+    administrator's account and Ubuntu's user-private groups make files group-writable
+    by that account alone."""
+    fatal: List[str] = []
+    warnings: List[str] = []
+    paths = [
+        (Path(f) if os.path.isabs(f) else dep.dir / f, "compose file") for f in dep.files
+    ]
+    if cfg.get("MAINTENANCE_OVERRIDE"):
+        paths.append((Path(cfg["MAINTENANCE_OVERRIDE"]), "maintenance override"))
+    for path, what in paths:
+        try:
+            chain = [path] + list(path.resolve().parents)
+        except OSError:
+            continue  # missing files are reported by the configuration checks
+        for item in chain:
+            try:
+                st = item.stat()
+            except OSError:
+                break
+            if st.st_mode & 0o002 and not (item != path and st.st_mode & stat.S_ISVTX):
+                fatal.append(
+                    f"{what} {path}: {item} is writable by anybody - anybody could change what "
+                    "Docker runs as root (chmod o-w it)"
+                )
+                break
+            if item == path and (st.st_uid not in (0, os.geteuid()) or st.st_mode & 0o020):
+                warnings.append(
+                    f"{what} {path} is owned by another account or group-writable: only the "
+                    "deployment's administrators may be able to change it"
+                )
+    return fatal, warnings
 
 
 def load_config(path: Optional[str]) -> Dict[str, str]:
@@ -1832,6 +1888,13 @@ def cmd_build(args: argparse.Namespace) -> int:
         raise Refused(f"--git-ref {args.git_ref} is not a commit of {repo}", EXIT_USAGE)
     commit = check_commit(proc.stdout.strip())
     check_build_version(repo, commit, version)
+    if not (repo / "docs" / "deployment" / MANUAL_PROCEDURE).is_file():
+        raise Refused(
+            f"docs/deployment/{MANUAL_PROCEDURE} is missing from {repo}: every package carries "
+            "the manual update procedure (the production path while the automatic tool is "
+            "experimental)",
+            EXIT_USAGE,
+        )
     if _git(repo, "status", "--porcelain", "--untracked-files=no"):
         raise Refused("the build checkout has uncommitted changes", EXIT_USAGE)
     base_commit = _git(
@@ -1985,6 +2048,7 @@ def _build_stage(
         shutil.copy2(here / f, stage / "scripts" / f)
     docs = repo / "docs" / "deployment"
     for f in (
+        "OFFLINE_UPDATE_MANUAL_FALLBACK.md", "OFFLINE_UPDATE_INTEGRATION_CONTRACT.md",
         "OFFLINE_UPDATE_PACKAGE.md", "OFFLINE_UPDATE_UBUNTU_GUIDE.md",
         "OFFLINE_UPDATE_ROLLBACK.md", "OFFLINE_UPDATE_SECURITY.md",
     ):  # fmt: skip
@@ -3269,6 +3333,14 @@ def cmd_preflight(
     except Refused as e:
         check("compose config", False, str(e))
         base = {}
+    fatal_files, file_warnings = operator_file_problems(dep, cfg)
+    check(
+        "compose files / maintenance override not writable by others (F-26)",
+        not fatal_files,
+        "; ".join(fatal_files) or "ok",
+    )
+    for w in file_warnings:
+        check("compose file ownership (F-26)", False, w, fatal=False)
     app_cfg = (base.get("services") or {}).get(dep.app) or {}
     container = dep.app_container()
     check("application container running", bool(container), container or "not found")
@@ -4495,6 +4567,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
             )
         cleanup_legacy_override(dep)
         problems = check_contract_config(dep, cfg, dep.app_config(), "COMPOSE_FILES")
+        problems += operator_file_problems(dep, cfg)[0]
         if problems:
             raise Refused("; ".join(problems), EXIT_UPDATE)
         if inspect_image(expected) is None:
@@ -4809,6 +4882,9 @@ def rollback_app(
     problems = check_contract_config(dep, cfg, after["services"][dep.app], "COMPOSE_FILES")
     if [p for p in problems if "contract step 1" in p]:
         raise Refused("; ".join(problems), EXIT_UPDATE)
+    unsafe = operator_file_problems(dep, cfg)[0]
+    if unsafe:
+        raise Refused("; ".join(unsafe), EXIT_UPDATE)
     for p in problems:
         log(f"WARNING {p}")
     if flags:
