@@ -228,7 +228,11 @@ def test_control_committed_benchmark_reproduces_on_head(cases):
     assert strip(B.aggregate(rows)) == strip(committed["aggregate"])
     legal = committed["aggregate"]["legal"]
     assert legal["false_deletion_units"] == legal["false_insertion"] == 0
-    assert legal["false_reordering"] == 14  # the 3 upstream fixtures above
+    # was: == 14 (len - LIS). Phase 12D9 (D8-ORC-05): false_reordering counts
+    # the pairs shown in the wrong order (Kendall distance) - same 3 upstream
+    # fixtures, every pair counted (len - LIS kept as false_reordering_lis)
+    assert legal["false_reordering"] == 35
+    assert legal["false_deletion_units"] == legal["false_insertion"] == 0
 
 
 def test_verified_ground_truth_is_declared_not_generated():
@@ -496,14 +500,7 @@ def test_verified_whitespace_only_changes_are_not_measured(cases):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORC-01: with a document, a table row unit is 'shown' as soon as "
-    "ANY line matches the row the OUTPUT document holds at that index; the "
-    "declared row text is never compared (no 'altered' check for tables). Two "
-    "cells / two rows exchanged in document + output: every counter stays 0 "
-    "(the token multiset is unchanged)",
-)
+# was: xfail(strict) D8-ORC-01 - fixed in Phase 12D9 (phase12_oracle / phase12_metrics)
 def test_table_cells_exchanged_in_document_and_output_are_seen(cases):
     from docling_core.types.doc.document import TableItem
 
@@ -525,12 +522,7 @@ def test_table_cells_exchanged_in_document_and_output_are_seen(cases):
     assert found == total, (found, total)  # today 0 / 138 (3 tables)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORC-01: a table cell emptied in document + output is seen only "
-    "through the document-wide token multiset; a kept page number with the same "
-    "text ('1', '2') hides it (f10_table_across_pages: STT cells 1 and 2)",
-)
+# was: xfail(strict) D8-ORC-01 - fixed in Phase 12D9 (phase12_oracle / phase12_metrics)
 def test_emptied_table_cell_is_seen_even_when_its_text_occurs_elsewhere(cases):
     from docling_core.types.doc.document import TableItem
 
@@ -546,13 +538,7 @@ def test_emptied_table_cell_is_seen_even_when_its_text_occurs_elsewhere(cases):
     assert all(results.values()), [k for k, v in results.items() if not v]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORC-02: phase12_metrics.display_lines() emits nothing for 'fence' "
-    "and 'code_block' tokens, although the frontend renders them: text invented "
-    "inside a fenced or 4-space-indented block is invisible (0 / 360 here, 0 / 1288 in the full sweep), also to "
-    "the token counters",
-)
+# was: xfail(strict) D8-ORC-02 - fixed in Phase 12D9 (phase12_oracle / phase12_metrics)
 @pytest.mark.parametrize("shape", ["```\n{}\n```", "    {}"])
 def test_invented_text_in_a_code_block_is_seen(cases, shape):
     results = []
@@ -574,17 +560,16 @@ def test_verified_code_blocks_are_shown_by_the_reference_renderer():
         tokens = MarkdownIt("commonmark").parse(shown)
         code = [t for t in tokens if t.type in ("fence", "code_block")]
         assert len(code) == 1 and INVENTED in code[0].content
-        assert H.legal_lines(f"Điều 1.\n\n{block}\n\nĐiều 2.") == ["Điều 1.", "Điều 2."]
+        # was: legal_lines(...) == ["Điều 1.", "Điều 2."] - Phase 12D9 (D8-ORC-02):
+        # the oracle's display now shows the code block's lines, as the renderer does
+        assert H.legal_lines(f"Điều 1.\n\n{block}\n\nĐiều 2.") == [
+            "Điều 1.",
+            INVENTED,
+            "Điều 2.",
+        ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORC-03: false_insertion_tokens subtracts the tokens of EVERY "
-    "optional unit, removed or not, and a body item without provenance belongs "
-    "to no unit: the text of a removed page number / running header put back "
-    "anywhere as a new item (a stray '2' among the clauses) costs nothing "
-    "(0 / 61)",
-)
+# was: xfail(strict) D8-ORC-03 - fixed in Phase 12D9 (phase12_oracle / phase12_metrics)
 def test_removed_artifact_text_reinserted_as_a_new_item_is_seen(cases):
     from docling_core.types.doc.labels import DocItemLabel
 
@@ -602,12 +587,7 @@ def test_removed_artifact_text_reinserted_as_a_new_item_is_seen(cases):
     assert found == total, (found, total)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORC-04: display_lines() drops the block type: a paragraph turned "
-    "into a heading (or a heading into a paragraph, or '> ' quoted) reads the "
-    "same; no counter of the oracle or the benchmark changes (0 / 340 here)",
-)
+# was: xfail(strict) D8-ORC-04 - fixed in Phase 12D9 (phase12_oracle / phase12_metrics)
 def test_changed_block_structure_is_seen(cases):
     results = []
     for c in cases:
@@ -619,13 +599,7 @@ def test_changed_block_structure_is_seen(cases):
     assert found == total, (found, total)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORC-05: false_reordering = len - LIS over the whole document. In "
-    "the fixtures Docling already reorders (f12_two_columns, d5_f02_voucher_*: "
-    "14 of the benchmark's 14) another swap of two neighbours often leaves the "
-    "count unchanged, and the pytest gate there is only 'Legal <= Standard'",
-)
+# was: xfail(strict) D8-ORC-05 - fixed in Phase 12D9 (phase12_oracle / phase12_metrics)
 def test_reordering_inside_an_already_reordered_document_is_seen(cases):
     results = []
     for c in cases:
@@ -639,14 +613,7 @@ def test_reordering_inside_an_already_reordered_document_is_seen(cases):
     assert found == total, (found, total)  # today 15 / 37
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORC-06: the oracle still treats gt='join' as 'may be joined' "
-    "although Phase 12D7 decided that Legal NEVER joins across pages: a "
-    "cross-page join of a declared pair (document + output) changes no error "
-    "counter; the benchmark reports it only as joins [n, 8], which no test "
-    "requires to be 0",
-)
+# was: xfail(strict) D8-ORC-06 - fixed in Phase 12D9 (phase12_oracle / phase12_metrics)
 def test_cross_page_join_of_a_declared_pair_is_an_error(cases):
     from docling_core.types.doc.document import ContentLayer
 

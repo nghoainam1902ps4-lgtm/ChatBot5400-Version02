@@ -22,18 +22,29 @@ def display_lines(markdown: str, list_prefixes: bool = True) -> list[str]:
     Ordered list items get the number the browser draws (``start`` + position),
     NOT the number written in the source; bullet items get "•"; raw HTML (e.g.
     ``<!-- image -->``) is shown literally, as react-markdown does without
-    rehype-raw. ``list_prefixes=False`` leaves out what the renderer draws
-    (numbers / bullets) to compare the text itself.
+    rehype-raw; the lines of a fenced / indented code block are shown too (the
+    frontend renders them - Phase 12D9, D8-ORC-02). ``list_prefixes=False``
+    leaves out what the renderer draws (numbers / bullets) to compare the text
+    itself.
     """
+    return [text for text, _ in display_lines_typed(markdown, list_prefixes)]
+
+
+def display_lines_typed(
+    markdown: str, list_prefixes: bool = True
+) -> list[tuple[str, str]]:
+    """``display_lines`` with the kind of block each line is: heading,
+    paragraph, list_item, quote, table_row, code, html (Phase 12D9, D8-ORC-04)."""
     from markdown_it import MarkdownIt
 
     md = MarkdownIt("commonmark").enable("table")
     tokens = md.parse(markdown)
-    lines: list[str] = []
+    out: list[tuple[str, str]] = []
     stack: list[list[Any]] = []  # [ordered, next_number]
     prefix_pending: list[str] = []
     row: list[str] = []
     in_cell = False
+    heading = quote = items = 0
     for tok in tokens:
         t = tok.type
         if t == "ordered_list_open":
@@ -43,12 +54,23 @@ def display_lines(markdown: str, list_prefixes: bool = True) -> list[str]:
         elif t in ("ordered_list_close", "bullet_list_close"):
             stack.pop()
         elif t == "list_item_open":
+            items += 1
             ordered, number = stack[-1]
             if ordered:
                 prefix_pending.append(f"{number}. " if list_prefixes else "")
                 stack[-1][1] = number + 1
             else:
                 prefix_pending.append("• " if list_prefixes else "")
+        elif t == "list_item_close":
+            items -= 1
+        elif t == "heading_open":
+            heading += 1
+        elif t == "heading_close":
+            heading -= 1
+        elif t == "blockquote_open":
+            quote += 1
+        elif t == "blockquote_close":
+            quote -= 1
         elif t == "inline":
             text = "".join(
                 child.content
@@ -61,17 +83,29 @@ def display_lines(markdown: str, list_prefixes: bool = True) -> list[str]:
                 continue
             prefix = "".join(prefix_pending)
             prefix_pending.clear()
-            lines.append(f"{prefix}{text}".strip())
+            kind = (
+                "quote"
+                if quote
+                else "heading"
+                if heading
+                else "list_item"
+                if items
+                else "paragraph"
+            )
+            out.append((f"{prefix}{text}".strip(), kind))
         elif t in ("th_open", "td_open"):
             in_cell = True
         elif t in ("th_close", "td_close"):
             in_cell = False
         elif t == "tr_close":
-            lines.append(" | ".join(row))
+            out.append((" | ".join(row), "table_row"))
             row = []
         elif t == "html_block":
-            lines.append(tok.content.strip())
-    return [line for line in lines if line]
+            out.append((tok.content.strip(), "html"))
+        elif t in ("fence", "code_block"):
+            for line in tok.content.splitlines():
+                out.append((line.strip(), "code"))
+    return [(text, kind) for text, kind in out if text]
 
 
 def display_text(markdown: str, list_prefixes: bool = True) -> str:

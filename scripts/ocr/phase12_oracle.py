@@ -50,7 +50,7 @@ from __future__ import annotations
 import bisect
 import re
 from collections import Counter, defaultdict
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 PLACEHOLDER = "<!-- image -->"
 REQUIRED_GT = ("keep", "join")
@@ -165,6 +165,16 @@ def _lis_length(seq: list[int]) -> int:
     return len(tails)
 
 
+_TEXT_KIND = {"paragraph": "text", "list_item": "text"}
+
+
+def _inversions(seq: list[int]) -> int:
+    """Pairs i < j with seq[i] > seq[j]."""
+    return sum(
+        1 for i in range(len(seq)) for j in range(i + 1, len(seq)) if seq[i] > seq[j]
+    )
+
+
 def _joined_forms(texts: list[str], dehyphenate: bool = True) -> set[str]:
     """How Docling or the normalizer may render consecutive parts in ONE item:
     one space between them; the parts closed up with the hyphen KEPT (the
@@ -267,6 +277,24 @@ class _DocView:
                 if (item.text or "").strip():
                     self._text_entry(item)
 
+    def kind_of(self, entry: dict[str, Any]) -> str:
+        """The block kind a faithful serializer shows this entry as."""
+        from docling_core.types.doc.labels import DocItemLabel
+
+        item = entry["item"]
+        if entry["row"] is not None:
+            return "table_row"
+        if isinstance(item, self.T["PictureItem"]):
+            return "html"
+        if isinstance(item, self.T["ListItem"]):
+            return "list_item"
+        if getattr(item, "label", None) in (
+            DocItemLabel.SECTION_HEADER,
+            DocItemLabel.TITLE,
+        ):
+            return "heading"
+        return "paragraph"
+
     def _text_entry(self, item: Any) -> None:
         text = _norm(item.text)
         marker = _norm(getattr(item, "marker", "") or "")
@@ -312,8 +340,13 @@ def preservation(
     *,
     document: Any = None,
     pictures_traversed: bool = True,
+    join_across_pages: bool = False,
 ) -> dict[str, Any]:
     """Compare what the reader sees (``lines``) with the fixture's declared truth.
+
+    ``join_across_pages``: a declared pair joined across a page break is
+    accepted (Docling's standard export joins blocks; Legal never does -
+    Phase 12D7, D-38 - so by default such a join is a false merge).
 
     ``document``: the DoclingDocument ``lines`` were rendered from (the Legal
     result document, or the input document for the Standard export) - enables
@@ -322,10 +355,32 @@ def preservation(
     """
     units = expected_units(fixture)
     if document is not None:
-        verdict = _identity_verdict(units, lines, document, pictures_traversed)
+        verdict = _identity_verdict(
+            units,
+            lines,
+            document,
+            pictures_traversed,
+            line_kinds=_line_kinds(lines, markdown),
+            join_across_pages=join_across_pages,
+        )
     else:
         verdict = _text_verdict(units, lines)
     return _metrics(fixture, units, lines, markdown, verdict)
+
+
+def _line_kinds(lines: list[str], markdown: str) -> Optional[list[str]]:
+    """The block kind of each displayed line, when ``lines`` are the display
+    of ``markdown`` (as shown, or after the frontend's Legal escape); None
+    when they cannot be told apart (no structure check then)."""
+    if not markdown:
+        return None
+    from phase12_metrics import display_lines_typed, legal_display_markdown
+
+    for shape in (markdown, legal_display_markdown(markdown)):
+        typed = display_lines_typed(shape)
+        if [t for t, _ in typed] == lines:
+            return [k for _, k in typed]
+    return None
 
 
 def _identity_verdict(
@@ -333,6 +388,8 @@ def _identity_verdict(
     lines: list[str],
     document: Any,
     pictures_traversed: bool,
+    line_kinds: Optional[list[str]] = None,
+    join_across_pages: bool = False,
 ) -> dict[str, Any]:
     view = _DocView(document, pictures_traversed)
     preds = _predecessors(units)
@@ -450,6 +507,7 @@ def _identity_verdict(
     # 3. units shown, in display order
     sequence: list[tuple[int, dict[str, Any]]] = []  # (line index, unit)
     shown: set[str] = set()
+    altered: list[dict[str, Any]] = []
     for ei, li in entry_line.items():
         entry = view.entries[ei]
         item_units: list[dict[str, Any]] = by_item.get(id(entry["item"]), [])
@@ -462,11 +520,42 @@ def _identity_verdict(
         for unit in sorted(item_units, key=lambda x: _prov_rank(view, x, rank_item)):
             sequence.append((li, unit))
             shown.add(unit["id"])
+            # D8-ORC-01 (Phase 12D9): a table row is compared with its DECLARED
+            # cells, not only located (exchanged / emptied cells are a change)
+            if entry["row"] is not None and _norm(unit["text"]) != entry["keys"][0]:
+                altered.append(
+                    {
+                        "units": [unit["id"]],
+                        "pages": [unit["page"]],
+                        "expected": unit["text"],
+                        "found": entry["keys"][0],
+                        "why": "table row changed",
+                    }
+                )
+        # D8-ORC-04 (Phase 12D9): the block the reader sees must be of the kind
+        # of the document item it shows (a paragraph shown as a heading, a
+        # heading as a paragraph, a quote, a code block ... is a change)
+        if line_kinds is not None and item_units:
+            want = view.kind_of(entry)
+            # a list item and a paragraph read alike: Legal shows list items as
+            # paragraphs with their source marker, a "1." / "- " paragraph is
+            # drawn as a list - only a heading, quote, code block, table row or
+            # placeholder is another kind of block
+            got = _TEXT_KIND.get(line_kinds[li], line_kinds[li])
+            if _TEXT_KIND.get(want, want) != got:
+                altered.append(
+                    {
+                        "units": [u["id"] for u in item_units],
+                        "pages": sorted({u["page"] for u in item_units}),
+                        "expected": want,
+                        "found": got,
+                        "why": "block kind changed",
+                    }
+                )
     sequence.sort(key=lambda x: (x[0], x[1]["index"]))
 
     # 4. merges and changed text inside one item
     false_merges: list[str] = []
-    altered: list[dict[str, Any]] = []
     joined_pairs: set[tuple[str, str]] = set()
     for item_id, group in by_item.items():
         texts_units = [u for u in group if u["kind"] in ("text", "picture_text")]
@@ -480,6 +569,11 @@ def _identity_verdict(
             for a, b in zip(ordered, ordered[1:]):
                 if preds.get(b["id"]) == a["id"]:
                     joined_pairs.add((a["id"], b["id"]))
+                    if a["page"] != b["page"] and not join_across_pages:
+                        # D8-ORC-06 (Phase 12D9): Legal never joins across
+                        # pages (D-38, Phase 12D7): a declared pair joined is
+                        # an error, not an allowed join
+                        bad = True
                 else:
                     bad = True
             if bad:
@@ -732,7 +826,9 @@ def _metrics(
         required_tokens.update(u["text"].replace(" | ", " ").split())
     optional_tokens: Counter[str] = Counter()
     for u in units:
-        if not _required(u) and u["kind"] != "picture":
+        # D8-ORC-03 (Phase 12D9): only an optional unit the reader SEES excuses
+        # its tokens - a removed artifact's text shown elsewhere is an insertion
+        if not _required(u) and u["kind"] != "picture" and u["id"] in shown:
             optional_tokens.update(u["text"].split())
     shown_tokens: Counter[str] = Counter()
     for ln in lines:
@@ -763,7 +859,11 @@ def _metrics(
         "false_insertion_tokens": sum(
             ((shown_tokens - required_tokens) - optional_tokens).values()
         ),
-        "false_reordering": len(order) - _lis_length(order),
+        # D8-ORC-05 (Phase 12D9): pairs shown in the wrong order (Kendall
+        # distance) - every further swap counts, also in a document Docling
+        # already reordered (len - LIS saturated there)
+        "false_reordering": _inversions(order),
+        "false_reordering_lis": len(order) - _lis_length(order),
         "altered": v["altered"],
         "altered_units": len(v["altered"]),
         # a list marker shown differently from the source (lost, renumbered by the
