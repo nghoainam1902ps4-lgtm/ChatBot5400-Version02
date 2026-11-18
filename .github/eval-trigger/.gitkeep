@@ -1,0 +1,9 @@
+# Marker directory for the Agribank Lâm Đồng A/B workflow.
+#
+# The workflow .github/workflows/agribank-lamdong-prompt-ab.yml runs the real
+# 56-call GPT-5.6 Sol A/B test ONLY when the file
+#   .github/eval-trigger/gpt56.txt
+# is created or changed on branch feature/agribank-lamdong-system-prompts.
+#
+# This phase does NOT create gpt56.txt, so no real model calls are triggered.
+# Creating/editing gpt56.txt in a later, explicitly-authorized commit triggers it.
