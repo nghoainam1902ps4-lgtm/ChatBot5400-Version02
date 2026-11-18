@@ -63,6 +63,22 @@ sys.path.insert(0, str(project_root))
 import pytest  # noqa: E402
 
 
+# R2-21 (Phase 12D5): open_notebook.ocr.runtime.ensure_tessdata_prefix() pins
+# TESSDATA_PREFIX for the whole process - by design in the application (D-04),
+# but in the test process it leaked into every later test (a test that lists
+# the system's Tesseract languages then saw the test's own empty tessdata and
+# was SKIPPED in the full run, PASSED alone). Every test now ends with the value
+# it started with.
+@pytest.fixture(autouse=True)
+def _restore_tessdata_prefix():
+    saved = os.environ.get("TESSDATA_PREFIX")
+    yield
+    if saved is None:
+        os.environ.pop("TESSDATA_PREFIX", None)
+    else:
+        os.environ["TESSDATA_PREFIX"] = saved
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """Expose each phase's report as item.rep_<phase> (used by acceptance reports)."""
