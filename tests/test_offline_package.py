@@ -350,6 +350,9 @@ def fake_docker(tmp_path, monkeypatch):
             "volumes": {"cb_surreal": {}},
         },
     }
+    for root in state["artifacts"].values():
+        for entry in root:  # [name, size, sha256 of the content]
+            entry.append(hashlib.sha256(entry[0].encode()).hexdigest())
     state_path = tmp_path / "docker_state.json"
     state_path.write_text(json.dumps(state))
     monkeypatch.setenv("FAKE_DOCKER_STATE", str(state_path))
@@ -2670,7 +2673,9 @@ def test_token_counting_must_work_offline_in_the_new_container(
     deployment, fake_docker, tmp_path
 ):
     conf, pkg_dir, _ = deployment
-    fake_docker.set(fail_on_image={IMAGE_ID: ["chunk_text"]})
+    # R2-10: the probe loads the real encoding (12D3 called chunk_text, which also
+    # "works" on the word-count estimate)
+    fake_docker.set(fail_on_image={IMAGE_ID: ["get_encoding"]})
     assert _apply(conf, pkg_dir) == OP.EXIT_UPDATE
     assert _journal(tmp_path)["status"] == "failed"
 
@@ -3758,6 +3763,75 @@ def test_a_record_edited_after_the_backup_stops_the_update_before_the_recreate(
     assert "F3_fingerprint" not in [s["step"] for s in _journal(tmp_path)["steps"]]
 
 
+def test_model_file_with_the_same_size_but_another_content_fails_the_update(
+    deployment, fake_docker, tmp_path, capsys
+):
+    """F-22 / R2-10: model files are compared by SHA-256, not only by name and size."""
+    conf, pkg_dir, _ = deployment
+    after = fake_docker.get()["artifacts"]
+    after["ocr_models"][3][2] = "0" * 64  # tesseract/best/vie.traineddata, same size
+    fake_docker.set(on_up={"artifacts": after})
+    capsys.readouterr()
+    assert _apply(conf, pkg_dir) == OP.EXIT_UPDATE
+    assert "content changed, same size" in capsys.readouterr().out
+    assert _journal(tmp_path)["status"] == "failed"
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12D5: the token probe of the health check (R2-10, tool side)
+# --------------------------------------------------------------------------- #
+
+
+def _token_probe(deployment, fake_docker):
+    conf, pkg_dir, _ = deployment
+    assert OP.main(["health", "--config", str(conf)]) == 0
+    call = next(c for c in fake_docker.calls() if "get_encoding" in " ".join(c))
+    return call[call.index("-c") + 1]
+
+
+FAKE_TIKTOKEN = '''
+import os
+MODE = os.environ["FAKE_TIKTOKEN"]
+class Encoding:
+    name = "o200k_base"
+    n_vocab = 200019
+    def encode(self, text):
+        self.last = text
+        return [0] if MODE == "estimate" else list(range(len(text) // 3))
+    def decode(self, ids):
+        return self.last
+def get_encoding(name):
+    if MODE == "raise":
+        raise OSError("network unreachable")
+    return Encoding()
+'''
+
+
+@pytest.mark.parametrize(
+    "case, rc",
+    [("real", 0), ("no-cache-file", 1), ("other-file", 1), ("raise", 1), ("estimate", 1)],
+)
+def test_token_probe_asserts_the_cached_encoding_itself(deployment, fake_docker, tmp_path, case, rc):
+    """The probe that runs in the new container: the cache file tiktoken reads must be
+    the o200k_base blob byte for byte (SHA-256), and tiktoken.get_encoding must load and
+    really tokenise - a word-count estimate (1 token for a long text) fails."""
+    code = _token_probe(deployment, fake_docker)
+    cache = tmp_path / "tiktoken-cache"
+    cache.mkdir()
+    name = hashlib.sha1(OP.TIKTOKEN_BLOB_URL.encode()).hexdigest()
+    content = b"the o200k_base encoding"
+    if case != "no-cache-file":
+        (cache / name).write_bytes(content if case != "other-file" else b"something else")
+    code = code.replace(repr(OP.TIKTOKEN_BLOB_SHA256), repr(hashlib.sha256(content).hexdigest()))
+    fake_module = tmp_path / "fake_modules"
+    fake_module.mkdir()
+    (fake_module / "tiktoken.py").write_text(FAKE_TIKTOKEN)
+    env = dict(os.environ, PYTHONPATH=str(fake_module), TIKTOKEN_CACHE_DIR=str(cache),
+               FAKE_TIKTOKEN={"estimate": "estimate", "raise": "raise"}.get(case, "real"))  # fmt: skip
+    proc = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    assert proc.returncode == rc, proc.stdout + proc.stderr
+
+
 # --------------------------------------------------------------------------- #
 # Phase 12D5: the read-only snapshot helper of the manual fallback procedure
 # --------------------------------------------------------------------------- #
@@ -3783,6 +3857,7 @@ def test_snapshot_records_and_compares_without_changing_anything(
     assert snap["app"]["image_id"] == OLD_ID and snap["app"]["required_env_missing"] == []
     assert "SURREAL_URL" in snap["app"]["env_keys"]
     assert "ws://" not in before.read_text()  # environment NAMES only, never values
+    assert len(snap["artifacts"]["ocr_models"][0]) == 3  # name, size, SHA-256
 
     def compare():
         return OP.main(["snapshot", "--config", str(conf), "--compare", str(before)])
@@ -3799,8 +3874,8 @@ def test_snapshot_records_and_compares_without_changing_anything(
     assert compare() == OP.EXIT_UPDATE
     fake_docker.edit(lambda s: s["records"].pop("source"))
     assert compare() == 0
-    fake_docker.edit(lambda s: s["artifacts"]["ocr_models"][0].__setitem__(1, 1))
-    assert compare() == OP.EXIT_UPDATE  # a model file changed (size)
+    fake_docker.edit(lambda s: s["artifacts"]["ocr_models"][0].__setitem__(2, "f" * 64))
+    assert compare() == OP.EXIT_UPDATE  # a model file changed
     fake_docker.set(fail=["FINGERPRINT"])
     assert compare() == OP.EXIT_VERIFY  # unreadable
     assert OP.main(["snapshot", "--config", str(conf), "--compare", str(tmp_path / "nope")]) == OP.EXIT_VERIFY

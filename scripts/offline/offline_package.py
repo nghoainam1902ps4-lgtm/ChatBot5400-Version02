@@ -2489,8 +2489,7 @@ def read_records(dep: Deployment, attempt_id: Optional[str], label: str) -> Opti
 # --------------------------------------------------------------------------- #
 
 ARTIFACT_PROBE = r"""
-import json, os
-from pathlib import Path
+import hashlib, json, os
 roots = {}
 try:
     from open_notebook.ocr import paths
@@ -2499,24 +2498,31 @@ except Exception:
     roots["ocr_models"] = "/app/data/ocr/models"
 hf = os.environ.get("HF_HOME", "/app/data/.cache/huggingface")
 roots["huggingface_hub"] = os.path.join(hf, "hub")
-out = {}
-for name, root in roots.items():
+LIMIT = 20000
+def scan(root):
     files = []
-    if os.path.isdir(root):
-        for dp, dn, fn in os.walk(root):
-            dn[:] = [d for d in dn if d not in (".locks", "downloads", "logs")]
-            for f in fn:
-                p = os.path.join(dp, f)
-                if f.endswith((".tmp", ".lock", ".incomplete")):
-                    continue
-                try:
-                    size = os.stat(p).st_size  # follows the hub's links to its blobs
-                except OSError:
-                    size = -1  # a dangling link: the blob is gone
-                files.append([os.path.relpath(p, root), size])
-                if len(files) >= 20000:
-                    break
-    out[name] = sorted(files)
+    if not os.path.isdir(root):
+        return files
+    for dp, dn, fn in os.walk(root):
+        dn[:] = sorted(d for d in dn if d not in (".locks", "downloads", "logs"))
+        for f in sorted(fn):
+            if f.endswith((".tmp", ".lock", ".incomplete")):
+                continue
+            p = os.path.join(dp, f)
+            try:
+                size = os.stat(p).st_size  # follows the hub's links to its blobs
+                h = hashlib.sha256()
+                with open(p, "rb") as fh:
+                    for chunk in iter(lambda: fh.read(4 * 1024 * 1024), b""):
+                        h.update(chunk)
+                digest = h.hexdigest()
+            except OSError:
+                size, digest = -1, None  # a dangling link: the blob is gone
+            files.append([os.path.relpath(p, root), size, digest])
+            if len(files) >= LIMIT:
+                return files
+    return files
+out = {name: sorted(scan(root)) for name, root in roots.items()}
 print("ARTIFACTS " + json.dumps(out))
 """
 
@@ -2525,11 +2531,12 @@ def artifact_snapshot(dep: Deployment) -> Optional[Dict[str, List[List[Any]]]]:
     """Model files on the data volume as the application container sees them (F-22).
 
     Layout Heron and TableFormer (Hugging Face hub cache), Tesseract traineddata
-    (fast / best / OSD, the Agri versions), RapidOCR and EasyOCR weights. Names
-    and sizes only: nothing is read, copied or sent anywhere.
+    (fast / best / OSD, the Agri versions), RapidOCR and EasyOCR weights:
+    [relative path, size, SHA-256] per file (at most 20000 per root). Nothing is
+    copied or sent anywhere.
     """
     proc = dep.exec_app(
-        "/app/.venv/bin/python", "-c", ARTIFACT_PROBE, check=False, timeout=600
+        "/app/.venv/bin/python", "-c", ARTIFACT_PROBE, check=False, timeout=3600
     )
     for line in reversed(proc.stdout.splitlines()):
         if line.startswith("ARTIFACTS "):
@@ -2544,17 +2551,22 @@ def artifact_snapshot(dep: Deployment) -> Optional[Dict[str, List[List[Any]]]]:
 def artifact_losses(
     before: Dict[str, List[List[Any]]], after: Optional[Dict[str, List[List[Any]]]]
 ) -> List[str]:
-    """Files the old container had that the new one lacks or sees with another size."""
+    """Files the old container had that the new one lacks, sees with another size or content."""
     if after is None:
         return ["the model files could not be listed in the new container"]
     lost = []
     for root, files in sorted(before.items()):
-        now = {str(f[0]): f[1] for f in after.get(root) or []}
-        for name, size in files:
-            if str(name) not in now:
+        now = {str(f[0]): f for f in after.get(root) or []}
+        for entry in files:
+            name, size = str(entry[0]), entry[1]
+            digest = entry[2] if len(entry) > 2 else None
+            current = now.get(name)
+            if current is None:
                 lost.append(f"{root}/{name} (missing)")
-            elif now[str(name)] != size:
-                lost.append(f"{root}/{name} (size {size} -> {now[str(name)]})")
+            elif current[1] != size:
+                lost.append(f"{root}/{name} (size {size} -> {current[1]})")
+            elif digest and len(current) > 2 and current[2] != digest:
+                lost.append(f"{root}/{name} (content changed, same size)")
     return lost
 
 
@@ -4032,14 +4044,45 @@ def health_checks(
     log(f"{'OK  ' if healthy else 'FAIL'} API health {url}")
     ok &= healthy
     py = "/app/.venv/bin/python"
+    # R2-10: the REAL encoding, not something that also "works" on an estimate: the
+    # cache file tiktoken uses must exist and be the o200k_base blob byte for byte,
+    # and tiktoken.get_encoding must load it with no network, under a timeout.
     token_probe = (
-        "import threading, sys\n"
-        "from open_notebook.utils.chunking import chunk_text\n"
+        "import hashlib, os, sys, threading\n"
+        f"url = {TIKTOKEN_BLOB_URL!r}\n"
+        f"want = {TIKTOKEN_BLOB_SHA256!r}\n"
+        "cache = os.environ.get('TIKTOKEN_CACHE_DIR', '').strip()\n"
+        "if not cache:\n"
+        "    try:\n"
+        "        from open_notebook.config import TIKTOKEN_CACHE_DIR as cache\n"
+        "    except Exception:\n"
+        "        cache = ''\n"
+        "path = os.path.join(cache, hashlib.sha1(url.encode()).hexdigest())\n"
+        "try:\n"
+        "    with open(path, 'rb') as fh:\n"
+        "        got = hashlib.sha256(fh.read()).hexdigest()\n"
+        "except OSError:\n"
+        "    print('TOKENS no encoding cache file', path)\n"
+        "    sys.exit(1)\n"
+        "if got != want:\n"
+        "    print('TOKENS the cache file is not the o200k_base encoding', path)\n"
+        "    sys.exit(1)\n"
+        "os.environ['TIKTOKEN_CACHE_DIR'] = cache\n"
         "r = {}\n"
         "def w():\n"
-        "    r['n'] = len(chunk_text('Điều 1. Kiểm tra tách đoạn khi không có mạng. ' * 40))\n"
+        "    try:\n"
+        "        import tiktoken\n"
+        "        enc = tiktoken.get_encoding('o200k_base')\n"
+        "        text = 'Điều 1. Kiểm tra bộ mã hóa khi không có mạng: A1B2C3D4E5. ' * 20\n"
+        "        ids = enc.encode(text)\n"
+        "        r['ok'] = (enc.name == 'o200k_base' and enc.n_vocab >= 199000\n"
+        "                   and len(ids) > 100 and enc.decode(ids) == text)\n"
+        "        r['tokens'] = len(ids)\n"
+        "    except Exception as e:\n"
+        "        r['error'] = type(e).__name__\n"
         "t = threading.Thread(target=w, daemon=True); t.start(); t.join(60)\n"
-        "sys.exit(0 if r.get('n') else 1)\n"
+        "print('TOKENS', r)\n"
+        "sys.exit(0 if r.get('ok') else 1)\n"
     )
     checks = [
         ("Docling importable", [py, "-c", "import docling"]),
@@ -4052,7 +4095,10 @@ def health_checks(
             "custom model (Agri) status",
             [py, "-m", "open_notebook.ocr.cli", "custom", "status", "--no-db"],
         ),
-        ("chunking / token counting without network", [py, "-c", token_probe]),
+        (
+            "token encoding o200k_base loads offline (cache file SHA-256 checked)",
+            [py, "-c", token_probe],
+        ),
     ]
     for name, cmd in checks:
         res = dep.exec_app(*cmd, check=False, timeout=1800)
@@ -4090,7 +4136,7 @@ def health_checks(
         detail = "" if good else f": {lost[:10]}{' ...' if len(lost) > 10 else ''}"
         log(
             f"{'OK  ' if good else 'FAIL'} model files on the data volume unchanged "
-            f"(Heron, TableFormer, Tesseract/OSD/Agri, RapidOCR, EasyOCR){detail}"
+            f"(Heron, TableFormer, Tesseract/OSD/Agri, RapidOCR, EasyOCR; SHA-256){detail}"
         )
         ok &= good
     if prove_offline:

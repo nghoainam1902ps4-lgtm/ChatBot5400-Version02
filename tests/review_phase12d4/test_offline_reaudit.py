@@ -6,7 +6,7 @@ Everything a real Docker engine / Compose would have to confirm is listed in
 docs/review/PHASE12D4_WINDOWS_ACCEPTANCE_CHECKLIST.md.
 
 Phase 12D5 (offline tool rework, package format 3) fixed R2-04, R2-05, R2-06,
-R2-07, R2-08 and R2-09: their strict xfail markers are
+R2-07, R2-08, R2-09 and the tool side of R2-10: their strict xfail markers are
 removed (the tests are regression tests now), the controls that recorded the
 broken behaviour are inverted (`# was:` names the former control), and the two
 `verified` tests that recorded the optional pin of 12D3 assert the deployment
@@ -274,11 +274,10 @@ def test_r2_09_existing_release_tag_on_another_commit_is_refused(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-10 / F-22 PARTIALLY FIXED: step O calls chunk_text(), which also "
-    "'works' on the word-count fallback; it never asserts that the o200k_base encoding loads",
-)
+# PHASE12D4 R2-10 / F-22, TOOL SIDE: fixed in Phase 12D5 (the probe checks the cache file
+# SHA-256 and loads tiktoken.get_encoding itself): the xfail marker is removed. The
+# application side (token_utils / context_builder) is tracked separately: the two
+# control tests below are unchanged.
 def test_r2_10_health_probe_asserts_the_encoding_itself():
     source = inspect.getsource(OP.health_checks)
     assert "get_encoding" in source
