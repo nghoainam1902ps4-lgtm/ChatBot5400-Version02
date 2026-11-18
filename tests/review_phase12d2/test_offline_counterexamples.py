@@ -41,6 +41,9 @@ def _git(checkout: Path, *a: str) -> str:
 # Fixed in Phase 12D3: the xfail marker is removed, this is now a regression test.
 def test_f04_build_with_commit_sha_as_the_wrappers_pass_it(fake_docker, repo, tmp_path):
     sha = _git(repo, "rev-parse", "HEAD")
+    # Phase 12D5 (R2-08): the image must carry the revision label of the commit, as the
+    # wrappers' build step adds it
+    T._label_image(repo)
     rc = OP.main(
         ["build", "--version", "1.3.0-rc.1", "--image", "chatbot5400:1.3.0-rc.1", "--repo", str(repo),
          "--out", str(tmp_path / "dist"), "--git-ref", sha]

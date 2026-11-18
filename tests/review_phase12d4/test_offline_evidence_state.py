@@ -6,6 +6,7 @@ re-run and read by the main reviewer. Convention of THIS file: every test
 REPRODUCES a defect - it asserts the unsafe outcome and therefore PASSES while
 the defect exists. When a later phase fixes a defect its test fails and must be
 inverted into a regression test. Findings: docs/review/PHASE12D4_NEW_FINDINGS.json.
+Phase 12D5 fixed R2-09: its test is inverted (`# was:` names the reproduction).
 
 ``docker`` is the stateful fake of tests/test_offline_package.py (no Docker
 daemon in Cloud); git, tar and SHA-256 are real.
@@ -66,16 +67,18 @@ def test_kill_between_source_merge_and_K_step_defeats_the_resume_guard(
     assert T._journal(tmp_path)["status"] == OP.ROLLED_BACK
 
 
-def test_existing_release_tag_on_another_commit_is_silently_kept(git_deployment, fake_docker, repo, tmp_path):
+# was: test_existing_release_tag_on_another_commit_is_silently_kept (PHASE12D4 evidence, R2-09)
+def test_existing_release_tag_on_another_commit_is_refused(git_deployment, fake_docker, repo, tmp_path):
     conf, pkg_dir, server = git_deployment
     v120 = T._git(server, "rev-parse", "HEAD")
     T._git(server, "tag", "v1.3.0-rc.1", v120)  # e.g. an earlier rc of the same name
-    assert T._apply(conf, pkg_dir, "--sync-source") == 0
-    release = T._git(repo, "rev-parse", "HEAD")
-    print("PROOF HEAD", T._git(server, "rev-parse", "HEAD")[:12], "tag v1.3.0-rc.1 ->",
+    rc = T._apply(conf, pkg_dir, "--sync-source")
+    print("PROOF rc", rc, "HEAD", T._git(server, "rev-parse", "HEAD")[:12], "tag v1.3.0-rc.1 ->",
           T._git(server, "rev-parse", "v1.3.0-rc.1")[:12])
-    assert T._git(server, "rev-parse", "HEAD") == release
-    assert T._git(server, "rev-parse", "v1.3.0-rc.1") == v120 != release
+    assert rc == OP.EXIT_UPDATE
+    assert T._git(server, "rev-parse", "HEAD") == v120  # nothing moved
+    assert T._git(server, "rev-parse", "v1.3.0-rc.1") == v120  # the tag is left alone
+    assert not T._ups(fake_docker) and fake_docker.app()["image_id"] == T.OLD_ID
 
 
 def test_kill_between_archive_and_first_save_loses_the_journal(completed, fake_docker, repo, tmp_path, monkeypatch):

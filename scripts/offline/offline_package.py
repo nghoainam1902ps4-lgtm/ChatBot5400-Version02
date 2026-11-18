@@ -41,6 +41,7 @@ import platform as _platform
 import re
 import secrets
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -48,7 +49,7 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3  # 3: image.run_config_sha256 + image.provenance are required (12D5)
 SIG_NAMESPACE = "chatbot5400-offline"
 MANIFEST = "manifest.json"
 SIGNATURE = "manifest.json.sig"
@@ -61,6 +62,7 @@ MAX_MEMBERS = 5000
 MAX_TOTAL_BYTES = int(os.environ.get("CB5400_OFFLINE_MAX_BYTES", str(64 * 1024**3)))
 MAX_RATIO = 200.0  # uncompressed / compressed
 MAX_METADATA_BYTES = 5 * 1024 * 1024  # manifest / signature read before extraction
+MAX_EXT_HEADER = 64 * 1024  # GNU long name / link, pax headers (R2-19)
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._+\-/]+$")
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?$")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -203,6 +205,20 @@ def check_commit(value: Any) -> str:
 # Configuration (server side)
 # --------------------------------------------------------------------------- #
 
+def normalize_ref(ref: Any) -> str:
+    """`chatbot5400` == `chatbot5400:latest` == `docker.io/library/chatbot5400:latest`."""
+    r = str(ref or "").strip()
+    for prefix in ("docker.io/library/", "index.docker.io/library/", "docker.io/", "index.docker.io/"):
+        if r.startswith(prefix):
+            r = r[len(prefix) :]
+            break
+    if r.startswith("library/"):
+        r = r[len("library/") :]
+    if not r or "@" in r:
+        return r
+    return r if ":" in r.rsplit("/", 1)[-1] else r + ":latest"
+
+
 DEFAULT_CONFIG = {
     "DEPLOY_DIR": "",
     "COMPOSE_PROJECT": "",
@@ -213,6 +229,7 @@ DEFAULT_CONFIG = {
     "STATE_DIR": "/var/lib/chatbot5400-offline",
     "ALLOWED_SIGNERS": "/etc/chatbot5400/allowed_signers",
     "SIGNER_IDENTITY": "release@chatbot5400",
+    "SIGNATURE_POLICY": "",
     "MAINTENANCE_OVERRIDE": "",
     "BACKUP_CMD": "",
     "BACKUP_VERIFY_CMD": "",
@@ -279,6 +296,16 @@ def require(cfg: Dict[str, str], *keys: str) -> None:
         )
 
 
+def signature_policy(cfg: Dict[str, str], allowed_signers: str) -> str:
+    """`required` (default when a trusted key file is installed) or `optional` (R2-07)."""
+    policy = str(cfg.get("SIGNATURE_POLICY", "")).strip().lower()
+    if policy in ("required", "optional"):
+        return policy
+    if policy:
+        raise Refused("SIGNATURE_POLICY must be `required` or `optional`", EXIT_USAGE)
+    return "required" if allowed_signers and Path(allowed_signers).is_file() else "optional"
+
+
 @contextlib.contextmanager
 def update_lock(state_dir: Path) -> Iterator[None]:
     """One update at a time (flock); released automatically if the process dies."""
@@ -313,6 +340,15 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
+def private_dir(path: Path) -> Path:
+    """A folder only the user who runs the tool (root) can read or write."""
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with contextlib.suppress(OSError):
+        if path.stat().st_mode & 0o077:
+            os.chmod(path, 0o700)
+    return path
+
+
 def ensure_state_dir(path: Path) -> None:
     """STATE_DIR is private to the user who runs the tool (root): the journal
     holds hashes of the effective compose configuration, which includes
@@ -337,6 +373,10 @@ def atomic_write(path: Path, text: str, private: bool = False) -> None:
         os.fsync(fh.fileno())
     os.replace(tmp, path)
     _fsync_dir(path.parent)
+
+
+def write_json_private(path: Path, data: Any) -> None:
+    atomic_write(path, json.dumps(data, indent=2, sort_keys=True), private=True)
 
 
 class Journal:
@@ -443,8 +483,152 @@ def new_attempt_id() -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Archive safety (F-14) - nothing is written before the archive is authenticated
+# Archive safety (F-14, R2-19) - nothing is written before the archive is authenticated
 # --------------------------------------------------------------------------- #
+
+
+ZERO_BLOCK = b"\0" * 512
+
+
+EXT_HEADER_TYPES = (b"L", b"K", b"x", b"g")  # GNU long name / link, pax
+
+
+def _read_exactly(stream: Any, n: int) -> bytes:
+    data = b""
+    while len(data) < n:
+        chunk = stream.read(min(n - len(data), 1024 * 1024))
+        if not chunk:
+            break
+        data += chunk
+    return data
+
+
+def _skip(stream: Any, n: int) -> None:
+    """Skip ``n`` bytes of member data in bounded chunks (never read whole)."""
+    left = n
+    while left > 0:
+        chunk = stream.read(min(left, 1024 * 1024))
+        if not chunk:
+            raise Refused("unreadable package archive: truncated member data")
+        left -= len(chunk)
+
+
+def _tar_number(field: bytes) -> int:
+    if field and field[0] & 0x80:  # GNU base-256 (sizes >= 8 GiB)
+        if field[0] == 0xFF:
+            raise Refused("unreadable package archive: negative size in a tar header")
+        value = field[0] & 0x7F
+        for b in field[1:]:
+            value = (value << 8) | b
+        return value
+    text = field.split(b"\0", 1)[0].strip(b" \0")
+    try:
+        return int(text or b"0", 8)
+    except ValueError:
+        raise Refused("unreadable package archive: invalid number in a tar header") from None
+
+
+def _tar_checksum_ok(header: bytes) -> bool:
+    try:
+        stored = _tar_number(header[148:156])
+    except Refused:
+        return False
+    unsigned = sum(header[:148]) + 8 * 32 + sum(header[156:])
+    signed = sum(b - 256 if b > 127 else b for b in header[:148] + header[156:]) + 8 * 32
+    return stored in (unsigned, signed)
+
+
+def _pax_size(data: bytes) -> Optional[int]:
+    """The `size` record of a pax header (members >= 8 GiB carry their size there)."""
+    pos, size = 0, None
+    while pos < len(data):
+        m = re.match(rb"(\d{1,20}) ", data[pos : pos + 24])
+        if not m:
+            break
+        length = int(m.group(1))
+        if length <= len(m.group(0)):
+            break
+        key, _, value = data[pos + m.end() : pos + length].rstrip(b"\n").partition(b"=")
+        if key == b"size":
+            try:
+                size = int(value)
+            except ValueError:
+                raise Refused("unreadable package archive: invalid pax size") from None
+        pos += length
+    return size
+
+
+def _decompressed(raw: Any) -> Any:
+    import bz2
+    import gzip
+    import lzma
+
+    magic = raw.read(6)
+    raw.seek(0)
+    if magic[:2] == b"\x1f\x8b":
+        return gzip.GzipFile(fileobj=raw, mode="rb")
+    if magic[:3] == b"BZh":
+        return bz2.BZ2File(raw)
+    if magic == b"\xfd7zXZ\x00":
+        return lzma.LZMAFile(raw)
+    return raw
+
+
+def prescan_archive(package: Path) -> None:
+    """Every tar header, BEFORE tarfile touches the archive (R2-19).
+
+    The decompressed stream is read in 512-byte header blocks; member data is
+    skipped in bounded chunks. Extended headers (GNU long name / link, pax)
+    larger than 64 KiB are refused - tarfile would read them into memory whole,
+    before anything is authenticated. MAX_MEMBERS, MAX_TOTAL_BYTES and the
+    compression ratio are enforced on the way, so a bomb stops at its header.
+    """
+    import lzma
+    import zlib
+
+    compressed = max(1, package.stat().st_size)
+    members = total = 0
+    pending: Optional[int] = None
+    try:
+        with open(package, "rb") as raw:
+            stream = _decompressed(raw)
+            while True:
+                header = _read_exactly(stream, 512)
+                if not header or header == ZERO_BLOCK:
+                    break
+                if len(header) < 512:
+                    raise Refused("unreadable package archive: truncated tar header")
+                if not _tar_checksum_ok(header):
+                    raise Refused("unreadable package archive: invalid tar header checksum")
+                size = _tar_number(header[124:136])
+                kind = header[156:157]
+                if kind in EXT_HEADER_TYPES:
+                    if size > MAX_EXT_HEADER:
+                        raise Refused(
+                            f"oversized extended tar header ({kind.decode()!r}, {size} bytes > "
+                            f"{MAX_EXT_HEADER}): refused before authentication"
+                        )
+                    data = _read_exactly(stream, -(-size // 512) * 512)
+                    if len(data) < size:
+                        raise Refused("unreadable package archive: truncated extended header")
+                    if kind == b"x":
+                        pending = _pax_size(data[:size])
+                    continue
+                if pending is not None:
+                    size, pending = pending, None
+                members += 1
+                total += size
+                if members > MAX_MEMBERS:
+                    raise Refused(f"too many archive entries (> {MAX_MEMBERS})")
+                if total > MAX_TOTAL_BYTES:
+                    raise Refused(f"package expands beyond {MAX_TOTAL_BYTES} bytes")
+                if total / compressed > MAX_RATIO:
+                    raise Refused(
+                        f"abnormal compression ratio ({total / compressed:.0f}x): refused"
+                    )
+                _skip(stream, -(-size // 512) * 512)
+    except (OSError, EOFError, ValueError, zlib.error, lzma.LZMAError) as e:
+        raise Refused(f"unreadable package archive: {type(e).__name__}") from None
 
 
 def _check_member(m: tarfile.TarInfo, top: Optional[str]) -> str:
@@ -466,6 +650,7 @@ def _check_member(m: tarfile.TarInfo, top: Optional[str]) -> str:
 
 def inspect_archive(package: Path) -> List[tarfile.TarInfo]:
     """Validate every entry BEFORE anything is written to disk."""
+    prescan_archive(package)  # bounded: tarfile only sees small headers
     compressed = package.stat().st_size
     members: List[tarfile.TarInfo] = []
     seen: set = set()
@@ -519,17 +704,22 @@ def read_metadata(
 
 
 def safe_extract(
-    package: Path, dest: Path, expected: Optional[Dict[str, Dict[str, Any]]] = None
+    package: Path,
+    dest: Path,
+    expected: Optional[Dict[str, Dict[str, Any]]] = None,
+    members: Optional[List[tarfile.TarInfo]] = None,
 ) -> Path:
     """Extract into a staging folder, renamed to ``dest`` only when complete.
 
     With ``expected`` (the ``files`` of an authenticated manifest) every file is
     hashed while it is written and anything not listed is refused. A failure
-    leaves no partial tree behind.
+    leaves no partial tree behind. Folders are 0755 and files 0644 / 0755
+    whatever the umask, so that the tree passes the ownership / permission
+    check the server commands make (R2-07).
     """
     if dest.exists() and any(dest.iterdir()):
         raise Refused(f"{dest} must be a new or empty directory")
-    members = inspect_archive(package)
+    members = members if members is not None else inspect_archive(package)
     total = sum(max(0, m.size) for m in members)
     dest.parent.mkdir(parents=True, exist_ok=True)
     free = shutil.disk_usage(str(dest.parent)).free
@@ -573,6 +763,8 @@ def safe_extract(
                 if meta is not None and digest.hexdigest() != meta["sha256"]:
                     raise Refused(f"checksum mismatch: {rel}")
                 os.chmod(target, 0o755 if m.mode & 0o111 else 0o644)
+        for dirpath, _dirs, _files in os.walk(root):
+            os.chmod(dirpath, 0o755)
         if dest.exists():
             dest.rmdir()
         os.replace(staging, dest)
@@ -585,20 +777,73 @@ def safe_extract(
 
 
 # --------------------------------------------------------------------------- #
-# Docker image archive identity (F-20, F-25)
+# Docker image identity (F-20, F-25, R2-06)
 # --------------------------------------------------------------------------- #
+
+
+# The part of an image config that decides how a container of the image RUNS.
+RUN_CONFIG_KEYS = (
+    "Entrypoint", "Cmd", "User", "Env", "WorkingDir", "Labels", "ExposedPorts", "Volumes",
+    "StopSignal", "Healthcheck", "Shell", "OnBuild",
+)  # fmt: skip
+
+
+def run_config_sha256(config: Any, os_name: Any, architecture: Any) -> str:
+    """SHA-256 of a canonical JSON of the run configuration + platform (R2-06).
+
+    The same value comes from the config blob of an image archive
+    (``config`` / ``os`` / ``architecture``) and from ``docker image inspect``
+    of the loaded image (``Config`` / ``Os`` / ``Architecture``). Empty values
+    are dropped (``docker image inspect`` reports some keys as null / "").
+    """
+    cfg = config if isinstance(config, dict) else {}
+    run_cfg: Dict[str, Any] = {
+        k: cfg[k] for k in RUN_CONFIG_KEYS if cfg.get(k) not in (None, "", [], {})
+    }
+    run_cfg["platform"] = normalize_platform(f"{os_name or ''}/{architecture or ''}")
+    return sha256_bytes(
+        json.dumps(run_cfg, sort_keys=True, separators=(",", ":")).encode()
+    )
+
+
+def _blob_path(digest: Any) -> str:
+    if not isinstance(digest, str) or not IMAGE_ID_RE.match(digest):
+        raise Refused("image archive: invalid blob digest")
+    return "blobs/" + digest.replace(":", "/")
+
+
+def _is_attestation(desc: Dict[str, Any]) -> bool:
+    """buildkit lists a provenance attestation next to the image in its index."""
+    ann = desc.get("annotations") or {}
+    plat = desc.get("platform") or {}
+    return ann.get("vnd.docker.reference.type") == "attestation-manifest" or (
+        plat.get("os") == "unknown" and plat.get("architecture") == "unknown"
+    )
+
+
+def _oci_tags(desc: Dict[str, Any]) -> List[str]:
+    ann = desc.get("annotations") or {}
+    name = ann.get("io.containerd.image.name")
+    if name:
+        return [normalize_ref(name)]
+    ref = ann.get("org.opencontainers.image.ref.name")
+    return [str(ref)] if ref else []
 
 
 def image_archive_identity(archive: Path) -> Dict[str, Any]:
     """What a ``docker save`` archive really contains, read without loading it.
 
-    ``repo_tags``      every tag ``docker load`` would create or MOVE
-    ``config_digest``  sha256 of the image config = the image ID of the classic store
-    ``diff_ids``       uncompressed layer digests = ``RootFS.Layers`` in any store
+    ``repo_tags``          every tag ``docker load`` would create or MOVE
+    ``config_digest``      sha256 of the image config = the image ID of the classic store
+    ``diff_ids``           uncompressed layer digests = ``RootFS.Layers`` in any store
+    ``run_config_sha256``  the run configuration + platform (R2-06)
 
     The image ID reported by ``docker image inspect`` differs between the
-    classic and the containerd image store; the layer list does not. Both the
-    docker-archive ``manifest.json`` and the OCI ``index.json`` layouts are read.
+    classic and the containerd image store (Docker 29 with the containerd
+    store reports the digest of the image INDEX, which also lists a buildkit
+    attestation manifest). The docker-archive ``manifest.json`` is preferred
+    (Docker 29 writes it next to ``index.json``); an OCI-only layout is read
+    from ``index.json``, skipping attestation manifests.
     """
     try:
         with tarfile.open(archive, "r:*") as tar:
@@ -623,26 +868,20 @@ def image_archive_identity(archive: Path) -> Dict[str, Any]:
                 layout = "docker-archive"
             elif "index.json" in names:
                 index = json.loads(load("index.json"))
-                manifests = index.get("manifests") or []
+                manifests = [
+                    m for m in (index.get("manifests") or []) if not _is_attestation(m)
+                ]
                 if len(manifests) != 1:
                     raise Refused("image archive must contain exactly one image")
                 desc = manifests[0]
-                tags = [
-                    v
-                    for k, v in (desc.get("annotations") or {}).items()
-                    if k
-                    in ("io.containerd.image.name", "org.opencontainers.image.ref.name")
-                ]
-                blob = json.loads(load("blobs/" + desc["digest"].replace(":", "/")))
+                tags = _oci_tags(desc)
+                blob = json.loads(load(_blob_path(desc.get("digest"))))
                 if blob.get("manifests"):  # an image index: one platform expected
-                    if len(blob["manifests"]) != 1:
+                    inner = [m for m in blob["manifests"] if not _is_attestation(m)]
+                    if len(inner) != 1:
                         raise Refused("image archive holds several platforms")
-                    blob = json.loads(
-                        load(
-                            "blobs/" + blob["manifests"][0]["digest"].replace(":", "/")
-                        )
-                    )
-                config = load("blobs/" + blob["config"]["digest"].replace(":", "/"))
+                    blob = json.loads(load(_blob_path(inner[0].get("digest"))))
+                config = load(_blob_path((blob.get("config") or {}).get("digest")))
                 layout = "oci"
             else:
                 raise Refused(
@@ -651,7 +890,8 @@ def image_archive_identity(archive: Path) -> Dict[str, Any]:
     except (tarfile.TarError, ValueError, KeyError, TypeError, OSError) as e:
         raise Refused(f"unreadable docker image archive: {type(e).__name__}") from None
     try:
-        diff_ids = list(json.loads(config)["rootfs"]["diff_ids"])
+        parsed = json.loads(config)
+        diff_ids = list(parsed["rootfs"]["diff_ids"])
     except (ValueError, KeyError, TypeError):
         raise Refused("image archive: image config has no rootfs.diff_ids") from None
     return {
@@ -659,6 +899,9 @@ def image_archive_identity(archive: Path) -> Dict[str, Any]:
         "repo_tags": sorted(str(t) for t in tags),
         "config_digest": "sha256:" + sha256_bytes(config),
         "diff_ids": [str(d) for d in diff_ids],
+        "run_config_sha256": run_config_sha256(
+            parsed.get("config"), parsed.get("os"), parsed.get("architecture")
+        ),
     }
 
 
@@ -674,19 +917,39 @@ def check_image_archive(archive: Path, image: Dict[str, Any]) -> Dict[str, Any]:
         raise Refused("image archive config digest differs from the manifest")
     if image.get("diff_ids") and ident["diff_ids"] != image["diff_ids"]:
         raise Refused("image archive layers differ from the manifest")
+    if (
+        image.get("run_config_sha256")
+        and ident["run_config_sha256"] != image["run_config_sha256"]
+    ):
+        raise Refused("image archive run configuration differs from the manifest")
     return ident
 
 
 def same_image(
-    inspect_id: str, layers: List[str], image: Dict[str, Any]
+    inspect_id: str,
+    layers: List[str],
+    image: Dict[str, Any],
+    run_config: Optional[str] = None,
 ) -> Optional[str]:
-    """How a loaded image is recognised as the packaged one (None = it is not)."""
+    """How a local image is recognised as the packaged one (None = it is not).
+
+    Same image ID, or same config digest (classic store), or - another image
+    store - the same layers AND the same run configuration + platform (R2-06):
+    layers alone are not an identity (entrypoint, user, environment differ).
+    """
     if inspect_id == image.get("id"):
         return "image id"
     if inspect_id == image.get("config_digest"):
         return "config digest (classic image store)"
-    if layers and image.get("diff_ids") and layers == image["diff_ids"]:
-        return "layer digests (other image store)"
+    if (
+        layers
+        and image.get("diff_ids")
+        and layers == image["diff_ids"]
+        and run_config
+        and image.get("run_config_sha256")
+        and run_config == image["run_config_sha256"]
+    ):
+        return "layers + run configuration + platform (other image store)"
     return None
 
 
@@ -718,6 +981,29 @@ def inspect_image(ref: str) -> Optional[Tuple[str, List[str]]]:
 # Manifest
 # --------------------------------------------------------------------------- #
 
+def local_run_config(ref: str) -> Optional[str]:
+    """run_config_sha256 of a local image, from `docker image inspect` (R2-06)."""
+    proc = run(["docker", "image", "inspect", ref], check=False)
+    if proc.returncode != 0:
+        return None
+    try:
+        info = json.loads(proc.stdout)[0]
+    except (ValueError, IndexError, KeyError, TypeError):
+        return None
+    return run_config_sha256(info.get("Config"), info.get("Os"), info.get("Architecture"))
+
+
+def identify_image(ref: str, image: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    """(local image ID or None, how it was recognised as the packaged image or None)."""
+    found = inspect_image(ref)
+    if found is None:
+        return None, None
+    how = same_image(found[0], found[1], image)
+    if how is None and found[1] and found[1] == image.get("diff_ids"):
+        how = same_image(found[0], found[1], image, local_run_config(ref))
+    return found[0], how
+
+
 MANIFEST_REQUIRED = {
     "package_format_version": int,
     "application": dict,
@@ -733,7 +1019,7 @@ MANIFEST_REQUIRED = {
 }
 
 
-def validate_manifest(manifest: Any) -> None:
+def validate_manifest(manifest: Any, allow_unverified: bool = False) -> None:
     if not isinstance(manifest, dict):
         raise Refused("manifest is not a JSON object")
     for key, typ in MANIFEST_REQUIRED.items():
@@ -741,7 +1027,9 @@ def validate_manifest(manifest: Any) -> None:
             raise Refused(f"manifest field missing or invalid: {key}")
     if manifest["package_format_version"] != FORMAT_VERSION:
         raise Refused(
-            f"unsupported package format {manifest['package_format_version']}"
+            f"unsupported package format {manifest['package_format_version']} (this tool "
+            f"reads format {FORMAT_VERSION}): rebuild the package with the current "
+            "build-package script"
         )
     app = manifest["application"]
     if not VERSION_RE.match(str(app.get("version", ""))):
@@ -754,7 +1042,7 @@ def validate_manifest(manifest: Any) -> None:
     if not all(isinstance(v, str) and VERSION_RE.match(v) for v in supported):
         raise Refused("manifest application.supported_source_versions invalid")
     img = manifest["image"]
-    for key in ("tag", "id", "archive", "archive_sha256", "config_digest"):
+    for key in ("tag", "id", "archive", "archive_sha256", "config_digest", "run_config_sha256"):
         if not isinstance(img.get(key), str) or not img[key]:
             raise Refused(f"manifest image.{key} missing")
     if not TAGGED_REF_RE.match(img["tag"]):
@@ -762,8 +1050,16 @@ def validate_manifest(manifest: Any) -> None:
     for key in ("id", "config_digest"):
         if not IMAGE_ID_RE.match(img[key]):
             raise Refused(f"manifest image.{key} is not a sha256 digest")
-    if not SHA_RE.match(img["archive_sha256"]):
-        raise Refused("manifest image.archive_sha256 invalid")
+    for key in ("archive_sha256", "run_config_sha256"):
+        if not SHA_RE.match(img[key]):
+            raise Refused(f"manifest image.{key} invalid")
+    if img.get("provenance") not in ("verified", "unverified"):
+        raise Refused("manifest image.provenance missing")
+    if img["provenance"] != "verified" and not allow_unverified:
+        raise Refused(
+            "the image of this package has UNVERIFIED provenance (a test build made with "
+            "--allow-unlabelled-image: nothing proves which commit built it): refused on the server"
+        )
     layers = img.get("diff_ids")
     if not isinstance(layers, list) or not all(
         isinstance(x, str) and IMAGE_ID_RE.match(x) for x in layers
@@ -792,9 +1088,8 @@ def validate_manifest(manifest: Any) -> None:
         parts = PurePosixPath(rel).parts
         if rel.startswith("/") or ".." in parts or not SAFE_NAME.match(rel):
             raise Refused(f"manifest files entry unsafe: {rel}")
-    for key in ("archive",):
-        if img[key] not in manifest["files"]:
-            raise Refused("manifest image.archive is not one of the packaged files")
+    if img["archive"] not in manifest["files"]:
+        raise Refused("manifest image.archive is not one of the packaged files")
     for key in ("git_bundle", "archive"):
         if src.get(key) not in manifest["files"]:
             raise Refused(f"manifest source.{key} is not one of the packaged files")
@@ -929,8 +1224,89 @@ def verify_tree(
     return manifest
 
 
+def _check_package_tree(root: Path) -> None:
+    """The package folder must be something only root (or the tool's user) can change (R2-07).
+
+    The folder and every ancestor up to ``/``: owned by root or the euid, not
+    writable by group / others (a sticky ancestor such as /tmp is allowed).
+    Every folder and file inside: same owner rule, not writable by group / others.
+    """
+    allowed = (0, os.geteuid())
+    p = root
+    while True:
+        try:
+            st = os.stat(p)
+        except OSError as e:
+            raise Refused(f"package folder unreadable: {p} ({e.strerror})", EXIT_PREFLIGHT) from None
+        sticky_ancestor = p != root and bool(st.st_mode & stat.S_ISVTX)
+        if st.st_uid not in allowed:
+            raise Refused(
+                f"package folder {p} is owned by another user (uid {st.st_uid}): refused "
+                "(unpack packages as root into a root-owned folder)",
+                EXIT_PREFLIGHT,
+            )
+        if st.st_mode & 0o022 and not sticky_ancestor:
+            raise Refused(
+                f"package folder {p} is writable by group / others: refused (anybody could "
+                "replace the package after verification)",
+                EXIT_PREFLIGHT,
+            )
+        if p.parent == p:
+            break
+        p = p.parent
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in dirnames + filenames:
+            item = Path(dirpath) / name
+            st = os.lstat(item)
+            if stat.S_ISLNK(st.st_mode):
+                raise Refused(f"symlink in package: {item.relative_to(root)}", EXIT_PREFLIGHT)
+            if st.st_uid not in allowed or st.st_mode & 0o022:
+                raise Refused(
+                    f"{item} in the package is owned by another user or writable by group / "
+                    "others: refused",
+                    EXIT_PREFLIGHT,
+                )
+
+
+def verified_dir(state: Path) -> Path:
+    return state / "verified"
+
+
+def find_trusted_report(
+    state: Path, root: Path, manifest_sha256: str
+) -> Optional[Dict[str, Any]]:
+    """The verify record of THIS folder with THIS manifest, from STATE_DIR (never the package)."""
+    vdir = verified_dir(state)
+    if not vdir.is_dir():
+        return None
+    _check_trusted_file(vdir, "trusted verify records folder")
+    best: Optional[Dict[str, Any]] = None
+    for path in sorted(vdir.glob("*.json")):
+        if not SHA_RE.match(path.stem):
+            continue
+        _check_trusted_file(path, "trusted verify record")
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeDecodeError):
+            continue
+        if (
+            isinstance(data, dict)
+            and data.get("result") == "VERIFIED"
+            and data.get("package_sha256") == path.stem
+            and data.get("package_dir") == str(root)
+            and data.get("manifest_sha256") == manifest_sha256
+        ):
+            if best is None or str(data.get("verified_at")) > str(best.get("verified_at")):
+                best = data
+    return best
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
-    """Authenticate first; only then unpack (F-14)."""
+    """Authenticate first; only then unpack (F-14); record the result in STATE_DIR (R2-07)."""
+    cfg = load_config(args.config)
+    allowed_signers = args.allowed_signers or cfg["ALLOWED_SIGNERS"]
+    identity = args.identity or cfg["SIGNER_IDENTITY"]
+    policy = signature_policy(cfg, allowed_signers)
     package = Path(args.package)
     if not package.is_file():
         raise Refused(f"no such package: {package}", EXIT_USAGE)
@@ -945,11 +1321,15 @@ def cmd_verify(args: argparse.Namespace) -> int:
         authenticity.append("sha256 matched the trusted-channel value")
     members = inspect_archive(package)  # nothing written yet
     manifest_bytes, signature = read_metadata(package, members)
-    if (
-        signature is not None
-        and authenticity
-        and not Path(args.allowed_signers).is_file()
-    ):
+    if policy == "required":
+        if signature is None:
+            raise Refused(
+                "SIGNATURE REQUIRED: a trusted release key is installed (or SIGNATURE_POLICY="
+                "required) and this package is not signed. A trusted-channel SHA-256 does not "
+                "replace the signature under this policy. Nothing was unpacked."
+            )
+        signed = verify_signature_bytes(manifest_bytes, signature, allowed_signers, identity)
+    elif signature is not None and authenticity and not Path(allowed_signers).is_file():
         # Authentic through the trusted-channel hash; the signature cannot add to it.
         log(
             "note: the package is signed but no trusted key is installed: signature NOT checked"
@@ -957,7 +1337,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         signed = "unchecked"
     else:
         signed = verify_signature_bytes(
-            manifest_bytes, signature, args.allowed_signers, args.identity
+            manifest_bytes, signature, allowed_signers, identity
         )
     if signed == "valid":
         authenticity.append("signature valid")
@@ -974,30 +1354,42 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if not isinstance(files, dict):
         raise Refused("manifest field missing or invalid: files")
     dest = Path(args.extract_to)
-    root = safe_extract(package, dest, expected=files if signed == "valid" else None)
+    root = safe_extract(
+        package, dest, expected=files if signed == "valid" else None, members=members
+    )
     try:
         if (root / MANIFEST).read_bytes() != manifest_bytes:
             raise Refused("manifest changed between authentication and extraction")
         manifest = verify_tree(
             root, args.platform, args.current_version, args.current_schema
         )
-    except Refused:
+        report = {
+            "result": "VERIFIED",
+            "package_sha256": digest,
+            "manifest_sha256": sha256_bytes(manifest_bytes),
+            "authenticity": authenticity,
+            "signed": signed == "valid",
+            "signature_policy": policy,
+            "version": manifest["application"]["version"],
+            "platform": manifest["platform"],
+            "image": manifest["image"]["tag"],
+            "readiness": manifest.get("readiness", {}).get("status"),
+            "package_dir": str(root),
+            "verified_at": now_iso(),
+        }
+        state = Path(cfg["STATE_DIR"])
+        ensure_state_dir(state)
+        write_json_private(private_dir(verified_dir(state)) / f"{digest}.json", report)
+    except BaseException:
         shutil.rmtree(dest, ignore_errors=True)  # no half-verified tree is left behind
         raise
-    report = {
-        "result": "VERIFIED",
-        "package_sha256": digest,
-        "manifest_sha256": sha256_bytes(manifest_bytes),
-        "authenticity": authenticity,
-        "signed": signed == "valid",
-        "version": manifest["application"]["version"],
-        "platform": manifest["platform"],
-        "image": manifest["image"]["tag"],
-        "readiness": manifest.get("readiness", {}).get("status"),
-        "package_dir": str(root),
-        "verified_at": now_iso(),
-    }
-    atomic_write(root.parent / "verify-report.json", json.dumps(report, indent=2))
+    human = dict(
+        report,
+        trusted=False,
+        note="INFORMATIONAL COPY for people, NOT trusted by the tool: the server trusts only "
+        f"{verified_dir(state) / (digest + '.json')}",
+    )
+    atomic_write(root.parent / "verify-report.json", json.dumps(human, indent=2))
     print(json.dumps(report, indent=2))
     return EXIT_OK
 
@@ -1238,6 +1630,70 @@ def cmd_check_version(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+REVISION_LABEL = "org.opencontainers.image.revision"
+
+
+VERSION_LABEL = "org.opencontainers.image.version"
+
+
+@contextlib.contextmanager
+def build_lock(out_root: Path, name: str) -> Iterator[None]:
+    """One build of a given package name at a time in --out (R2-18)."""
+    import fcntl
+
+    fh = open(out_root / f".{name}.lock", "w")
+    try:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise Refused(
+                f"another build of {name} is running in {out_root} (lock held)", EXIT_LOCK
+            ) from None
+        yield
+    finally:
+        fh.close()
+
+
+def check_image_provenance(
+    labels: Dict[str, Any], inv: Dict[str, Any], commit: str, version: str, allow_unlabelled: bool
+) -> str:
+    """Bind the image to the packaged commit and version (R2-08): 'verified' / 'unverified'."""
+    revision = labels.get(REVISION_LABEL)
+    if revision and revision != commit:
+        raise Refused(
+            "image label revision differs from the commit being packaged", EXIT_USAGE
+        )
+    label_version = labels.get(VERSION_LABEL)
+    if label_version and not version_matches(str(label_version), version):
+        raise Refused(
+            f"image label version {label_version} does not match --version {version}",
+            EXIT_USAGE,
+        )
+    if not inv.get("app_version"):
+        raise Refused(
+            "the image has no /app/VERSION (inventory app_version missing): nothing proves "
+            "which version it is",
+            EXIT_USAGE,
+        )
+    if not version_matches(str(inv["app_version"]), version):
+        raise Refused(
+            f"image VERSION {inv['app_version']} does not match --version {version}",
+            EXIT_USAGE,
+        )
+    if revision:
+        return "verified"
+    if not allow_unlabelled:
+        raise Refused(
+            f"the image has no {REVISION_LABEL} label: nothing proves it was built from "
+            f"{commit[:12]}. Build it with build-package.sh / .ps1 (they add the label), or "
+            "pass --allow-unlabelled-image for a TEST package (marked unverified, refused by "
+            "every server)",
+            EXIT_USAGE,
+        )
+    log("WARNING: image without a revision label: package marked provenance UNVERIFIED (test only)")
+    return "unverified"
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     version = args.version
@@ -1254,9 +1710,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     out_root = Path(args.out).resolve()
     name = f"ChatBot5400-{version}-{normalize_platform(args.platform).replace('/', '-')}-offline"
     stage = out_root / name
-    if stage.exists():
-        raise Refused(f"{stage} exists: remove it or choose another --out", EXIT_USAGE)
-    # --- git first: cheap, and nothing Docker runs when it cannot succeed -------
+    package = out_root / f"{name}.tar.gz"
+    sha_file = out_root / f"{name}.tar.gz.sha256"
+    # --- git first: cheap, and nothing is written when it cannot succeed ---------
     proc = run(
         ["git", "-C", str(repo), "rev-parse", args.git_ref + "^{commit}"], check=False
     )
@@ -1273,238 +1729,48 @@ def cmd_build(args: argparse.Namespace) -> int:
         raise Refused(
             f"--base-ref {args.base_ref} does not exist in {repo}", EXIT_USAGE
         )
-    try:
-        for d in ("images", "source", "scripts", "docs"):
-            (stage / d).mkdir(parents=True)
-        bundle_rel = f"source/chatbot5400-{version}.bundle"
-        log(
-            f"git bundle {args.base_ref}..{commit[:12]} (named ref {BUNDLE_REF_PREFIX}{version})"
-        )
-        bundle_ref = create_bundle(
-            repo,
-            args.base_ref,
-            commit,
-            version,
-            stage / bundle_rel,
-            args.bundle_refs or [],
-        )
-        archive_src = f"source/chatbot5400-{version}-src.tar.gz"
-        run(
-            [
-                "git",
-                "-C",
-                str(repo),
-                "archive",
-                "--format=tar.gz",
-                f"--prefix=chatbot5400-{version}/",
-                "-o",
-                str(stage / archive_src),
-                commit,
-            ]  # fmt: skip
-        )
-        # --- Docker ---------------------------------------------------------------
-        image = docker_inspect_image(args.image)
-        img_platform = normalize_platform(
-            f"{image.get('Os')}/{image.get('Architecture')}"
-        )
-        if img_platform != normalize_platform(args.platform):
+    out_root.mkdir(parents=True, exist_ok=True)
+    with build_lock(out_root, name):
+        # R2-18: the stage is CLAIMED atomically; a second builder gets a clean refusal.
+        try:
+            stage.mkdir()
+        except FileExistsError:
             raise Refused(
-                f"image platform {img_platform} != --platform {args.platform}",
-                EXIT_USAGE,
+                f"{stage} exists: remove it or choose another --out", EXIT_USAGE
+            ) from None
+        tmp_package = out_root / f".{name}.tar.gz.partial-{os.getpid()}"
+        try:
+            manifest = _build_stage(
+                args, repo, stage, name, commit, base_commit, version, release_tag, tag
             )
-        labels = (image.get("Config") or {}).get("Labels") or {}
-        revision = labels.get("org.opencontainers.image.revision")
-        if revision and revision != commit:
-            raise Refused(
-                "image label revision differs from the commit being packaged",
-                EXIT_USAGE,
-            )
-        log("inventory from the image (network disabled)")
-        inv = json.loads(
-            run(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "--network",
-                    "none",
-                    "--entrypoint",
-                    "/app/.venv/bin/python",
-                    args.image,
-                    "/app/scripts/offline/offline_package.py",
-                    "inventory",
-                ],  # fmt: skip
-                timeout=900,
-            ).stdout
-        )
-        if inv.get("app_version") and not version_matches(
-            str(inv["app_version"]), version
-        ):
-            raise Refused(
-                f"image VERSION {inv['app_version']} does not match --version {version}",
-                EXIT_USAGE,
-            )
-        if args.image != tag:
-            run(["docker", "tag", args.image, tag])
-        archive_rel = f"images/{image_repo}-{version}.tar"
-        log(f"docker save {tag} (keeps image metadata; docker export is never used)")
-        run(["docker", "save", "-o", str(stage / archive_rel), tag], timeout=7200)
-        ident = image_archive_identity(stage / archive_rel)
-        if ident["repo_tags"] != [tag]:
-            raise Refused(
-                f"docker save produced the tags {ident['repo_tags']}, expected only [{tag!r}]",
-                EXIT_USAGE,
-            )
-
-        here = Path(__file__).resolve().parent
-        for f in (
-            "offline_package.py", "verify-package.sh", "preflight.sh", "update.sh", "rollback.sh",
-            "healthcheck.sh", "finish.sh", "status.sh", "pin.sh", "offline-update.conf.example",
-        ):  # fmt: skip
-            shutil.copy2(here / f, stage / "scripts" / f)
-        docs = repo / "docs" / "deployment"
-        for f in (
-            "OFFLINE_UPDATE_PACKAGE.md", "OFFLINE_UPDATE_UBUNTU_GUIDE.md",
-            "OFFLINE_UPDATE_ROLLBACK.md", "OFFLINE_UPDATE_SECURITY.md",
-        ):  # fmt: skip
-            if (docs / f).is_file():
-                shutil.copy2(docs / f, stage / "docs" / f)
-        if args.release_notes and Path(args.release_notes).is_file():
-            shutil.copy2(args.release_notes, stage / "docs" / "RELEASE_NOTES.md")
-
-        baked = inv.get("runtimes_baked", {})
-        readiness_problems = []
-        if not baked.get("docling"):
-            readiness_problems.append(
-                "Docling is not baked into the image (build with OCR_PREINSTALL_RUNTIMES=true)"
-            )
-        if not inv.get("tesseract"):
-            readiness_problems.append(
-                "Tesseract binary not in the image (build with OCR_INSTALL_TESSERACT=true)"
-            )
-        if not baked.get("tiktoken_offline"):
-            readiness_problems.append(
-                "the tiktoken encoding o200k_base does not load without network inside the "
-                "image, or its cache file is not the expected one (TIKTOKEN_CACHE_DIR, "
-                "SHA-256): chunking would hang or degrade offline"
-            )
-        manifest = {
-            "package_format_version": FORMAT_VERSION,
-            "application": {
-                "name": "ChatBot5400",
-                "version": version,
-                "release_tag": release_tag,
-                "supported_source_versions": args.supported_from,
-            },
-            "platform": normalize_platform(args.platform),
-            "image": {
-                "tag": tag,
-                "id": image["Id"],
-                "config_digest": ident["config_digest"],
-                "diff_ids": ident["diff_ids"],
-                "repo_tags": ident["repo_tags"],
-                "archive_layout": ident["layout"],
-                "archive": archive_rel,
-                "archive_sha256": sha256_file(stage / archive_rel),
-                "created": image.get("Created"),
-                "labels": {
-                    k: v
-                    for k, v in labels.items()
-                    if k.startswith("org.opencontainers")
-                },
-            },
-            "source": {
-                "commit": commit,
-                "base_ref": args.base_ref,
-                "base_commit": base_commit,
-                "bundle_ref": bundle_ref,
-                "git_bundle": bundle_rel,
-                "archive": archive_src,
-            },
-            "database": {
-                "schema_version": int(inv.get("schema_version") or 0),
-                "migration_required": bool(args.migration_required),
-                "compatible_schema_versions": [int(inv.get("schema_version") or 0)],
-            },
-            "dependencies": {
-                **inv.get("dependencies", {}),
-                "tesseract": inv.get("tesseract"),
-                "python": inv.get("python"),
-            },
-            "runtime_artifacts": inv.get("runtime_artifacts", {}),
-            "readiness": {
-                "status": "READY" if not readiness_problems else "NOT_READY",
-                "problems": readiness_problems,
-            },
-            "rollback": {
-                "app_rollback_without_restore": not args.migration_required,
-                "previous_versions": args.supported_from,
-                "notes": "database untouched; previous image kept as a rollback tag",
-            },
-            "build": {
-                "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(
-                    timespec="seconds"
-                ),
-                "builder": "offline_package.py",
-            },
-            "files": {},
-        }
-        for p in sorted(stage.rglob("*")):
-            if p.is_file():
-                rel = p.relative_to(stage).as_posix()
-                manifest["files"][rel] = {
-                    "sha256": sha256_file(p),
-                    "size": p.stat().st_size,
-                }
-        validate_manifest(manifest)
-        (stage / MANIFEST).write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
-        (stage / SUMS).write_text(render_sums(manifest["files"]), encoding="utf-8")
-        if args.sign_key:
-            log("signing manifest.json with ssh-keygen -Y sign")
-            run(
-                [
-                    "ssh-keygen",
-                    "-Y",
-                    "sign",
-                    "-f",
-                    args.sign_key,
-                    "-n",
-                    SIG_NAMESPACE,
-                    str(stage / MANIFEST),
-                ],  # fmt: skip
-                capture=False,
-            )
-        else:
-            log(
-                "WARNING: package NOT signed: authenticity must be established by comparing "
-                "its SHA-256 over a trusted channel"
-            )
-        package = out_root / f"{name}.tar.gz"
-        with tarfile.open(package, "w:gz", compresslevel=6) as tar:
-            for p in sorted(stage.rglob("*")):
-                info = tar.gettarinfo(
-                    str(p), arcname=f"{name}/{p.relative_to(stage).as_posix()}"
-                )
-                info.uid = info.gid = 0
-                info.uname = info.gname = "root"
-                info.mode = (
-                    0o755 if (p.is_dir() or p.suffix in (".sh", ".py")) else 0o644
-                )
-                if p.is_file():
-                    with open(p, "rb") as fh:
-                        tar.addfile(info, fh)
-                else:
-                    tar.addfile(info)
-    except BaseException:
-        # No half-built stage is left behind to block the next run (F-04).
-        shutil.rmtree(stage, ignore_errors=True)
-        with contextlib.suppress(OSError):
-            (out_root / f"{name}.tar.gz").unlink()
-        raise
-    digest = sha256_file(package)
-    (out_root / f"{name}.tar.gz.sha256").write_text(f"{digest}  {package.name}\n")
+            with tarfile.open(tmp_package, "w:gz", compresslevel=6) as tar:
+                for p in sorted(stage.rglob("*")):
+                    info = tar.gettarinfo(
+                        str(p), arcname=f"{name}/{p.relative_to(stage).as_posix()}"
+                    )
+                    info.uid = info.gid = 0
+                    info.uname = info.gname = "root"
+                    info.mode = (
+                        0o755 if (p.is_dir() or p.suffix in (".sh", ".py")) else 0o644
+                    )
+                    if p.is_file():
+                        with open(p, "rb") as fh:
+                            tar.addfile(info, fh)
+                    else:
+                        tar.addfile(info)
+            digest = sha256_file(tmp_package)
+            # A previous package of the same name is replaced only now, by rename; its
+            # .sha256 is removed first so that a package and a stale hash never pair up.
+            with contextlib.suppress(FileNotFoundError):
+                sha_file.unlink()
+            os.replace(tmp_package, package)
+            atomic_write(sha_file, f"{digest}  {package.name}\n")
+        except BaseException:
+            # Only what THIS run created is removed (F-04, R2-18).
+            shutil.rmtree(stage, ignore_errors=True)
+            with contextlib.suppress(OSError):
+                tmp_package.unlink()
+            raise
     log(f"package: {package}")
     log(
         f"SHA-256: {digest}  <- send this value to the server operator over a SEPARATE trusted channel"
@@ -1513,6 +1779,218 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"readiness: {manifest['readiness']['status']} {manifest['readiness']['problems']}"
     )
     return EXIT_OK
+
+
+def _build_stage(
+    args: argparse.Namespace,
+    repo: Path,
+    stage: Path,
+    name: str,
+    commit: str,
+    base_commit: str,
+    version: str,
+    release_tag: str,
+    tag: str,
+) -> Dict[str, Any]:
+    image_repo = args.image_repo
+    for d in ("images", "source", "scripts", "docs"):
+        (stage / d).mkdir(parents=True)
+    bundle_rel = f"source/chatbot5400-{version}.bundle"
+    log(f"git bundle {args.base_ref}..{commit[:12]} (named ref {BUNDLE_REF_PREFIX}{version})")
+    bundle_ref = create_bundle(
+        repo,
+        args.base_ref,
+        commit,
+        version,
+        stage / bundle_rel,
+        args.bundle_refs or [],
+    )
+    archive_src = f"source/chatbot5400-{version}-src.tar.gz"
+    run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "archive",
+            "--format=tar.gz",
+            f"--prefix=chatbot5400-{version}/",
+            "-o",
+            str(stage / archive_src),
+            commit,
+        ]  # fmt: skip
+    )
+    # --- Docker -------------------------------------------------------------------
+    image = docker_inspect_image(args.image)
+    img_platform = normalize_platform(f"{image.get('Os')}/{image.get('Architecture')}")
+    if img_platform != normalize_platform(args.platform):
+        raise Refused(
+            f"image platform {img_platform} != --platform {args.platform}", EXIT_USAGE
+        )
+    labels = (image.get("Config") or {}).get("Labels") or {}
+    if labels.get(REVISION_LABEL) and labels[REVISION_LABEL] != commit:
+        raise Refused(
+            "image label revision differs from the commit being packaged", EXIT_USAGE
+        )
+    log("inventory from the image (network disabled)")
+    inv = json.loads(
+        run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--entrypoint",
+                "/app/.venv/bin/python",
+                args.image,
+                "/app/scripts/offline/offline_package.py",
+                "inventory",
+            ],  # fmt: skip
+            timeout=900,
+        ).stdout
+    )
+    provenance = check_image_provenance(
+        labels, inv, commit, version, args.allow_unlabelled_image
+    )
+    if args.image != tag:
+        run(["docker", "tag", args.image, tag])
+    archive_rel = f"images/{image_repo}-{version}.tar"
+    log(f"docker save {tag} (keeps image metadata; docker export is never used)")
+    run(["docker", "save", "-o", str(stage / archive_rel), tag], timeout=7200)
+    ident = image_archive_identity(stage / archive_rel)
+    if ident["repo_tags"] != [tag]:
+        raise Refused(
+            f"docker save produced the tags {ident['repo_tags']}, expected only [{tag!r}]",
+            EXIT_USAGE,
+        )
+
+    here = Path(__file__).resolve().parent
+    for f in (
+        "offline_package.py", "verify-package.sh", "preflight.sh", "update.sh", "rollback.sh",
+        "healthcheck.sh", "finish.sh", "status.sh", "pin.sh", "offline-update.conf.example",
+    ):  # fmt: skip
+        shutil.copy2(here / f, stage / "scripts" / f)
+    docs = repo / "docs" / "deployment"
+    for f in (
+        "OFFLINE_UPDATE_PACKAGE.md", "OFFLINE_UPDATE_UBUNTU_GUIDE.md",
+        "OFFLINE_UPDATE_ROLLBACK.md", "OFFLINE_UPDATE_SECURITY.md",
+    ):  # fmt: skip
+        if (docs / f).is_file():
+            shutil.copy2(docs / f, stage / "docs" / f)
+    if args.release_notes and Path(args.release_notes).is_file():
+        shutil.copy2(args.release_notes, stage / "docs" / "RELEASE_NOTES.md")
+
+    baked = inv.get("runtimes_baked", {})
+    readiness_problems = []
+    if not baked.get("docling"):
+        readiness_problems.append(
+            "Docling is not baked into the image (build with OCR_PREINSTALL_RUNTIMES=true)"
+        )
+    if not inv.get("tesseract"):
+        readiness_problems.append(
+            "Tesseract binary not in the image (build with OCR_INSTALL_TESSERACT=true)"
+        )
+    if not baked.get("tiktoken_offline"):
+        readiness_problems.append(
+            "the tiktoken encoding o200k_base does not load without network inside the "
+            "image, or its cache file is not the expected one (TIKTOKEN_CACHE_DIR, "
+            "SHA-256): chunking would hang or degrade offline"
+        )
+    manifest = {
+        "package_format_version": FORMAT_VERSION,
+        "application": {
+            "name": "ChatBot5400",
+            "version": version,
+            "release_tag": release_tag,
+            "supported_source_versions": args.supported_from,
+        },
+        "platform": normalize_platform(args.platform),
+        "image": {
+            "tag": tag,
+            "id": image["Id"],
+            "config_digest": ident["config_digest"],
+            "diff_ids": ident["diff_ids"],
+            "run_config_sha256": ident["run_config_sha256"],
+            "repo_tags": ident["repo_tags"],
+            "archive_layout": ident["layout"],
+            "archive": archive_rel,
+            "archive_sha256": sha256_file(stage / archive_rel),
+            "created": image.get("Created"),
+            "provenance": provenance,
+            "app_version": inv.get("app_version"),
+            "labels": {
+                k: v for k, v in labels.items() if k.startswith("org.opencontainers")
+            },
+        },
+        "source": {
+            "commit": commit,
+            "base_ref": args.base_ref,
+            "base_commit": base_commit,
+            "bundle_ref": bundle_ref,
+            "git_bundle": bundle_rel,
+            "archive": archive_src,
+        },
+        "database": {
+            "schema_version": int(inv.get("schema_version") or 0),
+            "migration_required": bool(args.migration_required),
+            "compatible_schema_versions": [int(inv.get("schema_version") or 0)],
+        },
+        "dependencies": {
+            **inv.get("dependencies", {}),
+            "tesseract": inv.get("tesseract"),
+            "python": inv.get("python"),
+        },
+        "runtime_artifacts": inv.get("runtime_artifacts", {}),
+        "readiness": {
+            "status": "READY" if not readiness_problems else "NOT_READY",
+            "problems": readiness_problems,
+        },
+        "rollback": {
+            "app_rollback_without_restore": not args.migration_required,
+            "previous_versions": args.supported_from,
+            "notes": "database untouched; previous image kept as a rollback tag",
+        },
+        "build": {
+            "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(
+                timespec="seconds"
+            ),
+            "builder": "offline_package.py",
+        },
+        "files": {},
+    }
+    for p in sorted(stage.rglob("*")):
+        if p.is_file():
+            rel = p.relative_to(stage).as_posix()
+            manifest["files"][rel] = {
+                "sha256": sha256_file(p),
+                "size": p.stat().st_size,
+            }
+    validate_manifest(manifest, allow_unverified=bool(args.allow_unlabelled_image))
+    (stage / MANIFEST).write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (stage / SUMS).write_text(render_sums(manifest["files"]), encoding="utf-8")
+    if args.sign_key:
+        log("signing manifest.json with ssh-keygen -Y sign")
+        run(
+            [
+                "ssh-keygen",
+                "-Y",
+                "sign",
+                "-f",
+                args.sign_key,
+                "-n",
+                SIG_NAMESPACE,
+                str(stage / MANIFEST),
+            ],  # fmt: skip
+            capture=False,
+        )
+    else:
+        log(
+            "WARNING: package NOT signed: authenticity must be established by comparing "
+            "its SHA-256 over a trusted channel"
+        )
+    return manifest
 
 
 # --------------------------------------------------------------------------- #
@@ -1838,49 +2316,50 @@ def container_env(container: str) -> Dict[str, str]:
 def load_package(
     package_dir: Optional[str], cfg: Optional[Dict[str, str]] = None
 ) -> Dict[str, Any]:
-    """The verified package: bound to its verify report by hash, re-checked every time (F-26a)."""
+    """The verified package, re-checked every time (F-26a, R2-07).
+
+    Trust comes from STATE_DIR/verified (written by `verify`), never from a
+    file next to the package; the folder must be root's; with a signature
+    policy of `required` (or a record that says signed) the signature is
+    checked again now.
+    """
     if not package_dir:
         raise Refused(
             "--package-dir is required (the folder verify-package.sh extracted)",
             EXIT_USAGE,
         )
+    cfg = cfg if cfg is not None else load_config(None)
     root = Path(package_dir).resolve()
-    report_path = root.parent / "verify-report.json"
-    try:
-        report = json.loads(report_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raise Refused(
-            "package not verified: run verify-package.sh first", EXIT_PREFLIGHT
-        ) from None
-    if report.get("result") != "VERIFIED" or report.get("package_dir") != str(root):
-        raise Refused(
-            "package not verified: run verify-package.sh first", EXIT_PREFLIGHT
-        )
+    _check_package_tree(root)
     try:
         manifest_bytes = (root / MANIFEST).read_bytes()
     except OSError:
         raise Refused("manifest.json missing", EXIT_PREFLIGHT) from None
-    if sha256_bytes(manifest_bytes) != report.get("manifest_sha256"):
+    manifest_sha = sha256_bytes(manifest_bytes)
+    report = find_trusted_report(Path(cfg["STATE_DIR"]), root, manifest_sha)
+    if report is None:
         raise Refused(
-            "the package changed after it was verified (manifest hash differs): verify it again",
+            "package not verified on this server: no trusted verify record in "
+            f"{verified_dir(Path(cfg['STATE_DIR']))} for {root} with this manifest (not verified, "
+            "or changed after verification): run verify-package.sh first. A verify-report.json "
+            "next to the package is informational and never trusted.",
             EXIT_PREFLIGHT,
         )
-    if report.get("signed") and cfg is not None:
+    policy = signature_policy(cfg, cfg["ALLOWED_SIGNERS"])
+    if policy == "required" or report.get("signed"):
         sig = root / SIGNATURE
-        verify_signature_bytes(
-            manifest_bytes,
-            sig.read_bytes() if sig.is_file() else None,
-            cfg["ALLOWED_SIGNERS"],
-            cfg["SIGNER_IDENTITY"],
-        )
         if not sig.is_file():
             raise Refused(
-                "the signature of a signed package is gone: verify it again",
+                "the signature of the package is missing (signature policy "
+                f"{policy}): verify it again",
                 EXIT_PREFLIGHT,
             )
+        verify_signature_bytes(
+            manifest_bytes, sig.read_bytes(), cfg["ALLOWED_SIGNERS"], cfg["SIGNER_IDENTITY"]
+        )
     manifest = verify_tree(root, None, None, None)
     manifest["_package_sha256"] = report.get("package_sha256")
-    manifest["_manifest_sha256"] = report.get("manifest_sha256")
+    manifest["_manifest_sha256"] = manifest_sha
     return manifest
 
 
@@ -1999,7 +2478,7 @@ def cmd_preflight(
         check("database container inspected", False, str(e))
     loaded = inspect_image(manifest["image"]["tag"])
     if loaded is not None:
-        how = same_image(loaded[0], loaded[1], manifest["image"])
+        how = identify_image(manifest["image"]["tag"], manifest["image"])[1]
         check(
             "image tag free or already this image",
             how is not None,
@@ -2285,13 +2764,16 @@ def sync_source(
             EXIT_UPDATE,
         )
     tag = manifest["application"]["release_tag"]
-    if (
-        run(
-            ["git", "-C", str(repo), "rev-parse", "-q", "--verify", f"refs/tags/{tag}"],
-            check=False,
-        ).returncode
-        != 0
-    ):
+    existing = _git(
+        repo, "rev-parse", "-q", "--verify", f"refs/tags/{tag}^{{commit}}", check=False
+    )
+    if existing and existing != commit:  # R2-09
+        raise Refused(
+            f"the release tag {tag} already exists on this server and names {existing[:12]}, "
+            f"not the release commit {commit[:12]}: nothing was changed (check the tag by hand)",
+            EXIT_UPDATE,
+        )
+    if not existing:
         run(["git", "-C", str(repo), "tag", tag, commit])
     if branch:
         run(
@@ -2533,13 +3015,11 @@ def cmd_update(args: argparse.Namespace) -> int:
                 timeout=7200,
             )
             loaded = inspect_image(target)
-            how = (
-                same_image(loaded[0], loaded[1], manifest["image"]) if loaded else None
-            )
+            how = identify_image(target, manifest["image"])[1] if loaded else None
             if loaded is None or how is None:
                 raise Refused(
                     f"the loaded image {loaded[0] if loaded else '?'} is not the packaged one "
-                    "(id, config digest and layers all differ)",
+                    "(id, config digest and layers + run configuration all differ)",
                     EXIT_UPDATE,
                 )
             journal.data["expected_image_id"] = loaded[0]
@@ -3373,6 +3853,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--sign-key",
         help="private ssh key for ssh-keygen -Y sign (never stored in the package)",
     )
+    b.add_argument(
+        "--allow-unlabelled-image",
+        action="store_true",
+        help="TEST builds only: accept an image without the org.opencontainers.image.revision "
+        "label; the package is marked provenance 'unverified' and every server refuses it",
+    )
     b.add_argument("--out", default="dist/offline")
     b.set_defaults(func=cmd_build)
 
@@ -3388,14 +3874,19 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--app-root", default="/app")
     i.set_defaults(func=cmd_inventory)
 
-    v = sub.add_parser("verify", help="authenticate, then verify and unpack a package")
+    v = sub.add_parser(
+        "verify",
+        help="authenticate, then verify and unpack a package; the trusted result is recorded "
+        "in STATE_DIR/verified/<package sha256>.json",
+    )
     v.add_argument("package")
     v.add_argument("--extract-to", required=True)
+    v.add_argument("--config", help="server configuration (STATE_DIR, ALLOWED_SIGNERS, SIGNATURE_POLICY)")
     v.add_argument(
         "--expected-sha256", help="value received over a SEPARATE trusted channel"
     )
-    v.add_argument("--allowed-signers", default=DEFAULT_CONFIG["ALLOWED_SIGNERS"])
-    v.add_argument("--identity", default=DEFAULT_CONFIG["SIGNER_IDENTITY"])
+    v.add_argument("--allowed-signers", default=None, help="default: ALLOWED_SIGNERS of the configuration")
+    v.add_argument("--identity", default=None, help="default: SIGNER_IDENTITY of the configuration")
     v.add_argument(
         "--platform", default=None, help="expected platform (default: this machine)"
     )

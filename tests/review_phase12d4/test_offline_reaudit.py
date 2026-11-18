@@ -4,6 +4,10 @@ Same means as tests/test_offline_package.py: ``docker`` is the stateful fake of
 that module (there is no Docker daemon in Cloud); git, tar, SHA-256 are real.
 Everything a real Docker engine / Compose would have to confirm is listed in
 docs/review/PHASE12D4_WINDOWS_ACCEPTANCE_CHECKLIST.md.
+
+Phase 12D5, package trust and image identity (package format 3): R2-06, R2-07, R2-08
+and R2-09 are fixed; their strict xfail markers are removed (the tests are regression
+tests now) and the control that recorded the R2-07 defect is inverted (`# was:`).
 """
 
 # ruff: noqa: F811 - pytest fixtures imported from tests/test_offline_package.py are used as parameters
@@ -151,11 +155,8 @@ def test_control_r2_05_counts_verdict_normal_mode():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-06 / F-20 PARTIALLY FIXED: an image with the packaged layers but another "
-    "config (entrypoint, command, user, environment) is accepted as the packaged image",
-)
+# PHASE12D4 R2-06 / F-20: fixed in Phase 12D5 (layers + run configuration + platform):
+# the xfail marker is removed, this is a regression test.
 def test_r2_06_same_layers_other_config_is_not_the_same_image():
     packaged = json.loads(T.NEW_CONFIG)
     image = {
@@ -169,11 +170,7 @@ def test_r2_06_same_layers_other_config_is_not_the_same_image():
     assert OP.same_image(other, packaged["rootfs"]["diff_ids"], image) is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-06: preflight accepts an existing tag that points to a same-layer, "
-    "different-config image as 'already this image'",
-)
+# PHASE12D4 R2-06: fixed in Phase 12D5: the xfail marker is removed (regression test).
 def test_r2_06_preflight_refuses_a_same_layer_different_config_tag(
     deployment, fake_docker
 ):
@@ -202,12 +199,8 @@ def test_r2_06_preflight_refuses_a_same_layer_different_config_tag(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-07 / F-26a PARTIALLY FIXED: whoever can write the extraction folder can "
-    "replace the package AND the report that vouches for it; a forged report with "
-    "'signed': false also switches the signature re-check off",
-)
+# PHASE12D4 R2-07 / F-26a: fixed in Phase 12D5 (trusted record in STATE_DIR/verified,
+# signature policy, folder ownership): the xfail marker is removed (regression test).
 def test_r2_07_forged_verify_report_is_not_accepted(deployment):
     conf, pkg_dir, _ = deployment
     manifest_path = pkg_dir / "manifest.json"
@@ -229,9 +222,17 @@ def test_r2_07_forged_verify_report_is_not_accepted(deployment):
     )
 
 
-def test_control_r2_07_the_extraction_folder_is_not_checked_for_ownership():
+# was: test_control_r2_07_the_extraction_folder_is_not_checked_for_ownership (PHASE12D4 control, R2-07)
+def test_control_r2_07_the_extraction_folder_is_checked_for_ownership(deployment):
     source = inspect.getsource(OP.load_package)
-    assert "_check_trusted_file" not in source and "st_uid" not in source
+    assert "_check_package_tree" in source and "find_trusted_report" in source
+    assert "st_uid" in inspect.getsource(OP._check_package_tree)
+    conf, pkg_dir, _ = deployment
+    pkg_dir.chmod(0o777)  # anybody could replace the package after verification
+    assert (
+        T._server("preflight", conf, pkg_dir, "--backup-reference", "x")
+        == OP.EXIT_PREFLIGHT
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -240,12 +241,8 @@ def test_control_r2_07_the_extraction_folder_is_not_checked_for_ownership():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-08: an image without the org.opencontainers.image.revision label "
-    "(e.g. --no-build with an image built from another commit) is packaged with this "
-    "commit's source bundle and manifest",
-)
+# PHASE12D4 R2-08: fixed in Phase 12D5 (revision label == commit and /app/VERSION are
+# required): the xfail marker is removed, this is a regression test.
 def test_r2_08_build_refuses_an_image_without_a_revision_label(
     fake_docker, repo, tmp_path
 ):
@@ -258,11 +255,7 @@ def test_r2_08_build_refuses_an_image_without_a_revision_label(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-09: sync-source creates the release tag only when it is missing and "
-    "never checks an existing tag of that name against the manifest commit",
-)
+# PHASE12D4 R2-09: fixed in Phase 12D5: the xfail marker is removed (regression test).
 def test_r2_09_existing_release_tag_on_another_commit_is_refused(
     deployment, repo, tmp_path
 ):
