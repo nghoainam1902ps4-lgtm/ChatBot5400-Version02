@@ -1,0 +1,43 @@
+{
+ "encoding": "o200k_base, real (cache file SHA-256 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d; rebuilt from js-tiktoken 1.0.21 data and verified byte for byte against that hash)",
+ "method": "for each synthetic Legal fixture (tests/fixtures/legal/legal_fixtures.py; no business document): the ground-truth text of its units (scripts/ocr/phase12_oracle.expected_units) joined by newlines; real token count vs the v1.2.0 estimate int(words x 1.3)",
+ "texts": 92,
+ "tokens_per_word": {
+  "median": 1.417,
+  "min": 1.077,
+  "max": 2.523
+ },
+ "utf8_bytes_per_token": {
+  "median": 3.85,
+  "min": 1.83
+ },
+ "word_estimate_1_3_under_counts_in": 83,
+ "stress_cases_from_tests_test_token_utils_offline": {
+  "160 000 characters without whitespace": {
+   "real_tokens": 160000,
+   "estimate_words_x_1_3": 1,
+   "characters": 160000
+  },
+  "URLs and e-mail addresses": {
+   "real_tokens": 84000,
+   "estimate_words_x_1_3": 5200,
+   "characters": 199559
+  },
+  "Vietnamese legal text": {
+   "real_tokens": 24402,
+   "estimate_words_x_1_3": 24440,
+   "characters": 84800
+  },
+  "a table of numbers": {
+   "real_tokens": 81374,
+   "estimate_words_x_1_3": 46800,
+   "characters": 140858
+  },
+  "business codes": {
+   "real_tokens": 96000,
+   "estimate_words_x_1_3": 7800,
+   "characters": 175382
+  }
+ },
+ "conclusion": "the words x 1.3 estimate under-counts most Vietnamese legal text and is off by orders of magnitude on text without whitespace; Phase 12D5 never uses it offline (TokenizerUnavailableError) and keeps it only on the unchanged v1.2.0 online path"
+}

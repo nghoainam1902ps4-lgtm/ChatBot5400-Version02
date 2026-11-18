@@ -29,7 +29,12 @@ from open_notebook.domain.notebook import (
 )
 from open_notebook.exceptions import DatabaseOperationError, NotFoundError
 
-from .token_utils import token_count
+from .token_utils import (
+    TokenizerUnavailableError,
+    fallback_token_count,
+    get_encoding,
+    token_count,
+)
 
 SOURCE_TRUNCATION_NOTICE = (
     "\n\n[Source content truncated to fit the context token budget.]"
@@ -91,7 +96,8 @@ def _rendered_source_context_tokens(
     if encoding is _TOKENIZER_UNSET:
         return token_count(rendered)
     if encoding is None:
-        return int(len(rendered.split()) * 1.3)
+        # tiktoken unavailable online: token_count's v1.2.0 estimate
+        return fallback_token_count(rendered)
     return len(encoding.encode(rendered, disallowed_special=()))
 
 
@@ -219,9 +225,9 @@ def _truncate_source_to_token_budget(
 
     try:
         if encoding is _TOKENIZER_UNSET:
-            import tiktoken
-
-            encoding = tiktoken.get_encoding("o200k_base")
+            # the one guarded loader (offline without the verified cache it
+            # raises TokenizerUnavailableError: no download, no estimate)
+            encoding = get_encoding()
         if encoding is None:
             raise ImportError
         if source_tokens is None:
@@ -242,7 +248,8 @@ def _truncate_source_to_token_budget(
     except (ImportError, OSError):
         # Match token_count's offline fallback with deterministic word-boundary
         # prefixes. Its split-based estimate is monotonic, so binary search does
-        # not need the tokenizer path's validation window.
+        # not need the tokenizer path's validation window. (Reached online only:
+        # with OCR_OFFLINE=true and no verified cache get_encoding raises.)
         word_ends = [match.end() for match in re.finditer(r"\S+", full_text)]
 
         def word_prefix(word_count: int) -> str:
@@ -415,9 +422,9 @@ async def build_source_context(
                 insight_items.append(insight_content)
 
             try:
-                import tiktoken
-
-                encoding = tiktoken.get_encoding("o200k_base")
+                encoding = get_encoding()
+            except TokenizerUnavailableError:
+                raise
             except (ImportError, OSError):
                 encoding = None
 

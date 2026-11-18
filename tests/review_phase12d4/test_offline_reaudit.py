@@ -291,26 +291,43 @@ def test_r2_10_health_probe_asserts_the_encoding_itself():
     assert "get_encoding" in source
 
 
-def test_control_r2_10_fallback_makes_one_chunk_of_a_text_without_spaces(monkeypatch):
-    """With OCR_OFFLINE=true and no cache the estimate is words * 1.3: a 160 000
-    character run without whitespace counts as 1 token and becomes ONE chunk."""
+def test_regression_r2_10_offline_without_cache_refuses_instead_of_one_chunk(
+    monkeypatch,
+):
+    """was: test_control_r2_10_fallback_makes_one_chunk_of_a_text_without_spaces -
+    with OCR_OFFLINE=true and no cache the estimate was words * 1.3: a 160 000
+    character run without whitespace counted as 1 token and became ONE chunk.
+    Phase 12D5: offline never estimates - TokenizerUnavailableError, no chunk."""
     monkeypatch.setenv("OCR_OFFLINE", "true")
     monkeypatch.setenv("TIKTOKEN_CACHE_DIR", "/nonexistent-tiktoken-cache")
     from open_notebook.utils import token_utils
     from open_notebook.utils.chunking import chunk_text
 
     blob = "A1B2C3D4" * 20000
-    assert token_utils.token_count(blob) == 1
-    assert len(chunk_text(blob)) == 1
+    with pytest.raises(token_utils.TokenizerUnavailableError):
+        token_utils.token_count(blob)
+    with pytest.raises(token_utils.TokenizerUnavailableError):
+        chunk_text(blob)
 
 
-def test_control_r2_10_other_call_sites_load_the_encoding_without_the_guard():
+def test_regression_r2_10_context_building_goes_through_the_guard(monkeypatch):
+    """was: test_control_r2_10_other_call_sites_load_the_encoding_without_the_guard -
+    context_builder called tiktoken.get_encoding("o200k_base") itself, twice
+    (RAG context building, unguarded: could hang offline)."""
     text = (T.ROOT / "open_notebook" / "utils" / "context_builder.py").read_text(
         encoding="utf-8"
     )
-    assert (
-        text.count('tiktoken.get_encoding("o200k_base")') == 2
-    )  # RAG context building, unguarded
+    assert "tiktoken.get_encoding" not in text
+    monkeypatch.setenv("OCR_OFFLINE", "true")
+    monkeypatch.setenv("TIKTOKEN_CACHE_DIR", "/nonexistent-tiktoken-cache")
+    from open_notebook.utils import context_builder, token_utils
+
+    with pytest.raises(token_utils.TokenizerUnavailableError):
+        context_builder._rendered_source_context_tokens(
+            {"id": "source:1", "title": "t", "full_text": "A1B2C3D4" * 20000},
+            [],
+            context_builder._TOKENIZER_UNSET,
+        )
 
 
 # --------------------------------------------------------------------------- #
