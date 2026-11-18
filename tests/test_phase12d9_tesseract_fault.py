@@ -40,7 +40,7 @@ def rig(tmp_path):
     im.save(image, dpi=(216, 216))
     fault = tmp_path / "fault"
     fault.mkdir()
-    env = dict(os.environ, CB5400_FAULT_DIR=str(fault), CB5400_REAL_TESSERACT=REAL)
+    env = dict(os.environ, CB5400_FAULT_DIR=str(fault), CB5400_REAL_TESSERACT=str(REAL))
 
     def run(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -60,7 +60,7 @@ def test_without_a_control_file_every_call_is_the_real_one(rig):
     out = _recognize(run, image)
     assert out.returncode == 0 and "ALPHA" in out.stdout
     real = subprocess.run(
-        [REAL, "-l", "eng", "--psm", "6", str(image), "stdout", "tsv"],
+        [str(REAL), "-l", "eng", "--psm", "6", str(image), "stdout", "tsv"],
         capture_output=True,
         text=True,
     )
@@ -110,7 +110,7 @@ def test_behind_the_orientation_gate_only_recognition_is_failed(rig):
     env = dict(
         os.environ,
         CB5400_FAULT_DIR=str(fault),
-        CB5400_REAL_TESSERACT=REAL,
+        CB5400_REAL_TESSERACT=str(REAL),
         OCR_TESSERACT_REAL=str(WRAPPER),
     )
 

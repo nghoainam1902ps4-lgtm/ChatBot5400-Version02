@@ -376,7 +376,7 @@ def test_control_table_cell_row_and_placeholder_in_the_output(cases):
 def test_control_merge_and_invented_text_in_the_output(cases):
     merged, cross_page, inserted, comment = [], [], [], []
     for c in cases:
-        page_of = {}
+        page_of: dict[str, set[int]] = {}
         for u in c.units:
             page_of.setdefault(O._norm(u["text"]), set()).add(u["page"])
         for i in _sample(range(len(c.blocks) - 1), 6):

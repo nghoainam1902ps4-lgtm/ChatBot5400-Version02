@@ -499,7 +499,7 @@ def test_d8_03_identifiers_keep_their_hyphen_through_page_assembly(lines, must):
     )
 
     assert P.apply_text_preservation()  # what every conversion does (12D9)
-    model = PageAssembleModel(options=PageAssembleOptions())
+    model: Any = PageAssembleModel(options=PageAssembleOptions())  # patched signature
     text = model.sanitize_text(list(lines), same_line=[False])  # a line break
     assert must in text
     assert model.sanitize_text(list(lines)) == f"{lines[0]} {lines[1]}"  # no boxes
@@ -519,7 +519,7 @@ def _ocr_then_assemble(tmp_path: Path, monkeypatch, paragraphs: list[list[str]])
         Page,
     )
     from docling.datamodel.document import ConversionResult, InputDocument
-    from docling.datamodel.pipeline_options import LayoutOptions, OcrMode
+    from docling.datamodel.pipeline_options import LayoutPostprocessorOptions, OcrMode
     from docling.models.stages.page_assemble.page_assemble_model import (
         PageAssembleModel,
         PageAssembleOptions,
@@ -574,7 +574,7 @@ def _ocr_then_assemble(tmp_path: Path, monkeypatch, paragraphs: list[list[str]])
     )
     list(model(conv, [page]))
     cells = [c.text for c in page.cells]
-    processed = LayoutPostprocessor(page, clusters, LayoutOptions()).postprocess()
+    processed = LayoutPostprocessor(page, clusters, LayoutPostprocessorOptions()).postprocess()
     page.predictions.layout = LayoutPrediction(clusters=processed)
     list(PageAssembleModel(options=PageAssembleOptions())(conv, [page]))
     raw = [w for r in spy.raw for w in _raw_word_fields(r)]

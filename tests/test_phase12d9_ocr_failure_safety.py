@@ -196,7 +196,7 @@ class Rig:
         )
 
 
-def render(path: Path, pages: list[list[str]]) -> dict[int, list[Any]]:
+def render(path: Path, pages: list[list[tuple[str, bool]]]) -> dict[int, list[Any]]:
     """Scanned pages (image only, 300 dpi): one line of text per region.
     Returns the layout regions (PDF points, top-left) per page number."""
     from docling_core.types.doc import BoundingBox

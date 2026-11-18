@@ -608,7 +608,9 @@ if "-c" in argv:  # `docker exec <container> /app/.venv/bin/python -c <code>`: i
 
 def _job_wait_block(dedent: bool) -> str:
     section = _section(MANUAL, "## 6. ", "## 7. ")
-    block = re.search(r"^ *```bash\n(.*?)^ *```", section, flags=re.S | re.M).group(1)
+    found = re.search(r"^ *```bash\n(.*?)^ *```", section, flags=re.S | re.M)
+    assert found is not None
+    block = found.group(1)
     assert "FROM command WHERE status IN" in block
     return textwrap.dedent(block) if dedent else block
 

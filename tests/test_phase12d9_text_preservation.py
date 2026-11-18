@@ -134,7 +134,9 @@ def _region(*cells: tuple[str, float, float, float, float]) -> str:
     )
     list(PageAssembleModel(options=PageAssembleOptions())(_conv(), [page]))
     assert page.assembled is not None
-    return page.assembled.elements[0].text
+    text = page.assembled.elements[0].text
+    assert text is not None
+    return text
 
 
 def line(
@@ -149,7 +151,7 @@ def line(
 # --------------------------------------------------------------------------- #
 
 # (name, cells of one region, element text the Source must store)
-ASSEMBLY_CASES = [
+ASSEMBLY_CASES: list[tuple[str, list[tuple[str, float, float, float, float]], str]] = [
     (
         "document number across a line break",
         [
@@ -297,7 +299,8 @@ def test_without_boxes_two_cells_are_never_assumed_to_be_one_word():
     )
 
     _apply()
-    model = PageAssembleModel(options=PageAssembleOptions())
+    # Any: the patched sanitize_text takes the same_line flags upstream's lacks
+    model: Any = PageAssembleModel(options=PageAssembleOptions())
     assert model.sanitize_text(["05/2024/TT-", "BNNPTNT"]) == "05/2024/TT- BNNPTNT"
     assert model.sanitize_text(["VT-", "KHTC"]) == "VT- KHTC"
     # a line break the boxes show closes up; same line keeps the space
@@ -872,7 +875,7 @@ def _text_layer_regions(tmp_path: Path, texts: list[Any]) -> list[str]:
         Page,
     )
     from docling.datamodel.document import ConversionResult, InputDocument
-    from docling.datamodel.pipeline_options import LayoutOptions
+    from docling.datamodel.pipeline_options import LayoutPostprocessorOptions
     from docling.models.stages.page_assemble.page_assemble_model import (
         PageAssembleModel,
         PageAssembleOptions,
@@ -897,11 +900,13 @@ def _text_layer_regions(tmp_path: Path, texts: list[Any]) -> list[str]:
     clusters = [
         Cluster(id=0, label=DocItemLabel.TEXT, bbox=region, confidence=0.9, cells=[])
     ]
-    processed = LayoutPostprocessor(page, clusters, LayoutOptions()).postprocess()
+    processed = LayoutPostprocessor(
+        page, clusters, LayoutPostprocessorOptions()
+    ).postprocess()
     page.predictions.layout = LayoutPrediction(clusters=processed)
     list(PageAssembleModel(options=PageAssembleOptions())(conv, [page]))
     assert page.assembled is not None
-    return [e.text for e in page.assembled.elements]
+    return cast(list[str], [e.text for e in page.assembled.elements])
 
 
 def test_pdf_text_layer_keeps_every_hyphen(tmp_path):
@@ -997,7 +1002,7 @@ def _scan_to_document(tmp_path: Path, monkeypatch) -> tuple[Any, list[str]]:
     )
     from docling.datamodel.document import ConversionResult, InputDocument
     from docling.datamodel.pipeline_options import (
-        LayoutOptions,
+        LayoutPostprocessorOptions,
         OcrMode,
         TesseractCliOcrOptions,
     )
@@ -1071,7 +1076,9 @@ def _scan_to_document(tmp_path: Path, monkeypatch) -> tuple[Any, list[str]]:
         accelerator_options=AcceleratorOptions(),
     )
     list(model(conv, [page]))
-    processed = LayoutPostprocessor(page, clusters, LayoutOptions()).postprocess()
+    processed = LayoutPostprocessor(
+        page, clusters, LayoutPostprocessorOptions()
+    ).postprocess()
     page.predictions.layout = LayoutPrediction(clusters=processed)
     list(PageAssembleModel(options=PageAssembleOptions())(conv, [page]))
     assert page.assembled is not None
