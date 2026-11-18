@@ -85,7 +85,9 @@ function Get-EnvValue([string]$Name, [string]$Default) {
 function Invoke-Check {
     Write-Step "Repository: $RepoRoot"
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Fail 'Docker Desktop is not installed or not on PATH.' }
-    $os = (& docker info --format '{{.OSType}}' 2>$null)
+    # no stderr redirection: Windows PowerShell 5.1 turns redirected native stderr into a
+    # terminating error under ErrorActionPreference Stop (D8-OFF-12); $LASTEXITCODE decides
+    $os = (& docker info --format '{{.OSType}}')
     if ($LASTEXITCODE -ne 0) { Fail 'Docker is not running (start Docker Desktop).' }
     if ($os -ne 'linux') { Fail "Docker must use Linux containers (current: $os)." }
     & docker compose version | Out-Null
@@ -96,7 +98,7 @@ function Invoke-Check {
     if (-not (Test-Path $EnvFile)) { Write-Step 'No .env yet: run "init-env".' }
     $web = [int](Get-EnvValue 'PHASE12_WEB_PORT' '8504')
     $api = [int](Get-EnvValue 'PHASE12_API_PORT' '5057')
-    $running = (& docker compose -p $Project ps -q 2>$null)
+    $running = (& docker compose -p $Project ps -q)
     foreach ($p in @($web, $api)) {
         if (-not (Test-PortFree $p) -and -not $running) { Fail "Port $p is already in use by another program." }
     }

@@ -25,7 +25,8 @@ function Fail($m) { Write-Host "ERROR: $m" -ForegroundColor Red; exit 2 }
 
 if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.\-]+)?$') { Fail 'Version must look like 1.3.0-rc.1' }
 foreach ($tool in @('docker', 'git')) { if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "$tool not found" } }
-$python = if (Get-Command uv -ErrorAction SilentlyContinue) { @('uv', 'run', '--no-project', 'python') }
+# [string[]]: an 'if' expression unrolls a one-element array into a string (D8-OFF-11)
+[string[]]$python = if (Get-Command uv -ErrorAction SilentlyContinue) { @('uv', 'run', '--no-project', 'python') }
           elseif (Get-Command python -ErrorAction SilentlyContinue) { @('python') }
           else { Fail 'Python (or uv) is required' }
 if ((& docker info --format '{{.OSType}}') -ne 'linux') { Fail 'Docker Desktop must use Linux containers' }

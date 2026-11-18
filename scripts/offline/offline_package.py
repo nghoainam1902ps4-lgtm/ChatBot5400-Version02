@@ -75,6 +75,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as _dt
+import errno
 import hashlib
 import json
 import os
@@ -469,6 +470,17 @@ def _lock_holder(fd: int) -> str:
     return "another process"
 
 
+# errno of a lock another process holds (flock: EWOULDBLOCK / EAGAIN; lockf and
+# msvcrt.locking: EACCES; msvcrt LK_LOCK after its retries: EDEADLOCK)
+_LOCK_BUSY_ERRNOS = {
+    errno.EWOULDBLOCK,
+    errno.EAGAIN,
+    errno.EACCES,
+    getattr(errno, "EDEADLOCK", errno.EDEADLK),
+    errno.EDEADLK,
+}
+
+
 @contextlib.contextmanager
 def exclusive_lock(path: Path, busy: str) -> Iterator[None]:
     """Hold ``path`` exclusively for the ``with`` block, or refuse with ``busy``."""
@@ -478,19 +490,26 @@ def exclusive_lock(path: Path, busy: str) -> Iterator[None]:
         raise Refused(f"cannot open the lock file {path}: {e.strerror or e}", EXIT_LOCK) from None
     locked = False
     try:
-        if sys.platform == "win32":
-            import msvcrt
+        try:
+            if sys.platform == "win32":
+                import msvcrt
 
-            os.lseek(fd, LOCK_BYTE_OFFSET, os.SEEK_SET)
-            with contextlib.suppress(OSError):
+                os.lseek(fd, LOCK_BYTE_OFFSET, os.SEEK_SET)
                 msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-                locked = True
-        else:
-            import fcntl
+            else:
+                import fcntl
 
-            with contextlib.suppress(OSError):
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                locked = True
+            locked = True
+        except OSError as e:
+            if e.errno not in _LOCK_BUSY_ERRNOS:
+                # D8-OFF-09: not "another process holds it" - the file system
+                # refused the lock (ENOLCK, EOPNOTSUPP on a share...)
+                raise Refused(
+                    f"cannot lock {path}: {e.strerror or e} - the file system of "
+                    f"{path.parent} does not support file locks here; use a local folder",
+                    EXIT_LOCK,
+                ) from None
         if not locked:
             raise Refused(f"{busy} (lock {path} held by {_lock_holder(fd)})", EXIT_LOCK)
         os.lseek(fd, 0, os.SEEK_SET)
@@ -1942,6 +1961,38 @@ def _remove_stale_partials(out_root: Path, name: str, own: Path) -> None:
                 log(f"removed {stale.name} (left by an interrupted build)")
 
 
+def _recover_interrupted_publish(out_root: Path, name: str) -> None:
+    """D8-OFF-03 / 04 (Phase 12D9): a build killed while it replaced the
+    package / hash pair left a hash file aside (``.sha256.partial-*`` = the new
+    one, ``.sha256.previous-*`` = the old one). With the build lock held: the one
+    that belongs to the package now in place becomes its ``.sha256`` again (when
+    that is missing or does not match); every other one is removed. Only files
+    of THIS package name are touched."""
+    package = out_root / f"{name}.tar.gz"
+    sha_file = out_root / f"{name}.tar.gz.sha256"
+    orphans = [
+        p
+        for pattern in (f".{name}.tar.gz.sha256.partial-*", f"{name}.tar.gz.sha256.previous-*")
+        for p in out_root.glob(pattern)
+        if p.is_file() and not p.is_symlink()
+    ]
+    if not orphans:
+        return
+    wanted = None
+    if package.is_file():
+        wanted = f"{sha256_file(package)}  {package.name}\n"
+    current_ok = sha_file.is_file() and sha_file.read_text(errors="replace") == wanted
+    for orphan in orphans:
+        with contextlib.suppress(OSError):
+            if not current_ok and wanted and orphan.read_text(errors="replace") == wanted:
+                os.replace(orphan, sha_file)
+                current_ok = True
+                log(f"restored {sha_file.name} (left aside by an interrupted build)")
+            else:
+                orphan.unlink()
+                log(f"removed {orphan.name} (left by an interrupted build)")
+
+
 def check_image_provenance(
     labels: Dict[str, Any], inv: Dict[str, Any], commit: str, version: str, allow_unlabelled: bool
 ) -> str:
@@ -2028,6 +2079,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     with build_lock(out_root, name):
         tmp_package = out_root / f".{name}.tar.gz.partial-{os.getpid()}"
         _remove_stale_partials(out_root, name, tmp_package)
+        _recover_interrupted_publish(out_root, name)
         # R2-18: the stage is CLAIMED atomically; a second builder gets a clean refusal.
         try:
             stage.mkdir()
@@ -2057,26 +2109,41 @@ def cmd_build(args: argparse.Namespace) -> int:
                     else:
                         tar.addfile(info)
             digest = sha256_file(tmp_package)
-            # A previous package of the same name is replaced only now, by rename. Its
-            # .sha256 is set aside first so that a package and a stale hash never pair
-            # up, and put back when the rename fails (Windows refuses to replace a file
-            # another program holds open): the previous package keeps its hash (E1-04).
+            line = f"{digest}  {package.name}\n"
+            # A previous package of the same name is replaced only now, by rename
+            # (E1-04, D8-OFF-03 / 04). Its hash is written FIRST beside it (nothing
+            # is replaced if that fails), the old .sha256 is set aside so that a
+            # package and a stale hash never pair up, and put back when the rename
+            # fails (Windows refuses to replace a file another program holds open).
+            # If writing the final .sha256 fails, the hash written first completes
+            # the new pair. A build killed in between leaves files that the next
+            # build of this name sorts out (_recover_interrupted_publish).
+            new_sha = out_root / f".{name}.tar.gz.sha256.partial-{os.getpid()}"
             previous_sha = sha_file.with_name(f"{sha_file.name}.previous-{os.getpid()}")
+            atomic_write(new_sha, line)
             had_sha = False
-            with contextlib.suppress(FileNotFoundError):
-                os.replace(sha_file, previous_sha)
-                had_sha = True
             try:
-                os.replace(tmp_package, package)
-            except BaseException:
-                if had_sha:
+                with contextlib.suppress(FileNotFoundError):
+                    os.replace(sha_file, previous_sha)
+                    had_sha = True
+                try:
+                    os.replace(tmp_package, package)
+                except BaseException:
+                    if had_sha:
+                        with contextlib.suppress(OSError):
+                            os.replace(previous_sha, sha_file)
+                            had_sha = False
+                    raise
+                try:
+                    atomic_write(sha_file, line)
+                except BaseException:
                     with contextlib.suppress(OSError):
-                        os.replace(previous_sha, sha_file)
-                raise
-            atomic_write(sha_file, f"{digest}  {package.name}\n")
-            if had_sha:
-                with contextlib.suppress(OSError):
-                    previous_sha.unlink()
+                        os.replace(new_sha, sha_file)  # the new pair is complete
+                    raise
+            finally:
+                for leftover in (new_sha, previous_sha):
+                    with contextlib.suppress(OSError):
+                        leftover.unlink()
         except BaseException:
             # Only what THIS run created is removed (F-04, R2-18).
             shutil.rmtree(stage, ignore_errors=True)
@@ -2091,6 +2158,24 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"readiness: {manifest['readiness']['status']} {manifest['readiness']['problems']}"
     )
     return EXIT_OK
+
+
+def _schema_at(repo: Path, commit: str) -> int:
+    """The highest migration number committed at ``commit`` (0: none)."""
+    out = _git(
+        repo,
+        "ls-tree",
+        "--name-only",
+        commit,
+        "open_notebook/database/migrations/",
+        check=False,
+    )
+    numbers = [
+        int(Path(line).stem)
+        for line in out.splitlines()
+        if line.endswith(".surrealql") and Path(line).stem.isdigit()
+    ]
+    return max(numbers, default=0)
 
 
 def _build_stage(
@@ -2142,6 +2227,18 @@ def _build_stage(
     if labels.get(REVISION_LABEL) and labels[REVISION_LABEL] != commit:
         raise Refused(
             "image label revision differs from the commit being packaged", EXIT_USAGE
+        )
+    # D8-OFF-06 (Phase 12D9): a migration added since --base-ref makes the
+    # package migration_required, whatever the switch says (the official
+    # wrappers cannot pass it); the manual procedure and `update` stop on it.
+    base_schema = _schema_at(repo, base_commit)
+    migration_required = bool(args.migration_required) or (
+        _schema_at(repo, commit) > base_schema
+    )
+    if migration_required and not args.migration_required:
+        log(
+            f"migration_required: the commit adds migration(s) after schema {base_schema} "
+            f"of {args.base_ref} - the package says so (database untouched by the tool)"
         )
     log("inventory from the image (network disabled)")
     inv = json.loads(
@@ -2269,7 +2366,7 @@ def _build_stage(
         },
         "database": {
             "schema_version": int(inv.get("schema_version") or 0),
-            "migration_required": bool(args.migration_required),
+            "migration_required": migration_required,
             "compatible_schema_versions": [int(inv.get("schema_version") or 0)],
         },
         "dependencies": {
@@ -2283,7 +2380,7 @@ def _build_stage(
             "problems": readiness_problems,
         },
         "rollback": {
-            "app_rollback_without_restore": not args.migration_required,
+            "app_rollback_without_restore": not migration_required,
             "previous_versions": args.supported_from,
             "notes": "database untouched; previous image kept as a rollback tag",
         },
@@ -5223,9 +5320,14 @@ def take_snapshot(dep: Deployment, cfg: Dict[str, str]) -> Dict[str, Any]:
     }
 
 
-def compare_snapshots(earlier: Any, now: Dict[str, Any]) -> Tuple[int, List[str]]:
-    """0: nothing lost (additions reported); 5: a record / file / identity lost or changed;
-    3: something cannot be read."""
+def compare_snapshots(
+    earlier: Any, now: Dict[str, Any], no_writes: bool = False
+) -> Tuple[int, List[str]]:
+    """0: nothing lost (additions and records changed in place reported); 5: a
+    record / file / identity lost or changed; 3: something cannot be read.
+    ``no_writes`` (Phase 12D9, D8-OFF-08 - manual §7 after the image switch:
+    nothing may write since the earlier snapshot): a record added or changed in
+    place fails too, and an unreadable data fingerprint is never "unchanged"."""
     if not isinstance(earlier, dict) or earlier.get("kind") != "chatbot5400-offline-snapshot":
         return EXIT_VERIFY, ["the earlier file is not a snapshot of this tool"]
     if earlier.get("records") is None or earlier.get("db") is None:
@@ -5242,6 +5344,16 @@ def compare_snapshots(earlier: Any, now: Dict[str, Any]) -> Tuple[int, List[str]
         added = len(have - set(ids))
         if added:
             info.append(f"added {t}: {added} records")
+    rewritten = _changed_in_place(earlier.get("data"), now.get("data"))
+    if rewritten is None and no_writes:
+        return EXIT_VERIFY, ["the data fingerprint cannot be compared (unread): not 'unchanged'"]
+    for t in rewritten or []:
+        line = f"CHANGED in place {t}: same records, other update times"
+        (lost if no_writes else info).append(line)
+    if no_writes:
+        for line in [x for x in info if x.startswith("added ")]:
+            info.remove(line)
+            lost.append(line.replace("added", "ADDED although nothing may write:", 1))
     changed = db_identity_changes(earlier["db"], now["db"], within_recreate=False)
     if changed:
         lost.append(f"CHANGED the database container / volume: {changed}")
@@ -5260,6 +5372,22 @@ def compare_snapshots(earlier: Any, now: Dict[str, Any]) -> Tuple[int, List[str]
     return (EXIT_UPDATE if lost else EXIT_OK), lines
 
 
+def _changed_in_place(a: Any, b: Any) -> Optional[List[str]]:
+    """Tables whose records are the same ids but were rewritten (another
+    ``updated`` fingerprint); None when either data fingerprint is unread."""
+    if not isinstance(a, dict) or not isinstance(b, dict):
+        return None
+    ta, tb = a.get("tables") or {}, b.get("tables") or {}
+    out = []
+    for name in sorted(set(ta) & set(tb)):
+        x, y = ta[name] or {}, tb[name] or {}
+        if x.get("ids_sha256") == y.get("ids_sha256") and x.get("updated_sha256") != y.get(
+            "updated_sha256"
+        ):
+            out.append(name)
+    return out
+
+
 def cmd_snapshot(args: argparse.Namespace) -> int:
     """Read-only helper of the manual fallback procedure (no lock, no journal)."""
     cfg = load_config(args.config)
@@ -5276,15 +5404,25 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     except (OSError, ValueError, UnicodeDecodeError):
         log(f"the earlier snapshot {args.compare} is unreadable")
         return EXIT_VERIFY
-    rc, lines = compare_snapshots(earlier, snap)
+    rc, lines = compare_snapshots(earlier, snap, no_writes=bool(getattr(args, "no_writes", False)))
     for line in lines:
         log(line)
     return rc
 
 
+EXPERIMENTAL_NOTICE = (
+    "EXPERIMENTAL: the automatic updater (update / finish / rollback / pin) is not the "
+    "production path. Update production with the manual procedure "
+    "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md (in every package under docs/)."
+)
+EXPERIMENTAL_COMMANDS = ("update", "finish", "rollback", "pin")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__,
+        epilog=EXPERIMENTAL_NOTICE,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -5401,7 +5539,9 @@ def build_parser() -> argparse.ArgumentParser:
     server(pf)
     pf.set_defaults(func=lambda a: (cmd_preflight(a), EXIT_OK)[1])
 
-    u = sub.add_parser("update", help="dry run unless --apply")
+    u = sub.add_parser(
+        "update", help="EXPERIMENTAL - dry run unless --apply", epilog=EXPERIMENTAL_NOTICE
+    )
     server(u)
     u.add_argument("--apply", action="store_true")
     u.add_argument("--sync-source", action="store_true")
@@ -5411,7 +5551,11 @@ def build_parser() -> argparse.ArgumentParser:
         "the reported database / data change was investigated: compare with the database as "
         "it is now (recorded with who and when; nothing is restored)"
     )
-    f = sub.add_parser("finish", help="approve: move DEPLOY_IMAGE_TAG, normal mode (checked)")
+    f = sub.add_parser(
+        "finish",
+        help="EXPERIMENTAL - approve: move DEPLOY_IMAGE_TAG, normal mode (checked)",
+        epilog=EXPERIMENTAL_NOTICE,
+    )
     f.add_argument("--config")
     f.add_argument("--approve", help="who approved (recorded in the journal)")
     f.add_argument("--acknowledge-data-change", action="store_true", help=ack_help)
@@ -5419,7 +5563,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     pn = sub.add_parser(
         "pin",
-        help="report DEPLOY_IMAGE_TAG vs approved.json vs the container; --apply repairs the tag",
+        help="EXPERIMENTAL - report DEPLOY_IMAGE_TAG vs approved.json vs the container; "
+        "--apply repairs the tag",
+        epilog=EXPERIMENTAL_NOTICE,
     )
     pn.add_argument("--config")
     pn.add_argument("--apply", action="store_true", help="re-point DEPLOY_IMAGE_TAG to the approved image")
@@ -5428,7 +5574,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser(
         "rollback",
-        help="app | interrupted | agri (legal-off / legal-on: refused, the gate is your configuration)",
+        help="EXPERIMENTAL - app | interrupted | agri (legal-off / legal-on: refused, the "
+        "gate is your configuration)",
+        epilog=EXPERIMENTAL_NOTICE,
     )
     r.add_argument(
         "what", choices=["app", "legal-off", "legal-on", "agri", "interrupted"]
@@ -5471,12 +5619,20 @@ def build_parser() -> argparse.ArgumentParser:
     sn.add_argument("--config")
     sn.add_argument("--out", help="write the snapshot (with record ids, mode 0600) to this file")
     sn.add_argument("--compare", help="an earlier snapshot file to compare with")
+    sn.add_argument(
+        "--no-writes",
+        action="store_true",
+        help="with --compare: nothing may have written since (a record added or changed in "
+        "place fails, unread data is never 'unchanged') - manual procedure after the switch",
+    )
     sn.set_defaults(func=cmd_snapshot)
     return p
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.cmd in EXPERIMENTAL_COMMANDS:
+        log(EXPERIMENTAL_NOTICE)  # D8-OFF-01: said by the tool itself, every run
     if args.cmd == "verify" and args.platform is None:
         args.platform = normalize_platform(_platform.machine())
     try:

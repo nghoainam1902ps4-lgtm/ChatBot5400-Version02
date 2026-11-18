@@ -212,12 +212,7 @@ def test_verified_limitation_an_unlinked_lock_file_gives_two_holders(tmp_path):
 
 
 @posix_only
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-09 (P4): any OSError of flock()/msvcrt.locking() (ENOLCK, EOPNOTSUPP on a "
-    "share without lock support) is reported as 'another build is running (held by process "
-    "<pid of the LAST build>)' - the operator is sent to look for a process that does not exist",
-)
+# was: xfail(strict) D8-OFF-09 - fixed in Phase 12D9
 def test_a_lock_that_cannot_be_taken_for_another_reason_is_not_reported_as_held(tmp_path, monkeypatch):
     import fcntl
 
@@ -304,7 +299,10 @@ def test_control_every_rename_of_build_stays_inside_out(fake_docker, repo, tmp_p
     T._label_image(repo)
     assert T._build_rc(repo, out) == 0
     inside = [(s, d) for s, d in seen if d.parent == out]
-    assert len(inside) == 3  # old hash set aside, package, new hash (.tmp -> .sha256)
+    # was: == 3 (old hash set aside, package, new hash .tmp -> .sha256). Phase 12D9
+    # (D8-OFF-03): the new hash is first written beside the package (.tmp ->
+    # .sha256.partial-<pid>) before anything is replaced - one rename more, in --out.
+    assert len(inside) == 4
     assert all(s.parent == out for s, _ in inside)
     stage, pkg, sha = _pair(out)
     assert sha.read_text() == f"{OP.sha256_file(pkg)}  {pkg.name}\n"
@@ -312,14 +310,7 @@ def test_control_every_rename_of_build_stays_inside_out(fake_docker, repo, tmp_p
 
 
 @posix_only
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-03 (P3): a build that FAILS while writing the new .sha256 (ENOSPC, Ctrl+C: "
-    "only the package rename is guarded) has already replaced the previous package: the "
-    "previous good pair is gone, the new archive has no hash and an orphan "
-    "'.sha256.previous-<pid>' with the OLD hash stays behind. E1-04 claims failed builds keep "
-    "the previous package.",
-)
+# was: xfail(strict) D8-OFF-03 - fixed in Phase 12D9
 def test_a_build_that_fails_after_the_package_rename_leaves_a_consistent_pair(
     fake_docker, repo, tmp_path, monkeypatch
 ):
@@ -366,14 +357,7 @@ KILLED_BUILD = textwrap.dedent(
 
 
 @posix_only
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-04 (P3): a build KILLED between 'set the old .sha256 aside' and 'rename the "
-    "new package' leaves the previous package WITHOUT its hash (it sits in "
-    "'.sha256.previous-<pid>'); no later build puts it back or removes the orphan "
-    "(_remove_stale_partials only knows '.partial-*'). The D7 test kills the build inside "
-    "`docker save`, long before this window.",
-)
+# was: xfail(strict) D8-OFF-04 - fixed in Phase 12D9
 def test_a_build_killed_in_the_rename_window_keeps_the_previous_pair(fake_docker, repo, tmp_path):
     old_pkg, _ = T._build(repo, tmp_path)
     out = old_pkg.parent
@@ -471,15 +455,7 @@ def test_control_manual_steps_3_1_and_3_4_on_an_untouched_package(package, tmp_p
 
 
 @posix_only
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-05 (P3): in the MANUAL procedure the signature (§3.3, 'mandatory when a key is "
-    "installed') covers manifest.json only, and §3.4 checks the files against SHA256SUMS - a "
-    "file that is neither signed nor compared with the signed manifest, and that does not list "
-    "extra files. A swapped image archive + a planted scripts/json.py + a rewritten SHA256SUMS "
-    "pass §3.3 - §3.5; only the trusted-channel hash of §3.1 stands. (`verify` of the tool "
-    "compares SHA256SUMS and every file with the manifest and refuses extra files.)",
-)
+# was: xfail(strict) D8-OFF-05 - fixed in Phase 12D9
 def test_manual_step_3_binds_the_files_to_the_signed_manifest(package, tmp_path):
     pkg, _ = package
     root = _unpack_like_the_manual(pkg, tmp_path / "work")
@@ -498,15 +474,7 @@ def test_manual_step_3_binds_the_files_to_the_signed_manifest(package, tmp_path)
 
 
 @posix_only
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-06 (P2, latent - 1.3.0-rc.1 has no migration): database.migration_required is "
-    "only the --migration-required switch of `build`; build-package.sh / .ps1 cannot pass it and "
-    "`build` never compares the migrations of --base-ref with those of the commit. The manual "
-    "procedure's ONLY migration guard is 'stop if migration_required is True' (no step compares "
-    "the schema of the running database with the package), so a release that adds a migration is "
-    "built 'migration_required: false' and migrates the production database at §7.3.",
-)
+# was: xfail(strict) D8-OFF-06 - fixed in Phase 12D9
 def test_build_notices_a_migration_added_since_the_base_ref(fake_docker, repo, tmp_path):
     migrations = repo / "open_notebook" / "database" / "migrations"
     migrations.mkdir(parents=True)
@@ -571,16 +539,7 @@ def test_control_manual_compose_commands_never_build_pull_or_touch_the_database(
 
 
 @posix_only
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-07 (P3): manual §3 creates the work folder with `install -d -m 700 \"$WORK\"` at "
-    "the PREDICTABLE path /var/tmp/cb5400-<ver> (world-writable parent). On a folder another "
-    "local user created first the command succeeds and the folder KEEPS its owner: that user can "
-    "replace scripts/offline_package.py (run as root in §4, §6, §7) and the image archive after "
-    "§3.1 - §3.4. The Ubuntu guide already asks for `mktemp -d` for this reason. A second run in "
-    "the same folder also appends a second block to $NOTES (two app_image= / db_container= "
-    "lines: 'STOP: DB container changed' although nothing changed).",
-)
+# was: xfail(strict) D8-OFF-07 - fixed in Phase 12D9
 def test_manual_work_folder_command_refuses_a_folder_somebody_else_prepared(tmp_path):
     if os.geteuid() != 0:
         pytest.skip("needs root to hand a folder to another uid")
@@ -611,15 +570,7 @@ def _snapshot(updated_hash: str) -> dict:
     }  # fmt: skip
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-08 (P3): the manual §7 data check after the image switch is `snapshot --compare "
-    "f1.json`, which looks only for MISSING record ids. Records rewritten while nothing may write "
-    "(same ids, other `updated` - e.g. the new image changing data at start-up) give exit 0 and "
-    "'nothing was lost' without a word; the automatic path fails on exactly this ('records "
-    "changed although nothing may write'). The F1 == F2 one-liner of §6 would catch it but is "
-    "not repeated after §7.3.",
-)
+# was: xfail(strict) D8-OFF-08 - fixed in Phase 12D9
 def test_snapshot_compare_reports_records_changed_in_place():
     before, after = _snapshot("1" * 64), _snapshot("2" * 64)
     rc, lines = OP.compare_snapshots(before, after)
@@ -640,14 +591,7 @@ def test_control_snapshot_compare_reports_a_lost_record_and_another_database():
     assert OP.compare_snapshots(before, after)[0] == OP.EXIT_VERIFY  # unreadable is never "ok"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-10 (P3): manual §10 rolls the application back and reopens it ($OPS maintenance "
-    "... $OPS normal) BEFORE §10.2 puts the source back (git reset --keep), and nothing recreates "
-    "the application afterwards. When §7.1 was used - by definition because compose files / the "
-    "operations script changed - the old image is started by the NEW files, and the files then "
-    "change under the running container.",
-)
+# was: xfail(strict) D8-OFF-10 - fixed in Phase 12D9
 def test_manual_rollback_restores_the_source_before_recreating_the_application():
     section = _section(MANUAL, "## 10. ", "## 11. ")
     assert section.index("reset --keep") < section.index("$OPS maintenance")
@@ -685,30 +629,14 @@ def test_control_manual_job_wait_command_is_valid_when_copied_from_a_rendered_pa
 
 
 @posix_only
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-13 (P3): the package ships the procedure as a RAW .md file and an offline "
-    "server has no Markdown renderer. The multi-line `python -c '...'` commands that sit inside "
-    "list items (§6 step 3 'wait for background jobs - must print 0', and the §4 record count) "
-    "are indented with the list: copied from the file as it is, Python stops with "
-    "'IndentationError: unexpected indent' and prints nothing - in the middle of the maintenance "
-    "window. (Copied from a rendered page they work: control above.)",
-)
+# was: xfail(strict) D8-OFF-13 - fixed in Phase 12D9
 def test_manual_job_wait_command_works_when_copied_from_the_shipped_file(tmp_path):
     done = _run_with_docker_shim(tmp_path, _job_wait_block(dedent=False))
     assert done.returncode == 0 and done.stdout.strip() == "0", done.stderr.strip().splitlines()[-1:]
 
 
 @posix_only
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-14 (P3): the manual 'nothing wrote during the backup' proof (§6 step 6) compares "
-    "the `data` of f1.json and f2.json with a one-liner. When the fingerprint could not be read "
-    "in BOTH snapshots (`data: null`, `unreadable: ['data fingerprint']`; `snapshot` exits 3 but "
-    "nothing stops the next line) it prints 'F1 == F2' and exits 0: unread data counts as "
-    "unchanged - what the tool itself never allows ('unverified data is never treated as "
-    "unchanged').",
-)
+# was: xfail(strict) D8-OFF-14 - fixed in Phase 12D9
 def test_manual_f1_f2_comparison_fails_when_the_data_was_not_read(tmp_path):
     section = _section(MANUAL, "## 6. ", "## 7. ")
     line = next(l.strip() for l in section.splitlines() if "F1 == F2" in l and "python3" in l)
@@ -740,17 +668,7 @@ def test_control_manual_f1_f2_comparison_on_read_data(tmp_path):
     assert changed.returncode == 1 and "DIFFERENT" in changed.stdout
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-15 (P3, document; Compose behaviour NOT run here): the adapter contract (§3 of "
-    "OFFLINE_UPDATE_INTEGRATION_CONTRACT.md) lets the operations script's `normal` / "
-    "`maintenance` be a plain `docker compose ... up -d` with --no-deps only OPTIONAL ('co the "
-    "kem'), and C6 accepts 'or names only the application service'. Without --no-deps Compose "
-    "also recreates a dependency (the database) whose definition differs - e.g. after manual "
-    "§7.1 changed the compose files. The manual procedure prefers `$OPS maintenance` / `$OPS "
-    "normal` over its own --no-deps command, so 'the database container is never recreated' "
-    "rests on a script the contract does not bind.",
-)
+# was: xfail(strict) D8-OFF-15 - fixed in Phase 12D9
 def test_adapter_contract_requires_no_deps_for_the_operations_script():
     contract = (DOCS / "OFFLINE_UPDATE_INTEGRATION_CONTRACT.md").read_text(encoding="utf-8")
     adapter = contract[contract.index("## 3. ") : contract.index("## 4. ")]
@@ -780,14 +698,7 @@ def test_control_deployment_documents_mark_the_automatic_updater_experimental():
     assert set(re.findall(r"offline_package\.py\" (\w+)", commands)) == {"snapshot"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-01 (P2): the tool itself never says that update / finish / rollback are "
-    "EXPERIMENTAL / not for production: not in --help (which the Ubuntu guide declares "
-    "authoritative over the documents), not in `update --help`, not in the update.sh / finish.sh / "
-    "rollback.sh wrappers installed in /opt/chatbot5400-offline-tools, not in the output of "
-    "`update --apply`, and no opt-in is needed. Only the Markdown files say it.",
-)
+# was: xfail(strict) D8-OFF-01 - fixed in Phase 12D9
 def test_the_tool_itself_says_the_automatic_updater_is_experimental():
     helps = [
         subprocess.run(
@@ -802,14 +713,7 @@ def test_the_tool_itself_says_the_automatic_updater_is_experimental():
         assert "experimental" in (SCRIPTS / wrapper).read_text().lower(), wrapper
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-02 (P2): the release notes draft of 1.3.0-rc.1 present the automatic updater as "
-    "the offline upgrade path (§1 lists finish / rollback / pin as features, §2 'offline server: "
-    "OFFLINE_UPDATE_UBUNTU_GUIDE.md', §3 rollback: OFFLINE_UPDATE_ROLLBACK.md, §4.7 "
-    "compose-command.txt / status.sh / pin.sh) and never mention the manual procedure or the "
-    "word EXPERIMENTAL. This file is what --release-notes ships as docs/RELEASE_NOTES.md.",
-)
+# was: xfail(strict) D8-OFF-02 - fixed in Phase 12D9
 def test_release_notes_send_production_to_the_manual_procedure():
     notes = RELEASE_NOTES.read_text(encoding="utf-8")
     assert "OFFLINE_UPDATE_MANUAL_FALLBACK" in notes
@@ -853,15 +757,7 @@ def test_control_ps1_static_ascii_no_remaining_args_exit_codes_checked():
     assert "@ComposeArgs" in body and "$LASTEXITCODE -ne 0" in body
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-11 (P2, STATIC ONLY - not run, no PowerShell here): build-package.ps1 does "
-    "`$python = if (uv) { @('uv','run','--no-project','python') } elseif (python) { @('python') }`. "
-    "An `if` used as an expression sends its result through the pipeline, which unrolls the "
-    "ONE-element array: $python is the STRING 'python', `$python[0]` is the character 'p', and "
-    "`& $exe ...` runs a command named 'p'. On a build machine with Python but without uv - a "
-    "documented prerequisite ('Python 3.10+ hoac uv') - the script stops at check-version.",
-)
+# was: xfail(strict) D8-OFF-11 - fixed in Phase 12D9
 def test_build_package_ps1_keeps_a_one_element_python_command_an_array():
     code = _ps_code(BUILD_PS1)
     assign = re.search(r"^.*\$python\s*=.*$", code, flags=re.M)
@@ -877,15 +773,7 @@ def test_build_package_ps1_keeps_a_one_element_python_command_an_array():
     assert not indexed or protected, line.strip()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-OFF-12 (P3, STATIC ONLY; acknowledged as a residual risk in "
-    "PHASE12D7_WINDOWS_BUILD_REPORT.md §5): phase12-test.ps1 still runs native commands with "
-    "`2>$null` under $ErrorActionPreference = 'Stop' in Invoke-Check - the pattern R2-22 removed "
-    "from build-package.ps1 because Windows PowerShell 5.1 turns redirected stderr into a "
-    "terminating NativeCommandError. With Docker Desktop stopped, `check` (run first by `up` and "
-    "`build`) would stop with that error instead of 'Docker is not running'.",
-)
+# was: xfail(strict) D8-OFF-12 - fixed in Phase 12D9
 def test_phase12_test_ps1_has_no_native_command_with_redirected_stderr():
     assert "2>$null" not in _ps_code(TEST_PS1)
 

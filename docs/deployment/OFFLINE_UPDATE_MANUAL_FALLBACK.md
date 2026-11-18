@@ -55,7 +55,7 @@ Mỗi phiên làm việc (root, `bash`), đặt biến cho phiên:
 ```bash
 VER=1.3.0                                   # phiên bản trong gói
 PKG=ChatBot5400-$VER-linux-amd64-offline     # tên gói, không có .tar.gz
-WORK=/var/tmp/cb5400-$VER                    # thư mục làm việc MỚI (§3)
+WORK=/var/tmp/cb5400-$VER-$(date +%Y%m%d%H%M)  # thư mục làm việc MỚI, chưa tồn tại (§3)
 NOTES=$WORK/notes.txt
 # DEPLOY_DIR, PROJECT, FILES, MAINT, APP, DB, DEPLOY_TAG, HEALTH_URL: giá trị của §1
 cd "$DEPLOY_DIR"
@@ -86,7 +86,8 @@ là đường dẫn tuyệt đối.
 ## 3. Máy chủ — xác thực TRƯỚC khi giải nén
 
 ```bash
-install -d -m 700 "$WORK"
+# thư mục MỚI của root: dừng nếu nó đã có (ai đó - hoặc một lần chạy trước - đã tạo nó)
+test ! -e "$WORK" && install -d -m 700 -o root -g root "$WORK" && [ "$(stat -c %u "$WORK")" = 0 ]
 # 3.1 SHA-256 so với giá trị nhận qua kênh tin cậy: phải in "<file>: OK"
 echo "<SHA-256 nhận qua kênh tin cậy>  $PKG.tar.gz" | sha256sum -c -
 ```
@@ -99,8 +100,11 @@ tar -xzf "$PKG.tar.gz" -C "$WORK" --no-same-owner --no-same-permissions
 cd "$WORK/$PKG"
 # 3.3 chữ ký (BẮT BUỘC khi máy chủ đã cài khóa công khai phát hành): phải in "Good ... signature"
 ssh-keygen -Y verify -f "$SIGNERS" -I "$SIGNER" -n chatbot5400-offline -s manifest.json.sig < manifest.json
-# 3.4 toàn vẹn từng file: mọi dòng "OK"
+# 3.4 toàn vẹn từng file: mọi dòng "OK" ...
 sha256sum -c SHA256SUMS
+# ... và từng file đúng như manifest.json ĐÃ KÝ ở 3.3 (không thừa, không thiếu, đúng kích thước
+# và SHA-256; python3 -I: không nạp module nào từ thư mục gói): phải in "manifest: every file OK"
+python3 -I -c 'import hashlib,json,os,sys; m=json.load(open("manifest.json"))["files"]; skip={"manifest.json","manifest.json.sig","SHA256SUMS"}; have={os.path.relpath(os.path.join(d,f)).replace(os.sep,"/") for d,_,fs in os.walk(".") for f in fs}-skip; sha=lambda p:(lambda h,f:([h.update(c) for c in iter(lambda:f.read(1<<20),b"")],h.hexdigest())[1])(hashlib.sha256(),open(p,"rb")); bad=sorted(have^set(m))+[r for r in sorted(have&set(m)) if os.path.getsize(r)!=m[r]["size"] or sha(r)!=m[r]["sha256"]]; print("manifest: every file OK" if not bad else "STOP - not as signed: "+" ".join(bad[:5])); sys.exit(1 if bad else 0)'
 # 3.5 thông tin gói
 python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1])); a,i,s,d,r=m["application"],m["image"],m["source"],m["database"],m["readiness"]
 print("version", a["version"], "| supported from", a["supported_source_versions"])
@@ -111,8 +115,9 @@ print("readiness", r["status"], r["problems"])' manifest.json | tee -a "$NOTES"
 cd "$DEPLOY_DIR"
 ```
 
-Dừng nếu: 3.3 không in `Good` khi khóa đã cài (hoặc thiếu `manifest.json.sig`); 3.4 có dòng
-không `OK`; `readiness` khác `READY`; `provenance` khác `verified`; `migration_required` là
+Dừng nếu: lệnh tạo `$WORK` thất bại (thư mục đã có: chọn `WORK` mới, không dùng lại); 3.3 không in
+`Good` khi khóa đã cài (hoặc thiếu `manifest.json.sig`); 3.4 có dòng không `OK` hoặc không in
+`manifest: every file OK`; `readiness` khác `READY`; `provenance` khác `verified`; `migration_required` là
 `True` (rollback không restore không còn đúng — cần kế hoạch riêng, ngoài quy trình này); phiên
 bản đang chạy không nằm trong `supported from`.
 
@@ -162,14 +167,7 @@ APP_CID=$($DC ps -q "$APP"); DB_CID=$($DC ps -q "$DB")
   Không dùng công cụ: số bản ghi từng bảng (yếu hơn — chỉ số lượng):
 
   ```bash
-  docker exec "$APP_CID" /app/.venv/bin/python -c '
-  import asyncio
-  from open_notebook.database.repository import repo_query
-  async def m():
-      for t in ("source", "notebook", "note", "source_embedding", "source_insight"):
-          r = await repo_query(f"SELECT count() AS n FROM {t} GROUP ALL")
-          print(t, r[0]["n"] if r else 0)
-  asyncio.run(m())' | tee "$WORK/counts-before.txt"
+  docker exec "$APP_CID" /app/.venv/bin/python -c 'import asyncio; from open_notebook.database.repository import repo_query; [print(t, (lambda r: r[0]["n"] if r else 0)(asyncio.run(repo_query(f"SELECT count() AS n FROM {t} GROUP ALL")))) for t in ("source", "notebook", "note", "source_embedding", "source_insight")]' | tee "$WORK/counts-before.txt"
   ```
 
 - Dung lượng trống: `df -h /var/lib/docker` ≥ 2 × kích thước `images/*.tar` + 5 GB.
@@ -203,13 +201,7 @@ vì archive đã được xác thực ở §3 nên đó không phải lỗi; nh�
 3. Chờ tác vụ nền xong — lệnh sau phải in `0`:
 
    ```bash
-   docker exec "$($DC ps -q "$APP")" /app/.venv/bin/python -c '
-   import asyncio
-   from open_notebook.database.repository import repo_query
-   async def m():
-       r = await repo_query("SELECT count() AS n FROM command WHERE status IN [\"running\",\"queued\",\"new\"] GROUP ALL")
-       print(r[0]["n"] if r else 0)
-   asyncio.run(m())'
+   docker exec "$($DC ps -q "$APP")" /app/.venv/bin/python -c 'import asyncio; from open_notebook.database.repository import repo_query; r = asyncio.run(repo_query("SELECT count() AS n FROM command WHERE status IN [\"running\",\"queued\",\"new\"] GROUP ALL")); print(r[0]["n"] if r else 0)'
    ```
 
 4. Ảnh chụp dữ liệu F1 — trạng thái mà bản sao lưu sẽ chứa (từ đây không còn ai ghi):
@@ -226,7 +218,7 @@ vì archive đã được xác thực ở §3 nên đó không phải lỗi; nh�
 
    ```bash
    python3 "$WORK/$PKG/scripts/offline_package.py" snapshot --config /etc/chatbot5400/offline-update.conf --out "$WORK/f2.json"
-   python3 -I -c 'import json,sys; a,b=(json.load(open(f))["data"] for f in sys.argv[1:]); print("F1 == F2" if a == b else "DIFFERENT: something wrote during the backup"); sys.exit(a != b)' "$WORK/f1.json" "$WORK/f2.json"
+   python3 -I -c 'import json,sys; a,b=(json.load(open(f))["data"] for f in sys.argv[1:]); ok=a is not None and b is not None and a==b; print("F1 == F2" if ok else ("UNREAD: a data fingerprint could not be read - STOP" if a is None or b is None else "DIFFERENT: something wrote during the backup")); sys.exit(0 if ok else 1)' "$WORK/f1.json" "$WORK/f2.json"
    ```
 
    Không dùng công cụ: đếm như §4 ngay trước (F1) và ngay sau (F2) sao lưu, phải bằng nhau (chỉ
@@ -258,12 +250,13 @@ docker inspect --format '{{.Image}} {{json .Mounts}}' "$($DC ps -q "$DB")"   # =
 curl -fsS --noproxy '*' "$HEALTH_URL" && echo
 docker exec "$APP_CID" /app/.venv/bin/python -c 'from open_notebook.utils.token_utils import main; raise SystemExit(main(["--check"]))'   # "PASS"
 docker exec -i "$APP_CID" sh -c "cd '$MODELS' && sha256sum --quiet -c -" < "$WORK/models-before.sha256" && echo "models unchanged"
-python3 "$WORK/$PKG/scripts/offline_package.py" snapshot --config /etc/chatbot5400/offline-update.conf --out "$WORK/after-update.json" --compare "$WORK/f1.json"   # 0 = không mất gì
+python3 "$WORK/$PKG/scripts/offline_package.py" snapshot --config /etc/chatbot5400/offline-update.conf --out "$WORK/after-update.json" --compare "$WORK/f1.json" --no-writes   # 0 = không mất, không thêm, không sửa gì
 $DC logs --tail 200 "$APP" | grep -iE 'migration|error' || true
 ```
 
-Mọi khác biệt (DB container khác, bản ghi mất, model đổi, health lỗi, tokenizer không PASS):
-**rollback ngay (§10)**, không mở cho người dùng.
+Mọi khác biệt (DB container khác, bản ghi mất / thêm / bị sửa tại chỗ - `--no-writes`: từ F1 không
+ai được ghi -, model đổi, health lỗi, tokenizer không PASS): **rollback ngay (§10)**, không mở cho
+người dùng.
 
 ## 8. Nghiệm thu chức năng (vẫn bảo trì, quản trị truy cập qua loopback / SSH tunnel)
 
@@ -286,7 +279,18 @@ lại máy chủ một lần và kiểm boot guard đưa lên đúng `new_image`
 
 ## 10. Rollback
 
-### 10.1 Ứng dụng (bất kỳ lúc nào sau §7)
+Thứ tự: mã nguồn về trước (nếu đã làm 7.1), rồi mới tạo lại ứng dụng trên image cũ - image cũ luôn
+chạy với đúng file compose / script vận hành của nó (Phase 12D9, D8-OFF-10).
+
+### 10.1 Mã nguồn (chỉ khi đã làm 7.1) - TRƯỚC khi tạo lại ứng dụng
+
+```bash
+git -C "$DEPLOY_DIR" reset --keep "$(grep '^git_head=' "$NOTES" | cut -d= -f2)"   # --keep: dừng nếu có thay đổi cục bộ bị ghi đè
+```
+
+Biến môi trường đã thêm ở §4 có thể giữ (v1.2.0 hiểu chúng).
+
+### 10.2 Ứng dụng (bất kỳ lúc nào sau §7)
 
 ```bash
 docker tag "chatbot5400:rollback-before-$VER" "$DEPLOY_TAG"     # hoặc: docker tag "$OLD_ID" "$DEPLOY_TAG"
@@ -295,14 +299,6 @@ $OPS maintenance                                                 # hoặc lệnh
 # kiểm như sau 7.3: image = app_image của §4, DB container không đổi, health, snapshot --compare f1.json
 $OPS normal
 ```
-
-### 10.2 Mã nguồn (chỉ khi đã làm 7.1)
-
-```bash
-git -C "$DEPLOY_DIR" reset --keep "$(grep '^git_head=' "$NOTES" | cut -d= -f2)"   # --keep: dừng nếu có thay đổi cục bộ bị ghi đè
-```
-
-Biến môi trường đã thêm ở §4 có thể giữ (v1.2.0 hiểu chúng).
 
 ### 10.3 Database — KHÔNG thuộc rollback
 
@@ -327,6 +323,6 @@ khác). Không `docker system prune -a`, không `docker volume prune`.
 | Phần | Trạng thái |
 |---|---|
 | Gói (image archive, bundle, manifest, SHA256SUMS, chữ ký, tài liệu) | do `build` tạo; test tự động `tests/test_offline_package.py` (Cloud) |
-| §2 `docker save` → §3 `sha256sum -c` (gói bị sửa 1 byte bị chặn) → §5 `docker load` + nhãn + tag rollback → §6 bảo trì chỉ loopback → §7 chuyển `DEPLOY_TAG`, `up -d --no-deps … app` → §9 chế độ thường; `docker compose up -d` thường, `docker restart`, recreate giữ image của tag → §10.1 rollback bằng tag; DB container giữ ID, image, mount và dữ liệu suốt quá trình; tag phiên bản trong compose (vi phạm C1) không bị chuyển | chạy trên Docker 29.10 thật (containerd image store, Compose v5), image thay thế tạo bằng `docker commit` từ busybox, Cloud — `tests/test_offline_manual_fallback_real_docker.py` (`CB5400_REAL_DOCKER=1`, 2 passed) |
+| §2 `docker save` → §3 `sha256sum -c` (gói bị sửa 1 byte bị chặn) → §5 `docker load` + nhãn + tag rollback → §6 bảo trì chỉ loopback → §7 chuyển `DEPLOY_TAG`, `up -d --no-deps … app` → §9 chế độ thường; `docker compose up -d` thường, `docker restart`, recreate giữ image của tag → §10.2 rollback bằng tag; DB container giữ ID, image, mount và dữ liệu suốt quá trình; tag phiên bản trong compose (vi phạm C1) không bị chuyển | chạy trên Docker 29.10 thật (containerd image store, Compose v5), image thay thế tạo bằng `docker commit` từ busybox, Cloud — `tests/test_offline_manual_fallback_real_docker.py` (`CB5400_REAL_DOCKER=1`, 2 passed) |
 | Tokenizer offline (`token_utils --check`) | test Cloud với file mã hóa thật đã kiểm SHA-256; image thật: LOCAL (W-FB-04) |
 | Script vận hành, boot guard, SurrealDB thật, image ứng dụng thật, Ubuntu production, quy trình backup / restore của đơn vị | **LOCAL VERIFICATION REQUIRED** (W-FB-01…12) |

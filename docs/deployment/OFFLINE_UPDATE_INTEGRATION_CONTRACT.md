@@ -35,7 +35,7 @@ minh trên Docker 29 thật (phòng thí nghiệm Cloud): `docker tag <id mới>
 | C3 | Biến môi trường phiên bản mới cần (`OCR_OFFLINE=true`, `OCR_RAPIDOCR_PERSISTENT=true`) nằm trong cấu hình cục bộ của đơn vị (override / `.env`); `OCR_LEGAL_NORMALIZATION_ENABLED` vắng hoặc `false` (Legal mặc định OFF). Công cụ **không bao giờ** tiêm biến môi trường và không sửa file của đơn vị. | `docker inspect` container đang chạy (chỉ lọc 3 biến này) | LOCAL (W-INT-03) |
 | C4 | Chế độ bảo trì = một override của đơn vị chỉ bind cổng ứng dụng vào `127.0.0.1` (hoặc chặn truy cập người dùng); cổng LAN / Tailscale cấu hình riêng ở chế độ thường. | `docker port <app>` ở từng chế độ | LOCAL (W-INT-04) |
 | C5 | Boot guard sau khởi động lại máy khởi động bằng **cùng project + file compose** (C1, C2): không hard-code ID / phiên bản image, không `pull`, `build`, `down`, `-v`, không recreate database. | đọc boot guard; khởi động lại máy thử | LOCAL (W-INT-05, W-FB-09) |
-| C6 | Database: mọi lệnh cập nhật / rollback / script vận hành tạo lại ứng dụng với `--no-deps` (hoặc chỉ nêu service ứng dụng); container và volume database giữ nguyên. | so ID container, image, mount trước / sau | Cloud: lab Docker thật; LOCAL (W-INT-06) |
+| C6 | Database: mọi lệnh cập nhật / rollback / script vận hành tạo lại ứng dụng với `--no-deps` **và** chỉ nêu service ứng dụng (Phase 12D9, D8-OFF-15: không còn "hoặc"); container và volume database giữ nguyên. | so ID container, image, mount trước / sau | Cloud: lab Docker thật; LOCAL (W-INT-06) |
 | C7 | Image ứng dụng mang sẵn bộ mã hóa token (`TIKTOKEN_CACHE_DIR=/app/tiktoken-cache`, SHA-256 đúng); trong container đang chạy, kiểm tokenizer báo `PASS` khi không có mạng. | `token_utils.main(["--check"])` trong container | Cloud: test với file thật; LOCAL (W-INT-07) |
 | C8 | Không còn file pin của Phase 12D3 (`docker-compose.offline-pin.yml`) trong danh sách file của script vận hành / boot guard; không còn `image-override.yml` của công cụ trong đó. | đọc script; `status` của công cụ báo file sót lại | LOCAL (W-INT-08) |
 | C9 | Tag rollback: image trước cập nhật được giữ dưới một tên (`chatbot5400:rollback-before-<ver>` khi làm thủ công; tag rollback của công cụ khi tự động) cho tới bản phát hành sau; không chạy `docker image prune -a` / `system prune -a`. | `docker image ls chatbot5400` | LOCAL (W-INT-09) |
@@ -45,7 +45,9 @@ minh trên Docker 29 thật (phòng thí nghiệm Cloud): `docker tag <id mới>
 Script vận hành và boot guard của production không có trong repository. Thay vì đoán, chúng phải
 thỏa **adapter contract** sau (LOCAL VERIFICATION REQUIRED — W-INT-10):
 
-1. `normal`: `docker compose -p <PROJECT> <FILES> up -d` (có thể kèm `--no-deps <app>`), không
+1. `normal`: `docker compose -p <PROJECT> <FILES> up -d --no-deps --no-build --pull never <app>` -
+   `--no-deps` và tên service ứng dụng là **bắt buộc** (Phase 12D9, D8-OFF-15: không có chúng Compose
+   tạo lại cả database khi định nghĩa của nó khác, ví dụ sau §7.1 của quy trình thủ công); không
    `--pull always`, không `--build`, không `down`.
 2. `maintenance`: giống `normal` nhưng thêm override bảo trì (C4) **sau** các file thường.
 3. `status`: chỉ đọc.

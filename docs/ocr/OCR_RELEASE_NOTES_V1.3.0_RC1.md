@@ -49,6 +49,12 @@
 
 ### Gói cập nhật offline
 
+> **Production cập nhật bằng quy trình thủ công**
+> [../deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md](../deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md) (có trong mọi
+> gói, thư mục `docs/`). Công cụ cập nhật **tự động** (`update` / `finish` / `rollback` / `pin`, các script
+> `update.sh` / `finish.sh` / `rollback.sh` / `pin.sh` / `status.sh`) là **EXPERIMENTAL**, không dùng cho
+> production; chính công cụ in cảnh báo này mỗi lần chạy (Phase 12D9, D8-OFF-01 / D8-OFF-02).
+
 - Công cụ `scripts/offline/` để cập nhật máy chủ Ubuntu **không có Internet**: gói gồm Docker image dựng sẵn (Docling,
   EasyOCR, Tesseract, bộ mã hóa token có sẵn trong image), git bundle, manifest, SHA256SUMS, chữ ký tùy chọn; xác
   thực nguồn gốc **trước khi giải nén**, preflight chỉ đọc, mỗi lần cập nhật có backup riêng, cập nhật chỉ tạo lại
@@ -68,12 +74,17 @@
 - **Không có migration**; không đổi dependency.
 - Không có việc bắt buộc: sau nâng cấp mọi thứ chạy như 1.2.0 cho tới khi bật Legal.
 - Tài liệu đã xử lý **không** tự xử lý lại; muốn áp dụng Legal cho tài liệu cũ thì xử lý lại tài liệu đó.
-- Máy chủ offline: [../deployment/OFFLINE_UPDATE_UBUNTU_GUIDE.md](../deployment/OFFLINE_UPDATE_UBUNTU_GUIDE.md).
+- Máy chủ offline (production): quy trình thủ công
+  [../deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md](../deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md). Hướng dẫn công
+  cụ tự động [../deployment/OFFLINE_UPDATE_UBUNTU_GUIDE.md](../deployment/OFFLINE_UPDATE_UBUNTU_GUIDE.md) chỉ dành
+  cho môi trường thử (EXPERIMENTAL).
 
 ## 3. Rollback
 
-[../deployment/OFFLINE_UPDATE_ROLLBACK.md](../deployment/OFFLINE_UPDATE_ROLLBACK.md): Legal → Standard (giao diện hoặc
-cổng), Agri về phiên bản trước, ứng dụng về 1.2.0 (không khôi phục database).
+Production: §10 của [../deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md](../deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md)
+(ứng dụng về 1.2.0, không khôi phục database). Legal → Standard (giao diện hoặc cổng), Agri về phiên bản trước:
+[../deployment/OFFLINE_UPDATE_ROLLBACK.md](../deployment/OFFLINE_UPDATE_ROLLBACK.md) (phần dùng công cụ tự động trong
+đó là EXPERIMENTAL).
 
 ## 4. Giới hạn đã biết
 
@@ -89,7 +100,8 @@ cổng), Agri về phiên bản trước, ứng dụng về 1.2.0 (không khôi 
 6. Chất lượng trên tài liệu thật và với model Agri: [điền sau nghiệm thu Local].
 7. Gói offline chưa có khóa ký chính thức: xác thực bằng SHA-256 qua kênh tin cậy riêng (file `.sha256` đi kèm gói
    không tính). Thư mục triển khai không tự mô tả bản đang chạy: dùng lệnh trong `compose-command.txt`, kiểm bằng
-   `status.sh`, hoặc ghim bằng `pin.sh`. Model OCR không nằm trong gói.
+   `status.sh`, hoặc ghim bằng `pin.sh` (hai script này thuộc công cụ tự động EXPERIMENTAL). Model OCR không nằm
+   trong gói.
 
 ## 5. Kết quả kiểm thử
 
