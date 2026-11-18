@@ -68,6 +68,10 @@ services:
       # Phase 12F: keep RapidOCR weights on the data volume (survive recreate).
       - OCR_RAPIDOCR_PERSISTENT=${OCR_RAPIDOCR_PERSISTENT:-true}
       - OCR_OFFLINE=${OCR_OFFLINE:-false}
+      # Phase 12D9 (E2-04 gate only): the Tesseract executable. Default = the
+      # real one, as before; scripts/ocr/phase12d9_tesseract_fault.sh injects
+      # recognition failures for the local acceptance (test stack only).
+      - OCR_TESSERACT_CMD=${PHASE12_TESSERACT_CMD:-tesseract}
     volumes:
       - ./notebook_data:/app/data
       # Read-only drop folder: vie_agri.traineddata and the PDFs to compare.
