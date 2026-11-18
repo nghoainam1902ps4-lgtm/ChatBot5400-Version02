@@ -435,7 +435,9 @@ def test_page_assembly_is_upstream_except_the_geometry_it_passes():
     assert [ast.unparse(s) for s in o.body[:3]] == [
         "kept_cells = [cell for cell in cluster.cells if len(cell.text.strip()) > 0]",
         "textlines = [cell.text.replace('\\x02', '-').strip() for cell in kept_cells]",
-        "text = self.sanitize_text(textlines, same_line=same_line_flags(kept_cells))",
+        # sanitize_text(textlines, same_line=same_line_flags(kept_cells)), and
+        # the evidence of the Standard gate export (off unless it runs)
+        "text = _assembled_text(self, page, cluster, kept_cells, textlines)",
     ]
     o.body, t.body = o.body[3:], t.body[2:]
     assert _dump(ours) == _dump(theirs)
@@ -459,6 +461,7 @@ def test_merge_elements_is_upstream_except_the_hard_hyphen_branch():
     assert _dump(elif_.test) == _dump(hard)
     assert _dump(elif_.orelse) == _dump(t.orelse)
     assert [ast.unparse(s) for s in elif_.body] == [
+        "_record_merge(new_item, merged_elem)",  # Standard gate evidence (off by default)
         "prov = ProvenanceItem(page_no=prov.page_no, charspan=(len(new_item.text), "
         "len(new_item.text) + len(merged_elem.text)), bbox=prov.bbox)",
         "new_item.text = new_item.text + merged_elem.text",

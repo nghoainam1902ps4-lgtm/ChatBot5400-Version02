@@ -68,7 +68,13 @@ def _model(*words: str) -> list[str]:
 
 def _run(tmp_path, docs, tsv=None, layout=None):
     """docs: name -> (before, after) (None = file absent on that side);
-    tsv: file name (relative to the TSV folder) -> list of words."""
+    tsv: file name (relative to the TSV folder) -> list of words.
+
+    Phase 12D9: every TSV file gets the provenance sidecar the export tool
+    writes (D8-STD-03: evidence names its document, page, crop, invocation,
+    engine and model files - unattested evidence fails the gate), and the run
+    asks for the hunk tokens (``--with-text``: the default report is
+    metadata only). was: TSV files only, default report."""
     before, after, out = tmp_path / "b", tmp_path / "a", tmp_path / "o"
     before.mkdir()
     after.mkdir()
@@ -78,13 +84,32 @@ def _run(tmp_path, docs, tsv=None, layout=None):
         if a is not None:
             (after / f"{name}.md").write_text(a, encoding="utf-8")
     argv = ["--before", str(before), "--after", str(after), "--out", str(out)]
+    argv.append("--with-text")
     if tsv is not None:
         folder = tmp_path / "t"
         folder.mkdir()
-        for rel, words in tsv.items():
+        for n, (rel, words) in enumerate(tsv.items(), 1):
             target = folder / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(_tsv(*words), encoding="utf-8")
+            document = (
+                target.parent.name
+                if target.parent != folder
+                else target.stem.rsplit("_", 1)[0]
+            )
+            target.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "document": document,
+                        "page": 1,
+                        "region": n,
+                        "invocation": f"inv-{n}",
+                        "engine": "tesseract_best",
+                        "model_files": [{"name": "vie.traineddata", "sha256": "0" * 64}],
+                    }
+                ),
+                encoding="utf-8",
+            )
         argv += ["--tsv", str(folder)]
     rc = D.main(argv)
     report = json.loads((out / "standard_diff.json").read_text(encoding="utf-8"))
@@ -170,7 +195,11 @@ def test_control_unrelated_change_beside_a_parser_fix_is_a_regression(tmp_path):
     assert rc == 1
     assert {v["class"] for v in report["documents"].values()} == {D.UNEXPECTED}
     kinds = [h["class"] for h in report["documents"]["doc"]["hunks"]]
-    assert kinds == [D.EXPECTED, D.UNEXPECTED]  # per hunk, never per document
+    # was: kinds == [D.EXPECTED, D.UNEXPECTED]. Phase 12D9 (D8-STD-02, owner
+    # decision): a change is bound to its own crop - the crop "0001 Điều 6" is
+    # mixed, so pandas never printed "1.0" from it: its own evidence contradicts
+    # the first hunk too. Still per hunk, never per document.
+    assert kinds == [D.UNEXPECTED, D.UNEXPECTED]
 
 
 def test_control_deletion_reordering_and_empty_output_are_regressions(tmp_path):
@@ -256,12 +285,7 @@ _STRUCTURE = {
 }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-01: compare() tokenizes with str.split(); a Standard output "
-    "whose BYTES differ but whose whitespace-separated tokens are the same "
-    "(paragraphs merged, heading/table/list structure lost) is 'unchanged', exit 0",
-)
+# was: xfail(strict) D8-STD-01 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 @pytest.mark.parametrize("case", sorted(_STRUCTURE))
 def test_a_byte_difference_is_never_unchanged(tmp_path, case):
     before, after = _STRUCTURE[case]
@@ -277,13 +301,7 @@ def test_a_byte_difference_is_never_unchanged(tmp_path, case):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-02: evidence = set of every level-5 word of every TSV of the "
-    "document; no crop, no position, no count. A candidate that prints the WRONG "
-    "token (leading zeros still lost: 0001 -> 1) is 'expected parser fix' as soon "
-    "as that token occurs anywhere else (the page number 1)",
-)
+# was: xfail(strict) D8-STD-02 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 def test_wrong_new_token_is_not_proven_by_another_word_of_the_document(tmp_path):
     # Raw TSV of the page: the voucher number is 0001 (alone in its crop);
     # the footer holds the page number 1.
@@ -306,13 +324,7 @@ def test_wrong_new_token_is_not_proven_by_another_word_of_the_document(tmp_path)
     assert _cls(report) != D.EXPECTED
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-02: the old parser rewrote a number only when EVERY word of "
-    "its crop was numeric; the classifier is context-free. A real decimal that "
-    "v1.2.0 printed correctly from a mixed crop and the candidate changes "
-    "(2.0 -> 2) is 'expected parser fix' because '2' is the page number",
-)
+# was: xfail(strict) D8-STD-02 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 def test_change_in_a_mixed_crop_is_not_a_parser_fix(tmp_path):
     crop = ["Phiên", "bản", "2.0", "ngày", "ban", "hành"]
     assert _upstream_cells(*crop) == crop  # v1.2.0 printed this crop verbatim
@@ -327,13 +339,7 @@ def test_change_in_a_mixed_crop_is_not_a_parser_fix(tmp_path):
     assert rc == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-02: the 'fixed' example of tests/test_phase12d7_standard_diff.py "
-    "is certified 'expected parser fix' with a TSV (one mixed crop 'Số: 0001 "
-    "ngày 2024') from which real pandas could never produce the old text "
-    "'Số: 1.0 ngày 2024.0'",
-)
+# was: xfail(strict) D8-STD-02 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 def test_the_shipped_example_is_not_explained_by_its_own_evidence(tmp_path):
     crop = ["Số:", "0001", "ngày", "2024"]
     assert _upstream_cells(*crop) == crop  # real pandas: nothing rewritten
@@ -345,11 +351,7 @@ def test_the_shipped_example_is_not_explained_by_its_own_evidence(tmp_path):
     assert _cls(report, "fixed") != D.EXPECTED
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-02: an NA word in the evidence proves any number of inserted "
-    "NA words (set membership, no count)",
-)
+# was: xfail(strict) D8-STD-02 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 def test_one_na_in_the_tsv_does_not_prove_three_inserted_na(tmp_path):
     rc, report = _run(
         tmp_path,
@@ -360,12 +362,7 @@ def test_one_na_in_the_tsv_does_not_prove_three_inserted_na(tmp_path):
     assert _cls(report) != D.EXPECTED
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-03: evidence files are found with rglob('<name>*.tsv'): the "
-    "TSV of ANOTHER document whose name starts with this one's (qd1 / qd10) is "
-    "accepted as proof",
-)
+# was: xfail(strict) D8-STD-03 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 def test_evidence_of_another_document_is_not_used(tmp_path):
     rc, report = _run(
         tmp_path,
@@ -375,12 +372,7 @@ def test_evidence_of_another_document_is_not_used(tmp_path):
     assert _cls(report, "qd1") == D.NOT_VERIFIED
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-03: the checklist (W-12D7-02e) says '--tsv <diagnose folder>'; "
-    "phase12_diagnose.py writes <out>/<document>/01_tesseract_pNNN.tsv, which "
-    "rglob('<name>*.tsv') never matches: every real parser fix stays 'not verified'",
-)
+# was: xfail(strict) D8-STD-03 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 def test_the_documented_diagnose_layout_provides_evidence(tmp_path):
     rc, report = _run(
         tmp_path,
@@ -395,11 +387,7 @@ def test_the_documented_diagnose_layout_provides_evidence(tmp_path):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-04: a document the candidate did not produce at all is "
-    "'not verified' and the run exits 0",
-)
+# was: xfail(strict) D8-STD-04 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 def test_a_document_missing_from_the_candidate_fails_the_run(tmp_path):
     rc, report = _run(
         tmp_path, {"kept": ("Điều 1", "Điều 1"), "lost": ("Điều 1. Lãi suất", None)}
@@ -408,24 +396,14 @@ def test_a_document_missing_from_the_candidate_fails_the_run(tmp_path):
     assert rc != 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-04: no *.md on either side (wrong folder, crashed export) "
-    "prints {} and exits 0",
-)
+# was: xfail(strict) D8-STD-04 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 def test_comparing_nothing_fails_the_run(tmp_path):
     rc, report = _run(tmp_path, {})
     assert report["documents"] == {} and report["summary"] == {}
     assert rc != 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-04: 'not verified' exits 0. Words a stringification bug "
-    "typically prints (nan, None, null, <NA>) are pandas NA words, so inserting "
-    "them anywhere has 'the shape of the parser fix' and is never a regression, "
-    "even when the raw TSV of the document does not contain them",
-)
+# was: xfail(strict) D8-STD-04 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 @pytest.mark.parametrize("word", ["nan", "None", "null", "<NA>"])
 def test_inserted_stringified_null_fails_the_run(tmp_path, word):
     rc, report = _run(
@@ -442,13 +420,7 @@ def test_inserted_stringified_null_fails_the_run(tmp_path, word):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-05: old_parser_form uses Python float(); real pandas differs: "
-    "Unicode digits and integers >= 2**63 are NOT converted, NAN / Nan / +nan are "
-    "neither NA nor numbers (unsafe direction: a rewrite pandas never made has "
-    "'the shape of the parser fix')",
-)
+# was: xfail(strict) D8-STD-05 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 @pytest.mark.parametrize(
     "token",
     ["٣", "１２", "9223372036854775808", "12345678901234567890", "NAN", "Nan", "+nan"],
@@ -458,13 +430,7 @@ def test_old_parser_form_does_not_invent_rewrites(token):
     assert D.old_parser_form(token) == token
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-05: real rewrites the model gets wrong (conservative direction: "
-    "a genuine parser fix is reported as 'unexpected regression'): integers go "
-    "through int64 (-0 -> 0.0), pandas' float parser is not correctly rounded "
-    "(0.30000000000000004 -> 0.3), booleans are case-insensitive (tRue -> True)",
-)
+# was: xfail(strict) D8-STD-05 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 @pytest.mark.parametrize(
     "token",
     ["-0", "0.30000000000000004", "63170669074391.50008063608", "tRue"],
@@ -475,12 +441,7 @@ def test_old_parser_form_matches_real_pandas(token):
     assert [D.old_parser_form(token)] == real
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-STD-05: a parser fix inside a Markdown table changes the column "
-    "width: Docling's padded separator row gets a different token, which is an "
-    "'unexpected regression' (false alarm in the normal path for vouchers / tables)",
-)
+# was: xfail(strict) D8-STD-05 - fixed in Phase 12D9 (scripts/ocr/phase12_standard_diff.py v2)
 def test_a_parser_fix_inside_a_table_is_not_a_regression(tmp_path):
     pytest.importorskip("docling_core")
     from docling_core.types.doc.document import DoclingDocument, TableCell, TableData

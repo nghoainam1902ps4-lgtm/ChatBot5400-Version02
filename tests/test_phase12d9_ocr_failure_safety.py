@@ -933,7 +933,8 @@ def test_the_ocr_loop_is_upstream_except_the_two_e2_04_changes():
         if isinstance(n, ast.Assign) and "_recognize_region" in ast.unparse(n)
     ]
     assert [ast.unparse(n) for n in o_rec] == [
-        "df_result = _recognize_region(self, fname, df_osd, page=page, region=ocr_rect_i)"
+        "df_result = _recognize_region(self, fname, df_osd, page=page, "
+        "region=ocr_rect_i, rect=ocr_rect)"
     ]
 
     class Swap(ast.NodeTransformer):

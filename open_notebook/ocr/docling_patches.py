@@ -70,6 +70,7 @@ import importlib
 import importlib.metadata
 import inspect
 import io
+import json
 import os
 import re
 import subprocess
@@ -125,6 +126,9 @@ def read_tesseract_tsv(decoded_data: str) -> Any:
     """Tesseract's TSV as a DataFrame: ``text`` verbatim, other columns as upstream."""
     import pandas as pd
 
+    raw = getattr(_capture, "raw", None)
+    if raw is not None:  # evidence capture (the Standard gate's export only)
+        raw.append(decoded_data)
     header = decoded_data.split("\n", 1)[0].rstrip("\r").split("\t")
     others = [c for c in header if c != TEXT_COLUMN]
     return pd.read_csv(
@@ -494,7 +498,7 @@ def _engine_label(model: Any) -> str:
 
 
 def _recognize_region(
-    model: Any, fname: str, df_osd: Any, *, page: Any, region: int
+    model: Any, fname: str, df_osd: Any, *, page: Any, region: int, rect: Any = None
 ) -> Any:
     """``model._run_tesseract`` with the bounded retry of E2-04; raises
     OcrRegionError when the region cannot be recognised."""
@@ -504,7 +508,17 @@ def _recognize_region(
     while True:
         attempt += 1
         try:
-            return model._run_tesseract(fname, df_osd)
+            sink = _evidence
+            if sink is None:
+                return model._run_tesseract(fname, df_osd)
+            _capture.raw = []
+            try:
+                result = model._run_tesseract(fname, df_osd)
+                raws = list(_capture.raw)
+            finally:
+                _capture.raw = None
+            sink.tesseract(model, page, region, rect, attempt, raws)
+            return result
         except (
             subprocess.CalledProcessError,
             subprocess.TimeoutExpired,
@@ -636,7 +650,12 @@ def _tesseract_call(self: Any, conv_res: Any, page_batch: Any) -> Any:
                             )
                             high_res_image.save(fname)
                         df_result = _recognize_region(
-                            self, fname, df_osd, page=page, region=ocr_rect_i
+                            self,
+                            fname,
+                            df_osd,
+                            page=page,
+                            region=ocr_rect_i,
+                            rect=ocr_rect,
                         )
                     finally:
                         if os.path.exists(fname):
@@ -1062,6 +1081,17 @@ def _sanitize_text(self: Any, lines: list[str], same_line: Any = None) -> str:
     return sanitized_text.strip()  # Strip any leading or trailing whitespace
 
 
+def _assembled_text(
+    model: Any, page: Any, cluster: Any, kept_cells: list[Any], textlines: list[str]
+) -> str:
+    """The text of one region: the patched join, given the cells' geometry."""
+    text = model.sanitize_text(textlines, same_line=same_line_flags(kept_cells))
+    sink = _evidence
+    if sink is not None:
+        sink.element(model, page, cluster, kept_cells, text)
+    return text
+
+
 def _page_assemble_call(self: Any, conv_res: Any, page_batch: Any) -> Any:
     """Upstream docling 2.129.0 ``PageAssembleModel.__call__`` except that the
     text join of a region is given the geometry of its cells (D8-03)."""
@@ -1105,8 +1135,8 @@ def _page_assemble_call(self: Any, conv_res: Any, page_batch: Any) -> Any:
                             cell.text.replace("\x02", "-").strip()
                             for cell in kept_cells
                         ]
-                        text = self.sanitize_text(
-                            textlines, same_line=same_line_flags(kept_cells)
+                        text = _assembled_text(
+                            self, page, cluster, kept_cells, textlines
                         )
                         hyperlink = self._match_hyperlink(cluster.bbox, page)
                         text_el = TextElement(
@@ -1214,6 +1244,7 @@ def _merge_elements(
         and continuation_text[0].islower()
     ):
         # D8-03: upstream removed this hyphen. It is kept; no separator.
+        _record_merge(new_item, merged_elem)
         prov = ProvenanceItem(
             page_no=prov.page_no,
             charspan=(len(new_item.text), len(new_item.text) + len(merged_elem.text)),
@@ -1269,11 +1300,11 @@ def attached_footnotes(
             continue
         if isinstance(visited, set):
             visited.add(done)
-        out.append(
-            create_ser_result(
-                text=doc_serializer.post_process(text=note.text), span_source=note
-            )
-        )
+        written = doc_serializer.post_process(text=note.text)
+        sink = _evidence
+        if sink is not None:
+            sink.footnote(note, written)
+        out.append(create_ser_result(text=written, span_source=note))
     return out
 
 
@@ -1297,3 +1328,238 @@ def _with_attached_footnotes(upstream: Any) -> Any:
         )
 
     return serialize
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12D9 (D8-STD-03): the evidence of ONE conversion, for the Standard gate
+# --------------------------------------------------------------------------- #
+#
+# Only ``scripts/ocr/phase12d9_standard_export.py`` turns this on (no setting,
+# no environment variable: production never records anything). Inside
+# ``with evidence_capture(folder, name):`` every Docling conversion of the
+# process writes, for the Standard expected-diff gate:
+#   tesseract/<page>_<region>_<n>.tsv + .json  the raw TSV of each Tesseract
+#       invocation (the same bytes Docling parsed) and its provenance -
+#       document, page, region, bbox, invocation, attempt, language, model
+#       files with their SHA-256;
+#   elements.jsonl  per text region (every engine, PDF text layers too): page,
+#       label, bbox, the text the candidate assembled and the text v1.2.0's code
+#       made of the same cells (Docling 2.129.0's pandas parse of the crop, its
+#       sanitize_text);
+#   merges.jsonl    Docling's block joins whose hyphen the patch keeps;
+#   footnotes.jsonl the table / picture footnotes the patch writes.
+# The files hold document text: owner-only permissions (0700 / 0600), local;
+# nothing is logged, uploaded or committed.
+
+_evidence: Optional["EvidenceSink"] = None
+_capture = threading.local()
+
+
+def _private_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+
+
+class EvidenceSink:
+    def __init__(self, folder: Path, document: str) -> None:
+        self.folder, self.document = Path(folder), document
+        self.lock = threading.Lock()
+        self.count = 0
+        self.crops: dict[int, list[tuple[Any, dict[str, Optional[str]]]]] = {}
+        self.model_sha: dict[str, str] = {}
+        _private_dir(self.folder)
+
+    def _write(self, rel: str, text: str, append: bool = False) -> None:
+        path = self.folder / rel
+        _private_dir(path.parent)
+        flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if append else os.O_TRUNC)
+        fd = os.open(path, flags, 0o600)
+        with os.fdopen(fd, "a" if append else "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def _line(self, rel: str, record: dict[str, Any]) -> None:
+        self._write(rel, json.dumps(record, ensure_ascii=False) + "\n", append=True)
+
+    def _models(self, model: Any) -> list[dict[str, Any]]:
+        folder = getattr(model, "_safe_tessdata_path", None) or os.environ.get(
+            "TESSDATA_PREFIX"
+        )
+        out = []
+        for lang in getattr(model, "_native_codes", None) or []:
+            path = Path(str(folder or "")) / f"{lang}.traineddata"
+            key = str(path)
+            if key not in self.model_sha:
+                try:
+                    self.model_sha[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+                except OSError:
+                    self.model_sha[key] = "unreadable"
+            out.append({"name": lang, "sha256": self.model_sha[key]})
+        return out
+
+    def tesseract(
+        self,
+        model: Any,
+        page: Any,
+        region: int,
+        rect: Any,
+        attempt: int,
+        raws: list[str],
+    ) -> None:
+        bbox = None
+        if rect is not None:
+            bbox = [
+                rect.l,
+                rect.t,
+                rect.r,
+                rect.b,
+                str(getattr(rect, "coord_origin", "")),
+            ]
+        for raw in raws:
+            with self.lock:
+                self.count += 1
+                n = self.count
+                models = self._models(model)
+            stem = f"tesseract/{int(page.page_no):04d}_{region + 1:03d}_{n:06d}"
+            self._write(stem + ".tsv", raw)
+            self._write(
+                stem + ".json",
+                json.dumps(
+                    {
+                        "schema": "chatbot5400-ocr-evidence/1",
+                        "document": self.document,
+                        "page": int(page.page_no),
+                        "region": region + 1,
+                        "bbox": bbox,
+                        "invocation": f"{int(page.page_no):04d}-{region + 1:03d}-{n:06d}",
+                        "attempt": attempt,
+                        "engine": _engine_label(model),
+                        "model_files": models,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+            if rect is not None:
+                with self.lock:
+                    self.crops.setdefault(int(page.page_no), []).append(
+                        (rect, _old_forms(raw))
+                    )
+
+    def element(
+        self, model: Any, page: Any, cluster: Any, cells: list[Any], text: str
+    ) -> None:
+        with self.lock:
+            crops = list(self.crops.get(int(page.page_no), []))
+        old: list[str] = []
+        for cell in cells:
+            value: Optional[str] = cell.text.replace("\x02", "-").strip()
+            if getattr(cell, "from_ocr", False):
+                forms = _crop_of(cell, crops)
+                if forms is not None and value in forms:
+                    value = forms[value]
+            if value:
+                old.append(value)
+        v120 = text_upstream("sanitize_text")(model, old)
+        box = cluster.bbox
+        self._line(
+            "elements.jsonl",
+            {
+                "page": int(page.page_no),
+                "cluster": int(cluster.id),
+                "label": str(getattr(cluster.label, "value", cluster.label)),
+                "bbox": [box.l, box.t, box.r, box.b],
+                "text": text,
+                "v120_text": v120,
+            },
+        )
+
+    def merge(self, record: dict[str, Any]) -> None:
+        self._line("merges.jsonl", record)
+
+    def footnote(self, note: Any, written: str) -> None:
+        prov = (getattr(note, "prov", None) or [None])[0]
+        self._line(
+            "footnotes.jsonl",
+            {"page": getattr(prov, "page_no", None), "text": written, "v120_text": ""},
+        )
+
+
+def _old_forms(raw: str) -> dict[str, Optional[str]]:
+    """raw cell text -> what Docling 2.129.0's pandas parse made of it in THIS
+    crop (None: dropped)."""
+    import pandas as pd
+
+    df = pd.read_csv(io.StringIO(raw), quoting=csv.QUOTE_NONE, sep="\t")
+    upstream = df[df["text"].notna() & (df["text"].apply(str).str.strip() != "")]
+    ours = read_tesseract_tsv_plain(raw)
+    forms: dict[str, Optional[str]] = {}
+    for i, row in ours.iterrows():
+        text = str(row["text"])
+        if not text.strip():
+            continue
+        forms[text.strip()] = (
+            str(upstream.loc[i, "text"]).strip() if i in upstream.index else None
+        )
+    return forms
+
+
+def read_tesseract_tsv_plain(decoded_data: str) -> Any:
+    """read_tesseract_tsv without the evidence capture."""
+    saved = getattr(_capture, "raw", None)
+    _capture.raw = None
+    try:
+        return read_tesseract_tsv(decoded_data)
+    finally:
+        _capture.raw = saved
+
+
+def _crop_of(cell: Any, crops: list[tuple[Any, dict[str, Optional[str]]]]) -> Any:
+    try:
+        box = cell.rect.to_bounding_box().to_top_left_origin(10**9)
+    except Exception:  # noqa: BLE001
+        return None
+    cx, cy = (box.l + box.r) / 2, (box.t + box.b) / 2
+    for rect, forms in crops:
+        if rect.l <= cx <= rect.r and rect.t <= cy <= rect.b:
+            return forms
+    return None
+
+
+def _record_merge(new_item: Any, merged_elem: Any) -> None:
+    sink = _evidence
+    if sink is None:
+        return
+    head = new_item.text.split()
+    cont = merged_elem.text.split()
+    if not head or not cont:
+        return
+    sink.merge(
+        {
+            "page": getattr(merged_elem, "page_no", None),
+            "text": head[-1] + cont[0],
+            "v120_text": head[-1][:-1] + cont[0],
+        }
+    )
+
+
+class evidence_capture:  # noqa: N801 - used like a function
+    """``with evidence_capture(folder, document):`` - record the evidence of
+    the conversion(s) run in the block (Standard gate export only)."""
+
+    def __init__(self, folder: Path, document: str) -> None:
+        self.sink = EvidenceSink(Path(folder), document)
+
+    def __enter__(self) -> EvidenceSink:
+        global _evidence
+        with _lock:
+            if _evidence is not None:
+                raise RuntimeError("an evidence capture is already running")
+            _evidence = self.sink
+        return self.sink
+
+    def __exit__(self, *exc: Any) -> None:
+        global _evidence
+        with _lock:
+            _evidence = None
