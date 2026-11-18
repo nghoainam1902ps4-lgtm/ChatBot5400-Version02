@@ -115,10 +115,9 @@ def test_diagnose_writes_every_layer(stub_conversion, fixture_pdfs, tmp_path):
     assert summary["ground_truth"]["legal"]["cer"] == 0.0
     assert summary["ground_truth"]["standard"]["cer"] > 0.0
     report = json.loads((out / "09_legal_report.json").read_text(encoding="utf-8"))
-    assert any(
-        op["op"] == "join_across_pages" and op["text_before"]
-        for op in report["operations"]
-    )
+    # Phase 12D7: Legal makes no cross-page join (was: one join_across_pages op)
+    assert not any(op["op"] == "join_across_pages" for op in report["operations"])
+    assert any(op["op"] == "page_number_to_furniture" for op in report["operations"])
     assert (out.stat().st_mode & 0o077) == 0  # owner-only folder
     env = json.loads((out / "00_environment.json").read_text(encoding="utf-8"))
     assert "Dịch vụ" not in json.dumps(
@@ -195,7 +194,7 @@ def test_compare_one_command(stub_conversion, fixture_pdfs, tmp_path):
     assert (
         row["placeholders_standard"] == 0
         and row["placeholders_legal"] == 0
-        and row["joins"] == 1
+        and row["joins"] == 0  # Phase 12D7: no cross-page join (was 1)
         and row["page_numbers_removed"] == 5
     )
     assert row["cer_legal"] == 0.0  # <name>.gt.txt picked up automatically

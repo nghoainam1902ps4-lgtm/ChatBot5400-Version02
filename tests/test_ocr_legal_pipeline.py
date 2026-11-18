@@ -216,7 +216,7 @@ def test_convert_file_legal(converted):
     assert out != doc.export_to_markdown()
     assert meta["legal_normalization_status"] == "applied"
     assert meta["legal_normalizer_version"] == legal_normalizer.NORMALIZER_VERSION
-    assert meta["legal_normalization_counts"]["join_across_pages"] == 1
+    assert meta["legal_normalization_counts"].get("join_across_pages", 0) == 0  # 12D7
 
 
 def test_convert_file_legal_failure_keeps_standard(converted, monkeypatch):
@@ -423,7 +423,7 @@ async def test_source_graph_stores_normalized_text_and_embeds_it(
     record = saved["source"].asset.extraction
     assert record["mode"] == "legal" and record["status"] == "applied"
     assert record["version"] == legal_normalizer.NORMALIZER_VERSION
-    assert record["counts"]["join_across_pages"] == 1
+    assert record["counts"].get("join_across_pages", 0) == 0  # Phase 12D7: no join
     assert "Dịch vụ" not in repr(record)
     # F-17: what is stored is what is displayed - no Markdown escape of markers
     assert "9. Dịch vụ phi tài chính" in saved["source"].full_text

@@ -205,7 +205,10 @@ def test_verified_original_fixtures_lose_no_body_text_under_v110(fixture):
 
 def test_verified_what_the_remediation_gave_up_on_the_original_fixtures():
     """The original expectations that v1.1.0 no longer meets are all in the safe
-    direction: 2 joins not made, 15 page numbers / 1 running header kept."""
+    direction: 2 joins not made, 15 page numbers / 1 running header kept.
+    Phase 12D7 (owner decision, E1-09): NO cross-page join is made any more, so
+    every original must_join expectation is given up - still the safe direction
+    (two paragraphs instead of one); the artifacts kept are unchanged."""
     joins_not_made, artifacts_kept = [], []
     for fixture in OLD:
         doc = H.build_document(fixture)
@@ -220,10 +223,8 @@ def test_verified_what_the_remediation_gave_up_on_the_original_fixtures():
             for a in fixture.get("absent_lines") or []
             if a in legal
         ]
-    assert sorted({n for n, _ in joins_not_made}) == [
-        "f02_clause_across_pages",
-        "f03_missing_word_not_invented",
-    ]
+    with_joins = sorted({f["name"] for f in OLD if f.get("must_join")})
+    assert sorted({n for n, _ in joins_not_made}) == with_joins  # was: f02, f03 only
     assert len(artifacts_kept) == 15
     assert {n for n, _ in artifacts_kept} == {
         "f02_clause_across_pages", "f03_missing_word_not_invented", "f07_parts_chapters_sections",

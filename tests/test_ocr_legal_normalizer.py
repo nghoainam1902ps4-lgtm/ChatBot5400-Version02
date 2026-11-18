@@ -228,12 +228,17 @@ def test_artifacts_removed_when_the_evidence_is_sufficient(built, name):
         assert line not in lines, line
 
 
+# Phase 12D7 (owner decision after Windows finding E1-09): Legal never joins
+# across pages. was: test_joins_made_when_the_evidence_is_sufficient. The
+# fixtures still DECLARE which joins the old rules made (ground truth unchanged);
+# none is made now and no content is lost (test_no_false_deletion_merge_or_insertion).
 @pytest.mark.parametrize("name", _with("expect_joined"))
-def test_joins_made_when_the_evidence_is_sufficient(built, name):
+def test_no_cross_page_join_even_where_the_old_rules_joined(built, name):
     fx, _, _, res = built[name]
     lines = H.legal_lines(res.content)
+    assert res.counts.get("join_across_pages", 0) == 0
     for line in fx["expect_joined"]:
-        assert line in lines, line
+        assert line not in lines, line  # never one paragraph across the page break
 
 
 @pytest.mark.parametrize("name", _with("must_not_join", "forbidden"))
@@ -363,11 +368,14 @@ def test_reported_case_khoan_9_with_sufficient_evidence(built):
     _, _, standard, res = built["f33_five_pages_real_page_numbers_and_join"]
     assert "\n\n6\n\n" in standard
     lines = H.legal_lines(res.content)
+    # was: the two halves joined into one sentence (Phase 12D7: no cross-page join)
     assert (
         "9. Dịch vụ phi tài chính là dịch vụ không làm thay đổi số dư trên tài khoản của khách hàng."
-        in lines
+        not in lines
     )
-    assert res.counts["join_across_pages"] == 1
+    assert "9. Dịch vụ phi tài chính là dịch vụ không làm thay đổi số" in lines
+    assert "dư trên tài khoản của khách hàng." in lines
+    assert res.counts.get("join_across_pages", 0) == 0
     assert res.counts["page_number_to_furniture"] == 5
 
 
@@ -590,10 +598,15 @@ def _b(text="các quy định khác của ngân hàng.", **kw):
     return FX.E("text", text, **kw)
 
 
-def test_join_baseline_is_made():
-    res = N.normalize_document(_join_case(_a(), _b()))
-    assert res.counts.get("join_across_pages") == 1
-    assert "đã ký và các quy định khác của ngân hàng." in res.content
+def test_join_baseline_is_not_made():
+    """was: test_join_baseline_is_made. Phase 12D7: the cut paragraph stays as two
+    paragraphs, in reading order; nothing is joined, nothing hidden."""
+    a, b = _a(), _b()
+    res = N.normalize_document(_join_case(a, b))
+    assert res.counts.get("join_across_pages", 0) == 0
+    lines = H.legal_lines(res.content)
+    assert a["text"] in lines and b["text"] in lines
+    assert lines.index(a["text"]) < lines.index(b["text"])
 
 
 @pytest.mark.parametrize(
@@ -624,6 +637,52 @@ def _join_case(a, b, extra_p1=(), extra_p2=(), pages_before=3, footers=True):
             [b, *extra_p2, *foot(5)],
         ]
     )
+
+
+def test_doclings_cross_page_merge_is_split_back_even_when_the_rules_accept_it():
+    """Phase 12D7 (E1-09), join type B: Docling itself joined the paragraph across
+    the page break (its rule: ASCII lowercase end + letter start). The provenance
+    char spans prove the two parts, so Legal shows them apart as printed; the old
+    rules accepted this continuation and kept Docling's join. Standard keeps it
+    (v1.2.0 behaviour)."""
+    a = _a("Khách hàng thực hiện theo quy định của pháp luật hiện hành")
+    b = _b("và các văn bản hướng dẫn của ngân hàng.")
+    doc = _join_case(a, b)
+    merged = f"{a['text']} {b['text']}"
+    assert merged in doc.export_to_markdown()  # Docling's own merge
+    res = N.normalize_document(doc)
+    lines = H.legal_lines(res.content)
+    assert a["text"] in lines and b["text"] in lines
+    assert merged not in res.content
+    assert res.counts.get("upstream_merge_undone", 0) >= 1
+    assert res.counts.get("join_across_pages", 0) == 0
+
+
+E1_09 = {
+    # the three shapes the old rules joined on real scans (Windows, Phase 12E1)
+    "point whose marker OCR lost": (
+        "a) giấy đề nghị vay vốn theo mẫu của ngân hàng",
+        "phương án sử dụng vốn khả thi;",
+    ),
+    "unit line damaged by OCR": (
+        "Bảng 2. Dư nợ cho vay theo kỳ hạn của chi nhánh",
+        "đvt- triệu đồng",
+    ),
+    "running title in lowercase at the top of the page": (
+        "Điều 4. Chi nhánh thực hiện báo cáo định kỳ theo",
+        "quy định cho vay đối với khách hàng cá nhân",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(E1_09))
+def test_e1_09_real_scan_shapes_are_never_one_paragraph(case):
+    first, second = E1_09[case]
+    res = N.normalize_document(_join_case(_a(first), _b(second)))
+    lines = H.legal_lines(res.content)
+    assert first in lines and second in lines, case
+    assert not any(first in line and second in line for line in lines), case
+    assert res.counts.get("join_across_pages", 0) == 0
 
 
 @pytest.mark.parametrize(
@@ -664,22 +723,21 @@ def _join_case(a, b, extra_p1=(), extra_p2=(), pages_before=3, footers=True):
     ],
 )
 def test_join_refused_and_reason_reported(case, a, b, reason):
+    """Phase 12D7: no join is attempted any more, so no refusal reason either
+    (was: the near-miss reason in a join_not_made warning)."""
     footers = "no footer marked" not in case
     res = N.normalize_document(_join_case(a, b, footers=footers), include_text=True)
     assert "join_across_pages" not in res.counts, case
     lines = H.legal_lines(res.content)
     assert a["text"] in lines and b["text"] in lines, case
-    refused = [w for w in res.warnings if w["code"] == "join_not_made"]
-    if reason is None:
-        assert not refused, case
-    else:
-        assert any(reason in w["reason"] for w in refused), (case, refused)
+    assert not [w for w in res.warnings if w["code"] == "join_not_made"], case
 
 
-def test_single_line_at_the_page_bottom_is_joined_when_the_layout_marks_the_footer_below_it():
-    """f24's situation: the layout model itself separated the footer from the last body line."""
+def test_single_line_at_the_page_bottom_is_not_joined_either():
+    """f24's situation (the layout model separated the footer from the last body
+    line). was: ..._is_joined_when_the_layout_marks_the_footer_below_it."""
     res = N.normalize_document(_join_case(_a(y=765, h=14), _b(), footers=True))
-    assert res.counts.get("join_across_pages") == 1
+    assert res.counts.get("join_across_pages", 0) == 0
 
 
 def test_join_refused_across_a_table_a_picture_and_a_blank_page():
@@ -1021,11 +1079,12 @@ def _time(doc):
     return best, res
 
 
-def test_many_joins_scale_linearly():
-    """F-10: 300 pages with a join on every page; doubling the pages must not triple the time."""
+def test_many_cut_paragraphs_scale_linearly():
+    """F-10: 300 pages with a paragraph cut on every page (was: a join on every
+    page - none since Phase 12D7); doubling the pages must not triple the time."""
     half, res_half = _time(_big(150))
     full, res_full = _time(_big(300))
-    assert res_full.counts["join_across_pages"] == 299
+    assert res_full.counts.get("join_across_pages", 0) == 0
     assert res_full.counts["page_number_to_furniture"] == 300
     assert full <= 2.6 * half + 0.5, (half, full)
     assert full < 20
@@ -1062,9 +1121,9 @@ def test_undoing_upstream_merges_scales_linearly():
     assert full < 20
 
 
-def test_large_document_with_tables_pictures_and_joins():
+def test_large_document_with_tables_pictures_and_cut_paragraphs():
     took, res = _time(_big(300, pictures=True, tables=True))
-    assert res.counts["join_across_pages"] == 299
+    assert res.counts.get("join_across_pages", 0) == 0  # Phase 12D7
     assert res.counts["image_placeholder_dropped"] == 300
     assert res.content.count("|------|------|------|") == 300  # every table still there
     assert took < 30

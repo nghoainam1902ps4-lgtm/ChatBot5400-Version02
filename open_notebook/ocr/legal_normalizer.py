@@ -11,7 +11,7 @@ is a blemish; deleting a year, a clause or voucher number, or creating a
 sentence the document does not contain, is a defect. Whenever the evidence is
 missing the item stays as it is and a warning says so.
 
-What it does (version 1.2.0, Phase 12D5):
+What it does (version 1.3.0, Phase 12D7):
 
 1. PAGE NUMBERS labelled TEXT by the layout model go to the furniture layer
    (where Docling itself puts PAGE_HEADER / PAGE_FOOTER) only when ALL hold:
@@ -36,24 +36,23 @@ What it does (version 1.2.0, Phase 12D5):
    picture was read), with a located warning (``picture_without_text`` /
    ``picture_text_unverified``). OCR text Docling placed INSIDE a picture is kept
    (``traverse_pictures``); the standard export drops it.
-4. A PARAGRAPH CUT BY A PAGE BREAK is joined to its continuation only when
-   every rule of ``_pair_refusal`` passes - among them: the next page has ONE
-   candidate first line, the page before ONE unfinished paragraph (a footnote
-   under the cut paragraph is never the left part), and the first line does not
-   open a new unit (clause, point - also as OCR damages it: "c )", "a,", "a-",
-   "o " -, a date line, a unit line, "trong đó:", a web address, "trang n/m").
-   The refusal reason of a near miss is reported (``join_not_made``). One space
-   is the only character ever added.
+4. NO CROSS-PAGE JOIN (Phase 12D7, owner decision after finding E1-09): this
+   normalizer never joins a paragraph to text on another page. On real scans
+   the rules that decided it joined a point whose marker OCR had lost, a unit
+   line and a running title (3 of 4 counter-examples): the two parts stay as
+   two paragraphs in the verified reading order. No sentence is ever created.
 5. DOCLING'S OWN MERGE (R2-01): Docling joins a TEXT ending in [a-z,-] with the
    next TEXT starting with a letter - across pages, across columns, over tables,
    pictures and footers - and drops the hyphen before a lowercase continuation.
-   The provenance char spans show exactly where the parts were joined. A join
-   the rules of point 4 would refuse is UNDONE: the item is split back into its
-   parts, from their recorded spans, at their own reading position
-   (``upstream_merge_undone``). A removed hyphen cannot be restored from the
-   document (it was "-" or a soft hyphen): the text is kept and
-   ``upstream_dehyphenation`` names the pages. Spans that do not add up are
-   left alone and reported (``upstream_merge_kept``).
+   The provenance char spans show exactly where the parts were joined (direct
+   evidence). A join ACROSS A PAGE BREAK is always undone when the spans add up
+   (point 4); a join WITHIN a page (columns) is undone when the join rules of
+   ``_pair_refusal`` refuse it. The item is split back into its parts, from their
+   recorded spans, at their own reading position (``upstream_merge_undone``).
+   A removed hyphen is put back only when the pipeline's own pre-merge element
+   text shows it; otherwise the text is kept and ``upstream_dehyphenation``
+   names the pages. Spans that do not add up are left alone and reported
+   (``upstream_merge_kept``) - content is kept, its join is not verified.
 6. LIST ITEMS are written with their ORIGINAL marker ("9.", "a)", "đ)", "1.1",
    "-") as plain text, one paragraph each; an item without a recognised marker
    is never given a synthesised number.
@@ -86,7 +85,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
-NORMALIZER_VERSION = "1.2.0"
+NORMALIZER_VERSION = "1.3.0"
 
 MODE_STANDARD = "standard"
 MODE_LEGAL = "legal"
@@ -1375,13 +1374,16 @@ def _undo_upstream_merges(
     warnings: list[dict[str, Any]],
     budget: _Budget,
 ) -> int:
-    """Split back Docling's merges that the join rules refuse (R2-01).
+    """Split back Docling's merges (R2-01; E1-09 in Phase 12D7).
 
-    A space join is undone from the recorded spans: the parts are exactly the
-    texts Docling joined. A removed hyphen is restored only when the source
-    evidence (the element's own text) shows it; otherwise the item is left as
-    Docling made it and ``upstream_dehyphenation`` names the pages. Returns the
-    number of items created.
+    Across a page break: always, when the recorded spans add up (direct
+    evidence) - Legal mode never presents text of two pages as one paragraph.
+    Within a page: when the join rules refuse the join. A space join is undone
+    from the recorded spans: the parts are exactly the texts Docling joined. A
+    removed hyphen is restored only when the source evidence (the element's own
+    text) shows it; otherwise the item is left as Docling made it and
+    ``upstream_dehyphenation`` names the pages. Returns the number of items
+    created.
     """
     items = _body_items(work)
     geo = _Geometry(work, items)
@@ -1419,6 +1421,9 @@ def _undo_upstream_merges(
                 # The part ended with "-" / a soft hyphen that Docling removed: the
                 # rules never join across a hyphen (it may belong to the text).
                 reason: str | None = "the first part ended with a hyphen"
+            elif parts[i].page != parts[i + 1].page:
+                # E1-09 (Phase 12D7): no paragraph spans a page break in Legal mode.
+                reason = "the parts are on different pages"
             else:
                 reason, _ = _pair_refusal(parts[i], parts[i + 1], ctx)
             if reason is None:
@@ -1453,7 +1458,8 @@ def _undo_upstream_merges(
             continue
         record(
             "upstream_merge_undone",
-            "Docling joined unrelated blocks; split back at the recorded char spans",
+            "Docling's join split back at the recorded char spans (across a page break, "
+            "or refused by the join rules)",
             [item],
             text,
             "",
@@ -1463,8 +1469,9 @@ def _undo_upstream_merges(
             {
                 "code": "upstream_merge_undone",
                 "pages": pages[:50],
-                "reason": "Docling had joined these blocks into one paragraph; the join rules "
-                "refuse it, so the blocks are shown apart again, each with its own text",
+                "reason": "Docling had joined these blocks into one paragraph (across a page "
+                "break, or a join the rules refuse): they are shown apart again, each with its "
+                "own text",
             }
         )
     return created
@@ -1656,79 +1663,35 @@ def normalize_document(
 
     # 3. Pictures.
     drop_pictures, kept_pictures = _classify_pictures(items, work, geo, T)
-    silent = {id(p) for p, _ in drop_pictures}
     budget.check("pictures")
 
-    # 4. Cross-page joins (skipping only removed artifacts / dropped pictures).
-    ctx = _JoinContext(items, work, geo, T, removed=artifacts | silent)
-    position = {id(i): n for n, i in enumerate(items)}
-    real = [i for i in items if id(i) not in artifacts and id(i) not in silent]
+    # 4. No cross-page join (Phase 12D7, E1-09): the paragraphs of two pages stay
+    # apart, in the verified reading order. Nothing is joined, nothing hidden.
+    # Only a word cut by a hyphen at the break is pointed out (content unchanged).
     joined: list[Any] = []
     joined_ids: set[int] = set()
-    kept_real: list[Any] = []  # `real` without the parts joined into their predecessor
-    for b in real:
-        if len(kept_real) % 2000 == 0:
-            budget.check("joins")
-        a = kept_real[-1] if kept_real else None
-        if a is None or not _provs(a) or not _provs(b):
-            kept_real.append(b)
+    previous = None
+    for item in items:
+        if id(item) in artifacts or not _provs(item):
             continue
-        reason, near_miss = _pair_refusal(
-            _part(a, _provs(a)[-1], getattr(a, "text", "") or "", geo, work, T),
-            _part(b, _provs(b)[0], getattr(b, "text", "") or "", geo, work, T),
-            ctx,
-        )
-        if reason is None:
-            between = [
-                x
-                for x in items[position[id(a)] + 1 : position[id(b)]]
-                if id(x) not in joined_ids
-            ]
-            pages_ab = {int(_provs(a)[-1].page_no), int(_provs(b)[0].page_no)}
-            if any(int(p.page_no) not in pages_ab for x in between for p in _provs(x)):
-                reason, near_miss = (
-                    "something on another page lies between the two parts",
-                    True,
-                )
-        if reason is not None:
-            if near_miss:
-                code = (
-                    "hyphen_at_page_break_not_joined"
-                    if "hyphen" in reason
-                    else "join_not_made"
-                )
+        if previous is not None:
+            end = (getattr(previous, "text", "") or "").rstrip()
+            p1, p2 = int(_provs(previous)[-1].page_no), int(_provs(item)[0].page_no)
+            if (
+                p1 != p2
+                and len(end) > 1
+                and end[-1] in ("-", "\u00ad")
+                and end[-2].isalpha()
+            ):
                 warnings.append(
                     {
-                        "code": code,
-                        "pages": sorted(
-                            {int(p.page_no) for p in _provs(a)[-1:] + _provs(b)[:1]}
-                        ),
-                        "reason": reason,
+                        "code": "hyphen_at_page_break_not_joined",
+                        "pages": [p1, p2],
+                        "reason": "a word is cut by a hyphen at the page break; Legal mode does "
+                        "not join across pages, so the two parts stay apart with the hyphen",
                     }
                 )
-            kept_real.append(b)
-            continue
-        before = f"{a.text}\n\n{b.text}"
-        left = (a.text or "").rstrip()
-        base = len(left) + 1
-        first_b = int(_provs(b)[0].charspan[0])
-        for p in _provs(b):  # Docling's span arithmetic: the next run reads it back
-            p.charspan = (
-                base + int(p.charspan[0]) - first_b,
-                base + int(p.charspan[1]) - first_b,
-            )
-        a.text = f"{left} {(b.text or '').lstrip()}"
-        a.orig = f"{(a.orig or '').rstrip()} {(b.orig or '').lstrip()}"
-        a.prov.extend(b.prov)
-        record(
-            "join_across_pages",
-            "unfinished paragraph continues on the next page",
-            [a],
-            before,
-            a.text,
-        )
-        joined.append(b)  # a stays last: it may continue again on the following page
-        joined_ids.add(id(b))
+        previous = item
 
     for item in page_numbers:
         record(
