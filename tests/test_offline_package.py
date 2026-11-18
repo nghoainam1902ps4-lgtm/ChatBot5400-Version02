@@ -332,10 +332,12 @@ def fake_docker(tmp_path, monkeypatch):
                 "easyocr": True,
                 "tesseract": True,
                 "tiktoken_offline": True,
+                "docling_tsv_patch": True,
             },
             "runtime_artifacts": {
                 "rapidocr_weights_sha256": {},
                 "tiktoken": {"encoding": "o200k_base", "loads_offline": True},
+                "docling_tsv_patch": {"applied": True, "patch": "E0-07/tesseract-tsv-text/1"},
             },
         },
         "config": {
@@ -700,6 +702,34 @@ def test_build_package_sh_builds_a_package_with_a_usable_bundle(
         repo_with_scripts, "rev-parse", "HEAD"
     )
     assert not any(c[0] in ("buildx", "build") for c in fake_docker.calls())
+
+
+def test_inventory_probe_applies_the_tsv_patch_with_the_real_docling():
+    """The inventory probe itself, against the Docling installed here (2.129.0)."""
+    pytest.importorskip("docling")
+    probe = OP._probe_docling_tsv_patch(ROOT)
+    assert probe["applied"] is True, probe
+    assert probe["patch"] == "E0-07/tesseract-tsv-text/1" and probe["docling"] == "2.129.0"
+
+
+def test_an_image_whose_docling_cannot_take_the_tsv_patch_is_not_ready(
+    fake_docker, repo, tmp_path
+):
+    """E0-07 (Phase 12D7): the image's inventory proves the Docling TSV text patch
+    applies there; otherwise Tesseract OCR would refuse to run -> NOT_READY."""
+
+    def no_patch(s):
+        s["inventory"]["runtimes_baked"]["docling_tsv_patch"] = False
+        s["inventory"]["runtime_artifacts"]["docling_tsv_patch"] = {
+            "applied": False,
+            "error": "TsvPatchError: docling 2.130.0: written for docling 2.129.0 only",
+        }
+
+    fake_docker.edit(no_patch)
+    pkg, _ = _build(repo, tmp_path)
+    readiness = _manifest_of(pkg)["readiness"]
+    assert readiness["status"] == "NOT_READY"
+    assert any("TSV text patch (E0-07)" in p and "2.130.0" in p for p in readiness["problems"])
 
 
 def test_build_refuses_a_checkout_without_the_manual_procedure(fake_docker, repo, tmp_path):

@@ -337,6 +337,11 @@ def build_ocr_options(
         if not ok:
             raise ValueError(detail)
         runtime.ensure_tessdata_layout()
+        # E0-07 (Phase 12D7): Docling must read Tesseract's TSV text as text, or
+        # numbers change (0001 -> 1.0). Guarded: refuses on any other Docling.
+        from open_notebook.ocr import docling_patches
+
+        docling_patches.apply()
         cmd = tesseract_command(runtime.tesseract_cmd() or "tesseract")
         tess_extra: dict[str, Any] = {"scale": scale} if scale else {}
         return TesseractCliOcrOptions(

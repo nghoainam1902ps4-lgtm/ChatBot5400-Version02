@@ -1633,6 +1633,33 @@ def _probe_tiktoken(app_root: Path) -> Dict[str, Any]:
     return info
 
 
+def _probe_docling_tsv_patch(app_root: Path) -> Dict[str, Any]:
+    """E0-07 (Phase 12D7): can the image's Docling take the Tesseract TSV text patch?
+
+    The patch is application code (open_notebook/ocr/docling_patches.py), applied
+    at OCR time and refused for any Docling it was not written for. Checked in a
+    child process (it imports Docling / torch), with no network."""
+    code = (
+        "import json, sys\n"
+        f"sys.path.insert(0, {str(app_root)!r})\n"
+        "try:\n"
+        "    from open_notebook.ocr import docling_patches as P\n"
+        "    P.apply()\n"
+        "    print('TSVPATCH ' + json.dumps(P.status()))\n"
+        "except Exception as e:\n"
+        "    print('TSVPATCH ' + json.dumps({'applied': False, 'error': type(e).__name__ + ': ' + str(e)[:300]}))\n"
+    )
+    proc = run([sys.executable, "-c", code], check=False, timeout=600)
+    for line in reversed(proc.stdout.splitlines()):
+        if line.startswith("TSVPATCH "):
+            try:
+                data = json.loads(line[len("TSVPATCH ") :])
+            except ValueError:
+                break
+            return data if isinstance(data, dict) else {"applied": False}
+    return {"applied": False, "error": f"probe failed (exit {proc.returncode})"}
+
+
 def cmd_inventory(args: argparse.Namespace) -> int:
     """Runs INSIDE the image (docker run --network none): what this image contains."""
     from importlib.metadata import PackageNotFoundError, version
@@ -1699,6 +1726,11 @@ def cmd_inventory(args: argparse.Namespace) -> int:
         "/app/data/ocr (manifests, readiness state, custom model versions)",
     ]
     artifacts["tiktoken"] = _probe_tiktoken(app_root)
+    artifacts["docling_tsv_patch"] = (
+        _probe_docling_tsv_patch(app_root)
+        if deps.get("docling") is not None
+        else {"applied": False, "error": "docling not installed"}
+    )
     info["runtime_artifacts"] = artifacts
     info["runtimes_baked"] = {
         "docling": deps.get("docling") is not None,
@@ -1710,6 +1742,8 @@ def cmd_inventory(args: argparse.Namespace) -> int:
             artifacts["tiktoken"].get("loads_offline")
             and artifacts["tiktoken"].get("checksum_ok")
         ),
+        # E0-07: without it Tesseract OCR refuses to run (never runs unpatched)
+        "docling_tsv_patch": bool(artifacts["docling_tsv_patch"].get("applied")),
     }
     print(json.dumps(info, indent=2, sort_keys=True))
     return EXIT_OK
@@ -2066,6 +2100,17 @@ def _build_stage(
     if not inv.get("tesseract"):
         readiness_problems.append(
             "Tesseract binary not in the image (build with OCR_INSTALL_TESSERACT=true)"
+        )
+    if baked.get("docling") and not baked.get("docling_tsv_patch"):
+        readiness_problems.append(
+            "the Docling of the image cannot take the Tesseract TSV text patch (E0-07): "
+            "Tesseract OCR would refuse to run - "
+            + str(
+                (inv.get("runtime_artifacts", {}).get("docling_tsv_patch") or {}).get(
+                    "error"
+                )
+                or "see runtime_artifacts.docling_tsv_patch"
+            )
         )
     if not baked.get("tiktoken_offline"):
         readiness_problems.append(

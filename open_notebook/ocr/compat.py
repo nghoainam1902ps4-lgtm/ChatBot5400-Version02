@@ -79,6 +79,9 @@ def source_fingerprint(target: str) -> str | None:
         obj: Any = importlib.import_module(mod_name)
         for part in attr.split("."):
             obj = getattr(obj, part)
+        # A controlled patch (docling_patches, E0-07) keeps the upstream function:
+        # the fingerprint is always that of the real upstream source.
+        obj = getattr(obj, "__cb5400_upstream__", obj)
         return hashlib.sha256(inspect.getsource(obj).encode("utf-8")).hexdigest()
     except Exception:
         return None
