@@ -1182,6 +1182,10 @@ needs_ssh_keygen = pytest.mark.skipif(
 
 @pytest.fixture
 def signing(tmp_path):
+    # D8-09 (Phase 12D9): every user of this fixture needs ssh-keygen, including
+    # tests without the needs_ssh_keygen marker (review_phase12d4) - skip, never error
+    if shutil.which("ssh-keygen") is None:
+        pytest.skip("ssh-keygen not installed")
     key = tmp_path / "release_key"
     subprocess.run(
         ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "test", "-f", str(key)],

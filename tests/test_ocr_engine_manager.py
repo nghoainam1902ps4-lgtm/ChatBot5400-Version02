@@ -541,8 +541,13 @@ class TestLifecycle:
         assert s["state"] == "failed"
 
     def test_assert_ready_raises_value_error(self, ocr_dir, monkeypatch):
+        from open_notebook.ocr import compat
         from open_notebook.ocr.status import assert_engine_ready
 
+        # D8-09 (Phase 12D9): the subject is the runtime probe; without EasyOCR
+        # installed the dependency check would refuse first with another message
+        # was: (no stub - the test depended on the installed EasyOCR version)
+        monkeypatch.setattr(compat, "ensure_compatible", lambda _engine: None)
         monkeypatch.setattr(
             runtime,
             "probe_runtime",

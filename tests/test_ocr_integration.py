@@ -225,6 +225,7 @@ def test_rapidocr_option_reproduces_docling_auto():
 
 
 def test_easyocr_forced_to_cpu_and_offline_models():
+    pytest.importorskip("easyocr")  # D8-09 (Phase 12D9): needs the EasyOCR runtime
     from open_notebook.ocr.options import build_ocr_options
 
     opts = build_ocr_options("easyocr")
