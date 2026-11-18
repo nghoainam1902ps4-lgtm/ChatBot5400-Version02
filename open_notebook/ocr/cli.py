@@ -272,6 +272,14 @@ def cmd_status(args: argparse.Namespace) -> int:
         )
         if r.get("error"):
             print(f"{'':<15} error: {r['error']}")
+    # E1-05 (Phase 12D7): whether the orientation gate really runs (D-25).
+    from open_notebook.ocr.options import tesseract_gate_state
+
+    gate = tesseract_gate_state()
+    if gate["active"]:
+        print(f"orientation gate: active (min confidence {gate['min_confidence']})")
+    else:
+        print(f"orientation gate: NOT ACTIVE - {gate['reason']}")
     return 0
 
 

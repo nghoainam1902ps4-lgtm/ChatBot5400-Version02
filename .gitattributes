@@ -1,2 +1,7 @@
 # Ensure shell scripts always use LF so they run in Linux containers (e.g. Docker)
 *.sh text eol=lf
+# The Tesseract orientation gate is executed through its #! line inside the
+# Linux container (D-25). With Windows line endings the line reads
+# "python3\r", the gate cannot start and OCR crops are rotated ungated
+# (E1-05, Phase 12D7). The Dockerfile also normalises and self-tests it.
+open_notebook/ocr/tesseract_gate.py text eol=lf

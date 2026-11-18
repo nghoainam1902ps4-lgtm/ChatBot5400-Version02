@@ -159,9 +159,16 @@ RUN if [ "$OCR_PREINSTALL_RUNTIMES" = "true" ]; then \
       && /app/.venv/bin/python -c "import docling, easyocr; print('docling', docling.__version__ if hasattr(docling, '__version__') else 'ok')"; \
     fi
 
-# Data directory (volume-mounted by users) and supervisor log directory
+# Data directory (volume-mounted by users) and supervisor log directory.
+# The Tesseract orientation gate runs through its #! line (D-25). Built from a
+# Windows checkout (CRLF line endings, no executable bit) it cannot start and
+# every OCR crop is rotated ungated (E1-05, Phase 12D7): normalise it and prove
+# it starts (/bin/true stands in for Tesseract, which may not be installed yet).
 RUN mkdir -p /app/data /var/log/supervisor \
-    && chmod +x /app/scripts/wait-for-api.sh /app/scripts/docker-entrypoint.sh
+    && chmod +x /app/scripts/wait-for-api.sh /app/scripts/docker-entrypoint.sh \
+    && sed -i 's/\r$//' /app/open_notebook/ocr/tesseract_gate.py \
+    && chmod 0755 /app/open_notebook/ocr/tesseract_gate.py \
+    && OCR_TESSERACT_REAL=/bin/true /app/open_notebook/ocr/tesseract_gate.py --version >/dev/null
 
 # Copy supervisord configuration (shared programs: api, worker, frontend)
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf

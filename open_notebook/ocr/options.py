@@ -258,6 +258,58 @@ def tesseract_command(real_cmd: str) -> str:
     return str(gate)
 
 
+def tesseract_gate_state(real_cmd: str | None = None) -> dict[str, Any]:
+    """Whether the orientation gate REALLY runs, and why not (Phase 12D7, E1-05).
+
+    ``OCR_TESSERACT_OSD_GATE`` only says the gate is wanted. It runs through
+    its ``#!`` line, so a copy with Windows line endings (CRLF - a Git checkout
+    on Windows with ``core.autocrlf=true``, built into the image) or without
+    the executable bit cannot start: :func:`tesseract_command` then falls back
+    to the real binary and every low-confidence rotation is applied again.
+    For ``ocr.cli status`` and the diagnostics; not part of any fingerprint.
+    """
+    import os
+    import shutil
+    from pathlib import Path
+
+    from open_notebook.ocr import tesseract_gate
+
+    real = real_cmd or runtime.tesseract_cmd() or "tesseract"
+    gate = Path(tesseract_gate.__file__).resolve()
+    try:
+        with gate.open("rb") as fh:
+            first_line = fh.readline()
+    except OSError:
+        first_line = b""
+    state: dict[str, Any] = {
+        "enabled": tesseract_osd_gate_enabled(),
+        "gate": str(gate),
+        "min_confidence": tesseract_gate.min_confidence(),
+        "crlf": first_line.endswith(b"\r\n"),
+        "executable": os.access(gate, os.X_OK),
+        "tesseract": shutil.which(real) or (real if os.path.isfile(real) else None),
+    }
+    if not state["enabled"]:
+        state["active"], reason = False, f"{TESSERACT_GATE_ENV}=false"
+    elif state["tesseract"] is None:
+        state["active"], reason = False, "Tesseract is not installed (nothing to gate)"
+    else:
+        state["active"] = tesseract_command(real) == str(gate)
+        if state["active"]:
+            reason = None
+        elif state["crlf"]:
+            reason = (
+                "the gate file has Windows (CRLF) line endings, so its #! line "
+                "cannot run: rebuild the image from a checkout with LF endings"
+            )
+        elif not state["executable"]:
+            reason = "the gate file is not executable"
+        else:
+            reason = "the gate cannot be executed (python3 on PATH?)"
+    state["reason"] = reason
+    return state
+
+
 _GATE_OK: dict[tuple[str, str], bool] = {}
 
 
