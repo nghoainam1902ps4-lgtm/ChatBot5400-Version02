@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -126,3 +127,70 @@ def test_behind_the_orientation_gate_only_recognition_is_failed(rig):
     rec = ["-l", "eng", "--psm", "6", str(image), "stdout", "tsv"]
     assert via_gate(*rec).returncode == 1
     assert via_gate(*rec).returncode == 0
+
+
+def test_fail_osd_fails_orientation_only(rig):
+    run, image, fault = rig
+    (fault / "fail-osd").touch()
+    osd = run("--psm", "0", "-l", "osd", str(image), "stdout")
+    assert osd.returncode == 1 and "fail-osd" in osd.stderr
+    rec = _recognize(run, image)
+    assert rec.returncode == 0 and "ALPHA" in rec.stdout
+
+
+# --------------------------------------------------------------------------- #
+# The injector in front of the application's real conversion path (the E2-04
+# rig: Docling's threaded PDF pipeline, stub layout, real tesseract)
+# --------------------------------------------------------------------------- #
+
+sys.path.insert(0, str(ROOT / "tests"))
+import test_phase12d9_ocr_failure_safety as F  # noqa: E402
+from test_phase12d9_ocr_failure_safety import pipeline  # noqa: E402,F401
+
+
+@pytest.mark.skipif(F.TESSDATA is None, reason="needs tesseract with vie + osd")
+@pytest.mark.parametrize(
+    "controls, complete",
+    [
+        # fail-osd everywhere: orientation is deterministic (Docling keeps the
+        # configured language and does not rotate) - and OSD failing alone
+        # loses nothing
+        (["fail-osd"], True),
+        (["fail-osd", "fail-once"], True),  # retried on the same crop
+        (["fail-osd", "fail-always"], False),  # refused, never partial
+    ],
+    ids=["osd-fails-alone", "recognition-fails-once", "recognition-always-fails"],
+)
+def test_the_injector_drives_the_real_conversion(
+    pipeline,  # noqa: F811 - the fixture imported above
+    tmp_path,
+    controls,
+    complete,
+):
+    from open_notebook.ocr import docling_extract
+
+    rig = pipeline.rig("tesseract_best", {})
+    fault = tmp_path / "fault"
+    fault.mkdir()
+    for name in controls:
+        (fault / name).touch()
+    shim = tmp_path / "tesseract-injector"
+    shim.write_text(
+        "#!/bin/sh\n"
+        f'CB5400_FAULT_DIR="{fault}" CB5400_REAL_TESSERACT="{REAL}" '
+        f'exec sh "{WRAPPER}" "$@"\n'
+    )
+    shim.chmod(0o755)
+    rig.wrapper = shim  # Docling calls the injector, the injector the real one
+    keys = [(1, 1), (1, 2)]
+    path = pipeline.document("injected.pdf", [keys])
+    if complete:
+        content, meta = pipeline.convert(path)
+        assert meta["conversion_status"] == "success"
+        assert F._words(content, keys) == {k: True for k in keys}
+        assert not (fault / "fail-once").exists()
+    else:
+        with pytest.raises(docling_extract.IncompleteConversionError) as err:
+            pipeline.convert(path)
+        assert "chưa hoàn tất" in str(err.value)
+        assert "cb5400 injected" not in str(err.value)  # stderr never surfaces
