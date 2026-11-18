@@ -1,0 +1,82 @@
+{
+ "note": "Docling 2.129.0 real OCR stage, OCR mode LAYOUT_REGIONS (one Tesseract crop per region), real Tesseract 5.3.4 vie; synthetic page rendered with DejaVuSans; Cloud run, Phase 12D7. upstream_parse = v1.2.0 / 12D5 parser, patched = E0-07 patch.",
+ "regions": [
+  {
+   "region": 1,
+   "printed": "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+   "upstream_parse": "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+   "patched": "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+   "same": true
+  },
+  {
+   "region": 2,
+   "printed": "Số: 0001/2024/QĐ-NHNo",
+   "upstream_parse": "Số: 0001/2024/QĐ-NHNo",
+   "patched": "Số: 0001/2024/QĐ-NHNo",
+   "same": true
+  },
+  {
+   "region": 3,
+   "printed": "0001",
+   "upstream_parse": "1.0",
+   "patched": "0001",
+   "same": false
+  },
+  {
+   "region": 4,
+   "printed": "000123",
+   "upstream_parse": "123.0",
+   "patched": "000123",
+   "same": false
+  },
+  {
+   "region": 5,
+   "printed": "2024",
+   "upstream_parse": "2024.0",
+   "patched": "2024",
+   "same": false
+  },
+  {
+   "region": 6,
+   "printed": "12.50",
+   "upstream_parse": "12.5",
+   "patched": "12.50",
+   "same": false
+  },
+  {
+   "region": 7,
+   "printed": "Điều 1. Lãi suất tối đa 12.50%/năm.",
+   "upstream_parse": "Điều 1. Lãi suất tối đa 12.50%/năm.",
+   "patched": "Điều 1. Lãi suất tối đa 12.50%/năm.",
+   "same": true
+  },
+  {
+   "region": 8,
+   "printed": "Mã sản phẩm NA và N/A",
+   "upstream_parse": "Mã sản phẩm và",
+   "patched": "Mã sản phẩm NA và N/A",
+   "same": false
+  },
+  {
+   "region": 9,
+   "printed": "1/2024",
+   "upstream_parse": "1/2024",
+   "patched": "1/2024",
+   "same": true
+  },
+  {
+   "region": 10,
+   "printed": "05%",
+   "upstream_parse": "05%",
+   "patched": "05%",
+   "same": true
+  },
+  {
+   "region": 11,
+   "printed": "Trang 2",
+   "upstream_parse": "Trang 2",
+   "patched": "Trang 2",
+   "same": true
+  }
+ ]
+}

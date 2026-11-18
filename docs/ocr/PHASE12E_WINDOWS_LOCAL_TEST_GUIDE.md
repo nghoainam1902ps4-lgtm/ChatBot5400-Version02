@@ -8,6 +8,13 @@
 > `1.3.0-rc.1`, vì `VERSION` vẫn là `1.2.0`). Ở chế độ Legal, kỳ vọng mới: văn bản 1–2 trang **giữ** số trang; dòng
 > chữ lặp lại **được giữ** kèm cảnh báo.
 
+> **CẬP NHẬT (Phase 12D7).** Danh sách kiểm lại cho bản ứng viên 12D7 (E0-07 số Tesseract, E1-09 không nối qua trang,
+> E1-05 cổng hướng xoay, E1-04 build gói trên Windows, E0-05 `up -d`) là
+> [../review/PHASE12D7_LOCAL_ACCEPTANCE_CHECKLIST.md](../review/PHASE12D7_LOCAL_ACCEPTANCE_CHECKLIST.md).
+> `phase12-test.ps1` giờ truyền tham số compose bằng mảng tường minh (`up -d` thật sự chạy nền); `status` in thêm dòng
+> `orientation gate: active / NOT ACTIVE`; hành động mới `orientation` (§5a). **Build lại image sau khi pull** (Dockerfile
+> mới chuẩn hóa file cổng); checkout cũ có file cổng CRLF vẫn build đúng.
+
 Mục tiêu: chạy **pipeline thật** (Layout Heron, TableFormer, các engine, **Agri của bạn**) trên tài liệu thật, **chỉ
 trên máy Windows**, với một stack thử nghiệm cô lập, rồi so sánh Direct OCR / Standard / Legal. Không dùng database,
 tài khoản hay dữ liệu production. Kết quả chứa nội dung tài liệu ⇒ **chỉ lưu trên máy này**, không upload.
@@ -143,6 +150,32 @@ docker compose -p chatbot5400-phase12-test -f deploy\phase12-test\docker-compose
 
 `12_summary.json` → `stored_source_equals` = `legal` / `standard` (nội dung đã lưu và được embedding là bản nào).
 
+## 5a. Hướng xoay của từng vùng OCR (Phase 12D7, E1-05)
+
+Trước hết: cổng hướng xoay có chạy không (dòng cuối của `status`):
+
+```powershell
+.\scripts\windows\phase12-test.ps1 status
+```
+
+`orientation gate: active (min confidence 2.0)` là đúng. `NOT ACTIVE - the gate file has Windows (CRLF) line endings`
+⇒ image được build từ checkout CRLF trước Phase 12D7: build lại (`build`, rồi `restart-app`). Trong log ứng dụng,
+dòng `runs without orientation gating` cũng là dấu hiệu đó — **ghi lại có hay không có** trên image cũ của 12E1 (đó
+là bằng chứng nguyên nhân của E1-05).
+
+Rồi với từng tài liệu có cụm nghi ngờ (trang và bbox lấy từ `03_layout_clusters.json` của `diagnose`):
+
+```powershell
+.\scripts\windows\phase12-test.ps1 orientation -Pdf qd-mau.pdf -Engine tesseract_best -Suspect '3:72,640,290,700','5:300,40,560,90'
+```
+
+Đặt mỗi `-Suspect` trong dấu nháy đơn. Kết quả (`diagnostics\orientation-<thời điểm>\`): `orientation_summary.json`
+(`hint`, `rotated_by_degrees`, `rotation_refused_by_gate`, `look_first`, và với mỗi cụm nghi ngờ: vùng nào, có bị xoay
+không), `orientation_crops.json` (mỗi vùng: kích thước, độ tin cậy OSD, góc đã xoay, chữ và độ tin cậy theo cả hai
+hướng), `crops\` (ảnh vùng trước khi xoay, TSV). `-NoText` chỉ giữ số liệu (dùng cho báo cáo đã làm sạch). "Đọc tốt
+hơn theo hướng kia" chỉ là gợi ý xem lại — độ tin cậy không phải độ chính xác; **không đổi ngưỡng** khi chưa có
+benchmark.
+
 ## 6. Kiểm tra chế độ trên giao diện
 
 1. **Cài đặt → OCR Engine Manager → Chuẩn hóa văn bản sau OCR**: mặc định **Tiêu chuẩn**.
@@ -192,7 +225,7 @@ Dữ liệu được giữ. Script **không** xóa volume hay thư mục; muốn
 | Legal: số điều/khoản/điểm đúng như bản giấy | ☐ |
 | Legal: trường nghiệp vụ (số hiệu, ngày, tiền, %) khớp | ☐ |
 | Legal: bảng không hỏng | ☐ |
-| Legal: không ghép sai đoạn (kiểm `join_across_pages` trong `09_legal_report.json`) | ☐ |
+| Legal: không có phép nối qua trang nào (`join_across_pages` vắng trong `09_legal_report.json` — Phase 12D7, D-38); phép nối của Docling qua trang được tách lại (`upstream_merge_undone`) | ☐ |
 | Nguyên nhân "thiếu từ cuối trang" đã xác định (tầng nào) | ☐ |
 | `legal_ms` < 10% `docling_s` | ☐ |
 | Rollback về Standard hoạt động | ☐ |

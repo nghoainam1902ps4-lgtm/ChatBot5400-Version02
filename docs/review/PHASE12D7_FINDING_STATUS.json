@@ -1,0 +1,309 @@
+{
+ "schema": "chatbot5400-finding-status/12d7",
+ "phase": "12D7",
+ "head_commit_code": "2938100de4794d6be28370f3a600e31e0f8d016e",
+ "baseline": {
+  "v1.2.0": "f2fdf2714a7c0b5b196132f71cfc091928befc06",
+  "candidate_12d5": "904c15c"
+ },
+ "independence_note": "Phía sửa lỗi tự kiểm (cùng phiên với 12D5). Review độc lập và Windows retest phải làm ở phiên / máy khác.",
+ "status_values": {
+  "FIXED IN CLOUD": "sửa trong mã, chứng minh bằng test ở Cloud; vẫn còn mục kiểm Windows cho tài liệu thật",
+  "LOCAL VERIFICATION REQUIRED": "sửa trong mã, test Cloud đạt; hành vi ở môi trường thật (Windows / PowerShell / scan thật) phải kiểm",
+  "NEEDS LOCAL EVIDENCE": "nguyên nhân khả dĩ đã sửa, chưa có bằng chứng xác nhận từ Windows",
+  "EVIDENCE REQUIRED": "không có báo cáo nguồn trong repo; không sửa, không đoán"
+ },
+ "summary": {
+  "by_status": {
+   "FIXED IN CLOUD": 2,
+   "LOCAL VERIFICATION REQUIRED": 3,
+   "NEEDS LOCAL EVIDENCE": 1,
+   "EVIDENCE REQUIRED": 4
+  },
+  "p1_in_scope": [
+   "E0-07",
+   "E1-09",
+   "E1-04"
+  ],
+  "verdicts": {
+   "E0-07 TSV PRESERVATION": "VERIFIED",
+   "E1-04 CROSS-PLATFORM BUILD LOCK": "LOCAL VERIFICATION REQUIRED",
+   "E1-09 UNSAFE LEGAL JOIN": "FIXED",
+   "E1-03 NUMERIC PRESERVATION": "PARTIAL",
+   "E1-05 ORIENTATION": "NEEDS LOCAL EVIDENCE",
+   "STANDARD EXPECTED-DIFF PARITY": "PARTIAL",
+   "LEGAL CONTENT PRESERVATION": "PASS ON SYNTHETIC",
+   "OFFLINE PACKAGE": "NOT VERIFIED ON WINDOWS"
+  }
+ },
+ "findings": [
+  {
+   "finding_id": "E0-07",
+   "origin": "PHASE12E0 (Windows)",
+   "severity": "P1",
+   "title": "Docling đổi chữ số do Tesseract nhận dạng thành số thực (0001 -> 1.0, 2024 -> 2024.0) và bỏ NA / N/A",
+   "root_cause": "TesseractOcrCliModel._run_tesseract (Docling 2.129.0) đọc TSV bằng pd.read_csv suy diễn kiểu theo từng vùng OCR; __call__ dựng ô bằng str(row['text'])",
+   "status_12d7": "FIXED IN CLOUD",
+   "verdict": "VERIFIED (Cloud: TSV thô = chữ của ô OCR Docling; fake TSV qua lớp Docling thật, Tesseract thật, stage OCR thật FULL_PAGE và LAYOUT_REGIONS)",
+   "change_12d7": "open_notebook/ocr/docling_patches.py: bản vá có kiểm soát (docling == 2.129.0 + SHA-256 mã nguồn upstream, không khớp => Tesseract từ chối chạy), áp dụng tại options.build_ocr_options cho Tesseract Fast/Best/Agri, Standard và Legal; inventory gói offline ghi docling_tsv_patch, không áp được => NOT_READY. D-39.",
+   "tests": [
+    "tests/test_ocr_tesseract_tsv_text.py::test_red_upstream_rewrites_a_numeric_only_crop[*]",
+    "tests/test_ocr_tesseract_tsv_text.py::test_red_upstream_drops_na_like_words_even_in_a_mixed_line[*]",
+    "tests/test_ocr_tesseract_tsv_text.py::test_a_crop_of_one_token_keeps_it_verbatim[*]",
+    "tests/test_ocr_tesseract_tsv_text.py::test_a_line_of_every_token_keeps_them_all_in_order",
+    "tests/test_ocr_tesseract_tsv_text.py::test_numeric_only_crops_keep_leading_zeros_and_trailing_dots",
+    "tests/test_ocr_tesseract_tsv_text.py::test_empty_text_rows_are_still_filtered_like_upstream",
+    "tests/test_ocr_tesseract_tsv_text.py::test_numeric_columns_have_the_upstream_types_and_values[*]",
+    "tests/test_ocr_tesseract_tsv_text.py::test_a_tab_inside_a_text_field_is_parsed_like_upstream",
+    "tests/test_ocr_tesseract_tsv_text.py::test_default_na_list_is_pandas_own",
+    "tests/test_ocr_tesseract_tsv_text.py::test_patched_method_is_upstream_except_the_tsv_parse",
+    "tests/test_ocr_tesseract_tsv_text.py::test_another_docling_version_is_refused_not_patched",
+    "tests/test_ocr_tesseract_tsv_text.py::test_changed_upstream_source_is_refused_not_patched",
+    "tests/test_ocr_tesseract_tsv_text.py::test_apply_is_idempotent_and_keeps_the_upstream_for_fingerprints",
+    "tests/test_ocr_tesseract_tsv_text.py::test_the_patch_is_applied_by_every_tesseract_engine_and_no_other",
+    "tests/test_ocr_tesseract_tsv_text.py::test_real_tesseract_crop_cells_equal_the_raw_tsv[*]",
+    "tests/test_ocr_tesseract_tsv_text.py::test_real_tesseract_numeric_crop_is_rewritten_by_upstream",
+    "tests/test_ocr_tesseract_tsv_text.py::test_real_full_page_ocr_through_doclings_ocr_stage",
+    "tests/test_phase12d7_standard_parity.py::test_standard_differs_only_where_the_old_parser_rewrote_a_token",
+    "tests/test_offline_package.py::test_inventory_probe_applies_the_tsv_patch_with_the_real_docling",
+    "tests/test_offline_package.py::test_an_image_whose_docling_cannot_take_the_tsv_patch_is_not_ready",
+    "tests/test_phase12d7_standard_diff.py::test_old_parser_form_matches_the_e0_07_defect",
+    "tests/test_phase12d7_standard_diff.py::test_each_class"
+   ],
+   "red_evidence": "test_red_* (15) và test_real_tesseract_numeric_crop_is_rewritten_by_upstream chạy trên hàm upstream; stage OCR thật: upstream 1.0 / 123.0 / 2024.0 / 12.5, mất NA N/A (docs/review/phase12d7/standard_diff_synthetic/regions.json)",
+   "green_evidence": "docs/review/phase12d7/standard_diff_synthetic/ (3 hunk, tất cả expected parser fix, 0 hồi quy)",
+   "local_verification": [
+    "W-12D7-02a",
+    "W-12D7-02b",
+    "W-12D7-02c",
+    "W-12D7-02d",
+    "W-12D7-02e",
+    "W-12D7-02f"
+   ],
+   "release_blocker": "local",
+   "note": "Nếu '9.' có trong TSV và ô OCR nhưng mất ở nội dung lưu => finding riêng (layout / serializer)."
+  },
+  {
+   "finding_id": "E1-09",
+   "origin": "PHASE12E1 (Windows)",
+   "severity": "P1",
+   "title": "Legal nối sai đoạn văn qua trang trên scan thật (3/4 phản ví dụ F-03)",
+   "root_cause": "Ba dạng dựng lại: câu ghép sai là phép nối của Docling (B) mà quy tắc 1.2.0 không hoàn tác; Legal 1.2.0 cũng tự nối (A) theo quy tắc bảo thủ",
+   "status_12d7": "FIXED IN CLOUD",
+   "verdict": "FIXED (0 phép nối do Legal; B tách khi charspan khớp; 92 fixture: 0 xóa / nối sai / chèn, không mất nội dung mới)",
+   "change_12d7": "legal_normalizer 1.3.0: bỏ hẳn phép nối qua trang của Legal; tách phép nối qua trang của Docling khi có bằng chứng charspan; cùng trang chỉ khi quy tắc cũ từ chối; gạch nối chỉ khôi phục khi có bằng chứng; cảnh báo hyphen_at_page_break_not_joined. Mô tả giao diện vi/en sửa. D-38.",
+   "tests": [
+    "tests/test_ocr_legal_normalizer.py::test_e1_09_real_scan_shapes_are_never_one_paragraph",
+    "tests/test_ocr_legal_normalizer.py::test_doclings_cross_page_merge_is_split_back_even_when_the_rules_accept_it",
+    "tests/test_ocr_legal_normalizer.py::test_no_cross_page_join_even_where_the_old_rules_joined",
+    "tests/test_ocr_legal_normalizer.py::test_join_baseline_is_not_made",
+    "tests/test_ocr_legal_normalizer.py::test_join_refused_and_reason_reported",
+    "tests/test_ocr_legal_normalizer.py::test_single_line_at_the_page_bottom_is_not_joined_either",
+    "tests/test_ocr_legal_normalizer.py::test_many_cut_paragraphs_scale_linearly",
+    "tests/test_ocr_legal_normalizer.py::test_large_document_with_tables_pictures_and_cut_paragraphs",
+    "tests/review_phase12d4/test_legal_reaudit.py::test_verified_what_the_remediation_gave_up_on_the_original_fixtures"
+   ],
+   "red_evidence": "1.2.0 trên ba dạng dựng lại: một đoạn hai trang (joins=0, undone=0)",
+   "green_evidence": "docs/review/phase12d7/benchmark_legal_1_3_0.json (joins 0/8, upstream_merge_undone 17 tài liệu, chỉ số chất lượng giống 1.2.0)",
+   "local_verification": [
+    "W-12D7-03b",
+    "W-12D7-03c",
+    "W-12D7-03d"
+   ],
+   "release_blocker": "local",
+   "note": "Ground truth fixture không đổi; thay đổi hành vi có chủ đích: đoạn bị cắt qua trang hiển thị thành hai đoạn."
+  },
+  {
+   "finding_id": "E1-04",
+   "origin": "PHASE12E1 (Windows)",
+   "severity": "P1",
+   "title": "build_lock của offline_package.py import fcntl: build gói dừng trên Windows PowerShell 5.1 / 7",
+   "root_cause": "fcntl không có trên Windows",
+   "status_12d7": "LOCAL VERIFICATION REQUIRED",
+   "verdict": "LOCAL VERIFICATION REQUIRED (nhánh flock kiểm bằng tiến trình thật trên Linux; nhánh msvcrt chưa chạy trên Windows; không mock sys.platform)",
+   "change_12d7": "exclusive_lock(): flock (Linux/macOS) / msvcrt.locking (Windows); mở không truncate, không xóa file khóa, thông báo nêu PID; dọn .partial-* của build chết khi giữ khóa; giữ .sha256 của gói cũ khi đổi tên cuối thất bại; đầu ra build luôn LF.",
+   "tests": [
+    "tests/test_phase12d7_build_lock.py::test_a_second_process_is_refused_while_the_first_holds_the_lock[*]",
+    "tests/test_phase12d7_build_lock.py::test_the_lock_is_released_when_the_holder_is_killed[*]",
+    "tests/test_phase12d7_build_lock.py::test_many_processes_racing_exactly_one_wins[*]",
+    "tests/test_phase12d7_build_lock.py::test_after_release_the_next_holder_gets_it",
+    "tests/test_phase12d7_build_lock.py::test_a_lock_file_that_cannot_be_opened_is_a_clear_refusal",
+    "tests/test_phase12d7_build_lock.py::test_no_module_level_posix_only_import",
+    "tests/test_phase12d7_build_lock.py::test_interrupted_build_keeps_the_previous_package_and_frees_the_lock",
+    "tests/test_phase12d7_build_lock.py::test_a_failed_final_rename_keeps_the_previous_package_with_its_hash",
+    "tests/test_phase12d7_build_lock.py::test_build_outputs_are_written_with_lf",
+    "tests/review_phase12d4/test_offline_evidence_trust_build.py::test_two_builds_racing_are_refused_cleanly",
+    "tests/review_phase12d4/test_offline_evidence_trust_build.py::test_failed_rebuild_keeps_the_previous_good_package"
+   ],
+   "red_evidence": "mã cũ với fcntl bị chặn: ModuleNotFoundError; tiến trình bị từ chối xóa trắng PID của người giữ ('5237' -> '')",
+   "green_evidence": "409 test offline đạt (397 + 12)",
+   "local_verification": [
+    "W-12D7-04a",
+    "W-12D7-04b",
+    "W-12D7-04c",
+    "W-12D7-04d",
+    "W-12D7-04e",
+    "W-12D7-04f",
+    "W-12D7-04g"
+   ],
+   "release_blocker": "local",
+   "note": null
+  },
+  {
+   "finding_id": "E1-03",
+   "origin": "PHASE12E1 (Windows)",
+   "severity": null,
+   "title": "Legal đưa số trang / số chứng từ bị E0-07 làm hỏng (1.0, 2.0) vào nội dung",
+   "root_cause": "Không phải Legal: ô OCR đã bị E0-07 đổi; '2.0' không phải dạng số trang chặt nên ở lại nội dung",
+   "status_12d7": "LOCAL VERIFICATION REQUIRED",
+   "verdict": "PARTIAL (Cloud: chuỗi TSV -> ô OCR -> Legal đúng, Legal không đoán; 22 PDF thật chưa chạy lại)",
+   "change_12d7": "Không đổi mã Legal (không regex đoán 1.0 = 0001, không xóa dòng số). Sửa ở E0-07.",
+   "tests": [
+    "tests/test_phase12d7_numeric_preservation.py::test_page_numbers_as_the_old_parser_wrote_them_are_kept_verbatim",
+    "tests/test_phase12d7_numeric_preservation.py::test_the_same_page_numbers_as_tesseract_read_them_are_recognised",
+    "tests/test_phase12d7_numeric_preservation.py::test_numbers_at_the_page_number_place_that_are_not_page_numbers_stay[*]",
+    "tests/test_phase12d7_numeric_preservation.py::test_numbers_and_codes_in_the_body_are_kept_verbatim",
+    "tests/test_phase12d7_numeric_preservation.py::test_from_the_raw_tsv_to_legal_content[*]"
+   ],
+   "red_evidence": "test_from_the_raw_tsv_to_legal_content: parser cũ -> Legal giữ đúng 1.0 / 2024.0 / 123.0 (đúng hiện tượng 12E1)",
+   "green_evidence": "parser đã vá -> 0001 / 2024 / 000123 / 9. / 12.50 trong nội dung Legal",
+   "local_verification": [
+    "W-12D7-03a",
+    "W-12D7-02c"
+   ],
+   "release_blocker": "local",
+   "note": "Mức độ theo báo cáo 12E1 (không có trong repo)."
+  },
+  {
+   "finding_id": "E1-05",
+   "origin": "PHASE12E1 (Windows)",
+   "severity": null,
+   "title": "Vùng OCR nhỏ bị xoay 180° và đọc thành chữ rác (11 cụm nghi ngờ)",
+   "root_cause": "Khả dĩ nhất (CHƯA xác nhận trên Windows): checkout Git for Windows (core.autocrlf=true) cho tesseract_gate.py đuôi CRLF (.gitattributes chỉ ép LF cho *.sh); image build từ đó có dòng #! không chạy được; tesseract_command() lùi về Tesseract không cổng; Docling áp dụng mọi góc xoay độ tin cậy thấp cho từng vùng layout. Cloud: không tái hiện được câu trả lời OSD sai có độ tin cậy >= 2.0 trên vùng tổng hợp (chữ ngắn, nhiễu, watermark, mờ, con dấu tròn; có / không DPI).",
+   "status_12d7": "NEEDS LOCAL EVIDENCE",
+   "verdict": "NEEDS LOCAL EVIDENCE",
+   "change_12d7": ".gitattributes eol=lf cho cổng; Dockerfile chuẩn hóa + chmod + tự kiểm tra cổng khi build; options.tesseract_gate_state() + dòng 'orientation gate' trong ocr.cli status; công cụ scripts/ocr/phase12_orientation_diagnose.py (+ hành động orientation của phase12-test.ps1). Ngưỡng 2.0, logic xoay, PDF Prep không đổi. D-40.",
+   "tests": [
+    "tests/test_phase12d7_orientation.py::test_gate_is_committed_with_lf_endings_and_the_executable_bit",
+    "tests/test_phase12d7_orientation.py::test_gitattributes_keeps_lf_in_a_windows_checkout",
+    "tests/test_phase12d7_orientation.py::test_a_crlf_gate_cannot_start",
+    "tests/test_phase12d7_orientation.py::test_with_a_crlf_gate_the_app_runs_ungated_and_says_why",
+    "tests/test_phase12d7_orientation.py::test_the_committed_gate_is_active",
+    "tests/test_phase12d7_orientation.py::test_the_dockerfile_repairs_and_self_tests_the_gate",
+    "tests/test_phase12d7_orientation.py::test_the_dockerfile_step_turns_a_windows_copy_into_the_committed_file",
+    "tests/test_phase12d7_orientation.py::test_ocr_status_shows_whether_the_gate_runs",
+    "tests/test_phase12d7_orientation.py::test_tool_records_orientation_confidence_and_both_readings",
+    "tests/test_phase12d7_orientation.py::test_tool_points_at_a_rotation_the_gate_refused",
+    "tests/test_phase12d7_orientation.py::test_tool_says_when_the_gate_is_not_running",
+    "tests/test_phase12d7_orientation.py::test_no_text_output_holds_numbers_only",
+    "tests/test_phase12d7_orientation.py::test_suspect_regions_are_matched_on_page_and_overlap",
+    "tests/test_phase12d7_orientation.py::test_probe_on_doclings_real_ocr_stage_records_without_changing_anything",
+    "tests/test_phase12d7_orientation.py::test_crops_mode_prepares_the_engine_tessdata_like_ingestion"
+   ],
+   "red_evidence": "bản cổng CRLF: '/usr/bin/env: python3\\r: No such file or directory' (rc 127 / 126), ứng dụng chạy không cổng",
+   "green_evidence": "lệnh của Dockerfile phát lại trên bản CRLF + 0644 cho đúng blob git và chạy được",
+   "local_verification": [
+    "W-12D7-00c",
+    "W-12D7-01a",
+    "W-12D7-01b",
+    "W-12D7-01c",
+    "W-12D7-01d",
+    "W-12D7-01e"
+   ],
+   "release_blocker": "local",
+   "note": "Nếu cổng đã chạy mà vẫn có vùng xoay sai với độ tin cậy >= 2.0: finding mới, cần benchmark trước khi đổi ngưỡng."
+  },
+  {
+   "finding_id": "E0-05",
+   "origin": "PHASE12E0 (Windows)",
+   "severity": null,
+   "title": "phase12-test.ps1: 'Invoke-Compose up -d' gán -d cho -Debug, docker chạy 'up' không -d",
+   "root_cause": "ValueFromRemainingArguments biến Invoke-Compose thành advanced function có common parameter",
+   "status_12d7": "LOCAL VERIFICATION REQUIRED",
+   "verdict": "FIXED IN CODE, NOT EXECUTED (Cloud không có PowerShell)",
+   "change_12d7": "Invoke-Compose -ComposeArgs @(...), Invoke-Exec -Cmd @(...) ở mọi lời gọi; tham số không đổi; hành động orientation mới.",
+   "tests": [
+    "tests/test_phase12d7_powershell.py::test_no_function_collects_its_remaining_arguments",
+    "tests/test_phase12d7_powershell.py::test_every_compose_and_exec_call_passes_one_explicit_array",
+    "tests/test_phase12d7_powershell.py::test_up_keeps_detached_and_the_app_only_actions_touch_only_the_app",
+    "tests/test_phase12d7_powershell.py::test_no_destructive_or_pulling_compose_argument",
+    "tests/test_phase12d7_powershell.py::test_exec_goes_through_the_app_container_with_t",
+    "tests/test_phase12d7_powershell.py::test_orientation_action_runs_the_e1_05_tool_with_checked_suspects"
+   ],
+   "red_evidence": "5/6 test cấu trúc thất bại trên script cũ",
+   "green_evidence": null,
+   "local_verification": [
+    "W-12D7-05a",
+    "W-12D7-05b",
+    "W-12D7-05c",
+    "W-12D7-05d"
+   ],
+   "release_blocker": "local",
+   "note": "Kiểm cấu trúc văn bản, không phải hành vi PowerShell."
+  },
+  {
+   "finding_id": "E1-01",
+   "origin": "PHASE12E1 (Windows)",
+   "severity": null,
+   "title": null,
+   "root_cause": null,
+   "status_12d7": "EVIDENCE REQUIRED",
+   "verdict": "EVIDENCE REQUIRED",
+   "change_12d7": "Không đổi: báo cáo 12E1 đã làm sạch (mục 14) không có trong repo, không đoán nội dung finding.",
+   "tests": [],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker": "unknown",
+   "note": "Cần báo cáo 12E1 đã làm sạch (không chứa tài liệu nội bộ)."
+  },
+  {
+   "finding_id": "E1-02",
+   "origin": "PHASE12E1 (Windows)",
+   "severity": null,
+   "title": null,
+   "root_cause": null,
+   "status_12d7": "EVIDENCE REQUIRED",
+   "verdict": "EVIDENCE REQUIRED",
+   "change_12d7": "Không đổi: báo cáo 12E1 đã làm sạch (mục 14) không có trong repo, không đoán nội dung finding.",
+   "tests": [],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker": "unknown",
+   "note": "Cần báo cáo 12E1 đã làm sạch (không chứa tài liệu nội bộ)."
+  },
+  {
+   "finding_id": "E1-06",
+   "origin": "PHASE12E1 (Windows)",
+   "severity": null,
+   "title": null,
+   "root_cause": null,
+   "status_12d7": "EVIDENCE REQUIRED",
+   "verdict": "EVIDENCE REQUIRED",
+   "change_12d7": "Không đổi: báo cáo 12E1 đã làm sạch (mục 14) không có trong repo, không đoán nội dung finding.",
+   "tests": [],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker": "unknown",
+   "note": "Cần báo cáo 12E1 đã làm sạch (không chứa tài liệu nội bộ)."
+  },
+  {
+   "finding_id": "E0/E1 P3-P4 (khác)",
+   "origin": "PHASE12E0 / PHASE12E1 (Windows)",
+   "severity": "P3/P4",
+   "title": null,
+   "root_cause": null,
+   "status_12d7": "EVIDENCE REQUIRED",
+   "verdict": "EVIDENCE REQUIRED",
+   "change_12d7": "Không đổi (không có báo cáo trong repo).",
+   "tests": [],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker": "unknown",
+   "note": null
+  }
+ ]
+}

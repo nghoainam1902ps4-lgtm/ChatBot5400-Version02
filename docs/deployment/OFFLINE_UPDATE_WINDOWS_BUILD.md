@@ -6,6 +6,15 @@
 > build đồng thời bị chặn (R2-18). Gói kèm [quy trình thủ công](OFFLINE_UPDATE_MANUAL_FALLBACK.md) — đường cập nhật
 > khuyến nghị cho production.
 
+> **Phase 12D7.** `offline_package.py build` không còn dừng trên Windows vì `fcntl` (E1-04): khóa build dùng
+> `msvcrt.locking` trên Windows, `flock` trên Linux — độc quyền giữa các tiến trình, hệ điều hành tự nhả khi tiến
+> trình chết, file khóa không bao giờ bị xóa. Lần build sau dọn file `.partial-*` của lần build bị ngắt (cùng tên
+> gói); thư mục dựng dở thì phải tự xóa (thông báo nói rõ). Nếu bước đổi tên cuối thất bại (Windows: file đang bị
+> chương trình khác mở) gói cũ **giữ cả `.sha256`**. `manifest.json`, `SHA256SUMS`, `.sha256` luôn ghi LF. Image
+> build từ checkout Windows giờ có cổng hướng xoay chạy được (D-40). Đã kiểm trên Linux với tiến trình thật;
+> **chưa chạy trên Windows** — mục W-12D7-04 của
+> [../review/PHASE12D7_LOCAL_ACCEPTANCE_CHECKLIST.md](../review/PHASE12D7_LOCAL_ACCEPTANCE_CHECKLIST.md).
+
 Đầu ra: `dist\offline\ChatBot5400-<version>-linux-amd64-offline.tar.gz` + `.sha256`. Không đụng tới production.
 
 ## 1. Chuẩn bị (một lần)

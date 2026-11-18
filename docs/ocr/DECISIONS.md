@@ -597,3 +597,60 @@ không ai biết; `finish`/`rollback` báo thành công không kiểm tra; archi
 
 Chi tiết: [../review/PHASE12D3_OFFLINE_SAFETY_REPORT.md](../review/PHASE12D3_OFFLINE_SAFETY_REPORT.md),
 [../deployment/OFFLINE_UPDATE_PACKAGE.md](../deployment/OFFLINE_UPDATE_PACKAGE.md).
+
+## D-38. Legal không tự nối đoạn văn qua trang; tách phép nối của Docling qua trang khi có bằng chứng (Phase 12D7)
+
+**Bối cảnh.** Phase 12E1 (Windows, 22 PDF thật) cho thấy quy tắc nối của bộ chuẩn hóa 1.2.0 sai 3/4 phép trên các
+phản ví dụ scan thật của F-03 (finding E1-09): điểm mất ký hiệu do OCR, dòng đơn vị tính bị OCR làm hỏng, tiêu đề
+chạy viết thường. Tái hiện ở Cloud: trong cả ba dạng, câu ghép sai đến từ **phép nối của chính Docling** mà quy tắc
+1.2.0 không hoàn tác, không phải từ phép nối của Legal.
+
+**Quyết định (chủ dự án).** Không bổ sung thêm heuristic đoán đoạn văn. Bộ chuẩn hóa 1.3.0:
+
+1. **Không bao giờ tự nối** đoạn của hai trang (A). Hai phần giữ thành hai đoạn theo thứ tự đọc đã có; không tạo câu.
+2. Phép nối **của Docling** (B) qua ranh giới trang được **tách lại** mỗi khi charspan của provenance khớp (bằng chứng
+   trực tiếp); trong cùng một trang (cột) chỉ tách khi quy tắc cũ từ chối. Dấu gạch nối bị Docling bỏ chỉ được khôi
+   phục khi phần tử trước khi ghép của pipeline cho thấy; nếu không: giữ, cảnh báo `upstream_dehyphenation`. Charspan
+   không khớp: giữ nội dung, cảnh báo `upstream_merge_kept` — không tuyên bố bảo toàn tuyệt đối.
+3. Từ bị cắt bởi gạch nối ở cuối trang: giữ nguyên hai phần, cảnh báo `hyphen_at_page_break_not_joined`.
+
+**Hệ quả.** Ground truth của fixture không đổi; phép nối được phép (8) giờ không được thực hiện (0) — đánh giá riêng
+trong benchmark (`docs/review/phase12d7/benchmark_legal_1_3_0.json`). 0 xóa / nối sai / chèn trên 92 fixture.
+Mô tả trên giao diện không còn hứa "cải thiện đoạn văn bị ngắt do phân trang".
+
+## D-39. Bản vá có kiểm soát cho Docling 2.129.0: chữ trong TSV của Tesseract giữ nguyên (Phase 12D7)
+
+**Bối cảnh.** E0-07: `TesseractOcrCliModel._run_tesseract` đọc TSV bằng `pd.read_csv` với suy diễn kiểu; vùng OCR chỉ có
+số thành cột `float64` (`0001` → `1.0`), chuỗi NA của pandas (`NA`, `N/A`, `NULL`, …) bị bỏ ở mọi vùng.
+
+**Quyết định (được chủ dự án phê duyệt).** Module `open_notebook/ocr/docling_patches.py`: bản sao đúng của hàm
+upstream, chỉ đổi phép đọc TSV (cột `text` là chuỗi, không chuyển NA; các cột khác giữ NA mặc định của pandas theo
+từng cột); áp dụng tại `build_ocr_options` cho mọi engine Tesseract; chặn bằng phiên bản (`docling == 2.129.0`) và
+SHA-256 mã nguồn upstream — không khớp thì Tesseract từ chối chạy. Không sửa site-packages, không vá pandas, không
+fork, không thêm dependency; giữ thông báo MIT. Chọn thay cho vá file lúc build vì Docling là extra tùy chọn được
+cài ở hai nơi (image dựng sẵn và entrypoint lúc chạy) — bản vá trong mã ứng dụng đi cùng image và gói offline ở mọi
+đường cài. `inventory` của image ghi `docling_tsv_patch`; gói không áp được bản vá là NOT_READY.
+
+**Hệ quả.** Standard không còn giống v1.2.0 từng byte ở những chỗ parser cũ làm sai; mọi khác biệt khác là lỗi
+(công cụ `scripts/ocr/phase12_standard_diff.py`).
+
+## D-40. Cổng hướng xoay (D-25) phải chạy được trong mọi image, kể cả image build từ máy Windows (Phase 12D7)
+
+**Bối cảnh.** E1-05 (Windows 12E1): các vùng OCR nhỏ bị xoay 180° và đọc thành chữ rác — đúng lỗi mà cổng hướng xoay
+(D-25) được tạo ra để chặn. `tesseract_gate.py` được Docling gọi như một chương trình, chạy qua dòng `#!`.
+`.gitattributes` chỉ ép LF cho `*.sh`; checkout bằng Git for Windows (`core.autocrlf=true`, mặc định) cho file cổng
+đuôi dòng CRLF, `docker compose build` / `build-package.ps1` chép nguyên vào image, dòng `#!/usr/bin/env python3\r`
+không chạy được, `tesseract_command()` lùi về Tesseract thật (thiết kế: không bao giờ làm hỏng OCR) và Docling áp
+dụng lại mọi góc xoay độ tin cậy thấp cho từng vùng layout. Tái hiện ở Cloud (bản CRLF thoát 126/127, ứng dụng chạy
+không cổng). **Chưa được xác nhận trên máy Windows** (log "runs without orientation gating", hoặc ký tự CR trong file
+cổng bên trong container) — nguyên nhân khả dĩ nhất, không phải đã chứng minh.
+
+**Quyết định.** Không đổi ngưỡng (2.0), không đổi logic xoay, không tắt xoay. (1) `.gitattributes`: cổng luôn LF.
+(2) Dockerfile: chuẩn hóa đuôi dòng, đặt quyền thực thi và tự kiểm tra cổng khi build (`/bin/true` thay cho
+Tesseract) — build Linux không đổi file, build Windows cho đúng blob của git; build hỏng thì dừng. (3)
+`options.tesseract_gate_state()` cho biết cổng có THỰC SỰ chạy không và vì sao; `ocr.cli status` in ra (chỉ dạng
+chữ, không thuộc fingerprint readiness). (4) `scripts/ocr/phase12_orientation_diagnose.py`: ghi từng vùng OCR (hướng,
+độ tin cậy, kích thước, PSM, góc đã xoay, chữ đọc được theo cả hai hướng) để Windows kiểm lại 11 cụm nghi ngờ.
+
+**Hệ quả.** Nếu Windows xác nhận cổng đã chạy mà vẫn còn vùng xoay sai với độ tin cậy ≥ 2.0, đó là một finding mới cần
+benchmark trước khi đổi ngưỡng (D-25: mọi câu trả lời sai đo được đều ≤ 1.44 trên 1 340 hướng).

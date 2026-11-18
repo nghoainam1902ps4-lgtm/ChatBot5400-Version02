@@ -1,0 +1,46 @@
+{
+ "schema": "chatbot5400-standard-diff/1",
+ "documents": {
+  "synthetic_page": {
+   "class": "expected parser fix",
+   "hunks": [
+    {
+     "class": "expected parser fix",
+     "before": [
+      "1.0",
+      "123.0",
+      "2024.0",
+      "12.5"
+     ],
+     "after": [
+      "0001",
+      "000123",
+      "2024",
+      "12.50"
+     ],
+     "at_token": 10
+    },
+    {
+     "class": "expected parser fix",
+     "before": [],
+     "after": [
+      "NA"
+     ],
+     "at_token": 24
+    },
+    {
+     "class": "expected parser fix",
+     "before": [],
+     "after": [
+      "N/A"
+     ],
+     "at_token": 25
+    }
+   ],
+   "byte_identical": false
+  }
+ },
+ "summary": {
+  "expected parser fix": 1
+ }
+}

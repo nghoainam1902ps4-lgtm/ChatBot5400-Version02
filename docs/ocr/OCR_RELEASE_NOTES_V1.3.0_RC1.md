@@ -20,8 +20,9 @@
     kèm cảnh báo có vị trí;
   - loại số trang khi có đủ bằng chứng (≥ 3 trang cùng mẫu, ≥ 60% số trang, cùng vị trí, ngoài phần thân); văn bản
     1–2 trang giữ nguyên; **dòng chữ lặp lại không bao giờ bị bỏ** trừ khi bố cục đã gắn nhãn header/footer;
-  - nối đoạn văn / khoản bị cắt bởi phân trang theo quy tắc bảo thủ (không nối khi bắt đầu Điều/Khoản/Điểm mới kể
-    cả `a.`, `a/`, `đ)`, `(a)`, `a.1)`; footnote; footer; khác cột; bảng, ảnh, trang trắng; câu đã kết thúc);
+  - **không tự nối đoạn văn qua trang** (Phase 12D7, D-38): đoạn bị cắt bởi phân trang được giữ thành hai đoạn theo
+    đúng thứ tự đọc; khi Docling đã tự nối hai khối của hai trang và vị trí ký tự cho phép, hai phần được tách lại;
+    không tạo câu mới;
   - giữ **đúng số** Điều, Khoản, Điểm gốc (`9.`, `a)`, `đ)`, `1.1`, `a.1)`, gạch đầu dòng) — không còn bị đánh lại
     số hay chèn số vị trí;
   - lấy lại chữ OCR và bảng mà bố cục đặt trong vùng ảnh (trước đây bị bỏ);
@@ -30,8 +31,21 @@
   kèm phiên bản bộ chuẩn hóa và số cảnh báo; hiển thị phân cấp Điều/Khoản/điểm. Văn bản lưu (và đưa vào RAG) không
   chứa ký tự thoát Markdown.
 - **Không dùng AI / LLM sửa nội dung**, không tự thêm từ bị thiếu, không đổi số liệu.
-- Mặc định **Tiêu chuẩn** (kết quả giống hệt 1.2.0). Bật cần **cả hai**: `OCR_LEGAL_NORMALIZATION_ENABLED=true` trên
-  máy chủ và lựa chọn của quản trị viên.
+- Mặc định **Tiêu chuẩn** (kết quả như 1.2.0, trừ các số / từ mà parser TSV cũ làm sai với engine Tesseract — xem
+  *Sửa lỗi OCR* bên dưới). Bật cần **cả hai**: `OCR_LEGAL_NORMALIZATION_ENABLED=true` trên máy chủ và lựa chọn của
+  quản trị viên.
+
+### Sửa lỗi OCR với Tesseract (Phase 12D7)
+
+- **Số do Tesseract nhận dạng được giữ đúng** (E0-07, D-39): Docling 2.129.0 đọc TSV của Tesseract bằng suy diễn kiểu
+  của pandas, nên vùng OCR chỉ có số bị đổi (`0001` → `1.0`, `2024` → `2024.0`, `12.50` → `12.5`) và các từ `NA`,
+  `N/A`, `NULL`, … bị mất. Bản vá có kiểm soát (chỉ cho Docling 2.129.0, kiểm SHA-256 mã nguồn) giữ nguyên chữ trong
+  TSV cho Tesseract Fast / Best / Agri, ở cả Tiêu chuẩn và Legal. RapidOCR và EasyOCR không đổi. Hệ quả: ở những chỗ
+  đó, kết quả Tiêu chuẩn **khác 1.2.0** — đó là chữ đúng như Tesseract đọc; mọi khác biệt khác là lỗi
+  (`scripts/ocr/phase12_standard_diff.py`). Tài liệu cũ không tự xử lý lại.
+- **Cổng hướng xoay chạy cả trong image build từ Windows** (E1-05, D-40): file cổng có đuôi dòng CRLF không khởi động
+  được và Tesseract chạy không cổng (vùng nhỏ bị xoay 180°). Image giờ chuẩn hóa và tự kiểm tra cổng khi build;
+  `python -m open_notebook.ocr.cli status` cho biết cổng có chạy không. Nguyên nhân trên máy Windows: chờ xác nhận.
 
 ### Gói cập nhật offline
 
@@ -45,6 +59,9 @@
 
 - `scripts/ocr/phase12_diagnose.py` / `phase12_compare.py`: theo dõi một PDF qua từng tầng (Tesseract trực tiếp → ô
   OCR → layout → DoclingDocument → Markdown → nội dung lưu → hiển thị), chạy cục bộ.
+- `scripts/ocr/phase12_orientation_diagnose.py` (Phase 12D7): hướng, độ tin cậy, kích thước, góc xoay và chữ đọc được
+  theo cả hai hướng của từng vùng OCR Tesseract; `scripts/ocr/phase12_standard_diff.py`: phân loại khác biệt Tiêu
+  chuẩn so với 1.2.0 (không đổi / sửa lỗi parser có bằng chứng TSV / chưa kiểm / hồi quy).
 
 ## 2. Nâng cấp từ 1.2.0
 
@@ -61,10 +78,12 @@ cổng), Agri về phiên bản trước, ứng dụng về 1.2.0 (không khôi 
 ## 4. Giới hạn đã biết
 
 1. Phụ thuộc nhãn của Layout Heron: số trang bị gộp chung khối với đoạn văn không tách được; header/footer mà bố cục
-   gắn nhãn là đoạn văn thường được **giữ lại** trong nội dung (kèm cảnh báo) và chặn phép nối ở trang đó.
+   gắn nhãn là đoạn văn thường được **giữ lại** trong nội dung (kèm cảnh báo).
 2. Thứ tự đọc của Docling không thay đổi (văn bản hai cột có thể đọc theo hàng). Docling tự nối một số đoạn qua trang
-   khi đoạn trước kết thúc bằng chữ ASCII thường / dấu phẩy / gạch nối — có ở cả chế độ Tiêu chuẩn và 1.2.0.
-3. Văn bản 1–2 trang giữ số trang nghi ngờ, nên khoản bị cắt qua trang ở các văn bản này không được nối.
+   khi đoạn trước kết thúc bằng chữ ASCII thường / dấu phẩy / gạch nối — có ở cả chế độ Tiêu chuẩn và 1.2.0. Ở chế
+   độ Legal phép nối đó được tách lại khi vị trí ký tự (charspan) khớp; không khớp thì giữ nguyên và cảnh báo
+   (`upstream_merge_kept`); chữ bị bỏ gạch nối chỉ được khôi phục khi có bằng chứng.
+3. Đoạn văn bị cắt qua trang hiển thị thành hai đoạn (quyết định của chủ dự án sau Phase 12E1 — finding E1-09).
 4. Không trích dẫn số trang trong câu trả lời RAG (provenance chưa lưu theo chunk).
 5. Chưa có lựa chọn theo từng tài liệu.
 6. Chất lượng trên tài liệu thật và với model Agri: [điền sau nghiệm thu Local].
