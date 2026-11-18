@@ -14,6 +14,7 @@ crop as evidence. Synthetic: the 22 real PDFs are a Windows checklist item.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import re
@@ -187,6 +188,29 @@ def _raw_tsv(crops: Path, out: Path) -> None:
             check=True,
         ).stdout
         (out / f"{png.stem}.tsv").write_bytes(tsv)
+        # Phase 12D9 (D8-STD-03): the gate only accepts evidence with the
+        # provenance sidecar the export tool writes (same crop, same model).
+        # was: TSV files without a sidecar (accepted by the 12D7 gate)
+        (out / f"{png.stem}.json").write_text(
+            json.dumps(
+                {
+                    "document": "page",
+                    "page": 1,
+                    "region": png.stem,
+                    "invocation": png.stem,
+                    "engine": "tesseract (vie)",
+                    "model_files": [
+                        {
+                            "name": "vie.traineddata",
+                            "sha256": hashlib.sha256(
+                                (Path(str(TESSDATA)) / "vie.traineddata").read_bytes()
+                            ).hexdigest(),
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
 
 
 def test_standard_differs_only_where_the_old_parser_rewrote_a_token(tmp_path):
