@@ -1700,15 +1700,40 @@ def _probe_docling_tsv_patch(app_root: Path) -> Dict[str, Any]:
         "except Exception as e:\n"
         "    print('TSVPATCH ' + json.dumps({'applied': False, 'error': type(e).__name__ + ': ' + str(e)[:300]}))\n"
     )
+    return _probe_child(code, "TSVPATCH")
+
+
+def _probe_child(code: str, tag: str) -> Dict[str, Any]:
     proc = run([sys.executable, "-c", code], check=False, timeout=600)
     for line in reversed(proc.stdout.splitlines()):
-        if line.startswith("TSVPATCH "):
+        if line.startswith(tag + " "):
             try:
-                data = json.loads(line[len("TSVPATCH ") :])
+                data = json.loads(line[len(tag) + 1 :])
             except ValueError:
                 break
             return data if isinstance(data, dict) else {"applied": False}
     return {"applied": False, "error": f"probe failed (exit {proc.returncode})"}
+
+
+def _probe_docling_text_patch(app_root: Path) -> Dict[str, Any]:
+    """D8-03 / D8-02 (Phase 12D9): can the image's Docling / docling-core take the
+    text preservation patches (hyphens, table / picture footnotes)?
+
+    Application code (open_notebook/ocr/docling_patches.py), applied before every
+    Docling conversion and refused for any version it was not written for: without
+    it every PDF / scan conversion of the image refuses to run. Child process, no
+    network."""
+    code = (
+        "import json, sys\n"
+        f"sys.path.insert(0, {str(app_root)!r})\n"
+        "try:\n"
+        "    from open_notebook.ocr import docling_patches as P\n"
+        "    P.apply_text_preservation(required=True)\n"
+        "    print('TEXTPATCH ' + json.dumps(P.text_status()))\n"
+        "except Exception as e:\n"
+        "    print('TEXTPATCH ' + json.dumps({'applied': False, 'error': type(e).__name__ + ': ' + str(e)[:300]}))\n"
+    )
+    return _probe_child(code, "TEXTPATCH")
 
 
 def cmd_inventory(args: argparse.Namespace) -> int:
@@ -1782,6 +1807,11 @@ def cmd_inventory(args: argparse.Namespace) -> int:
         if deps.get("docling") is not None
         else {"applied": False, "error": "docling not installed"}
     )
+    artifacts["docling_text_patch"] = (
+        _probe_docling_text_patch(app_root)
+        if deps.get("docling") is not None
+        else {"applied": False, "error": "docling not installed"}
+    )
     info["runtime_artifacts"] = artifacts
     info["runtimes_baked"] = {
         "docling": deps.get("docling") is not None,
@@ -1795,6 +1825,8 @@ def cmd_inventory(args: argparse.Namespace) -> int:
         ),
         # E0-07: without it Tesseract OCR refuses to run (never runs unpatched)
         "docling_tsv_patch": bool(artifacts["docling_tsv_patch"].get("applied")),
+        # D8-03 / D8-02: without them every PDF / scan conversion refuses to run
+        "docling_text_patch": bool(artifacts["docling_text_patch"].get("applied")),
     }
     print(json.dumps(info, indent=2, sort_keys=True))
     return EXIT_OK
@@ -2181,6 +2213,18 @@ def _build_stage(
                     "error"
                 )
                 or "see runtime_artifacts.docling_tsv_patch"
+            )
+        )
+    if baked.get("docling") and not baked.get("docling_text_patch"):
+        readiness_problems.append(
+            "the Docling of the image cannot take the text preservation patches "
+            "(D8-03 hyphens / D8-02 table and picture footnotes): every PDF / scan "
+            "conversion would refuse to run - "
+            + str(
+                (inv.get("runtime_artifacts", {}).get("docling_text_patch") or {}).get(
+                    "error"
+                )
+                or "see runtime_artifacts.docling_text_patch"
             )
         )
     if not baked.get("tiktoken_offline"):

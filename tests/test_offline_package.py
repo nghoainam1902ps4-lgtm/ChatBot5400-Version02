@@ -336,11 +336,16 @@ def fake_docker(tmp_path, monkeypatch):
                 "tesseract": True,
                 "tiktoken_offline": True,
                 "docling_tsv_patch": True,
+                "docling_text_patch": True,
             },
             "runtime_artifacts": {
                 "rapidocr_weights_sha256": {},
                 "tiktoken": {"encoding": "o200k_base", "loads_offline": True},
                 "docling_tsv_patch": {"applied": True, "patch": "E0-07/tesseract-tsv-text/1"},
+                "docling_text_patch": {
+                    "applied": True,
+                    "patches": ["D8-03/hyphen-preservation/1", "D8-02/attached-footnotes/1"],
+                },
             },
         },
         "config": {
@@ -733,6 +738,51 @@ def test_an_image_whose_docling_cannot_take_the_tsv_patch_is_not_ready(
     readiness = _manifest_of(pkg)["readiness"]
     assert readiness["status"] == "NOT_READY"
     assert any("TSV text patch (E0-07)" in p and "2.130.0" in p for p in readiness["problems"])
+
+
+def test_inventory_probe_applies_the_text_preservation_patches_with_the_real_docling():
+    """D8-03 / D8-02 (Phase 12D9): the inventory probe itself, against the
+    Docling / docling-core installed here (2.129.0 / 2.96.0)."""
+    pytest.importorskip("docling")
+    probe = OP._probe_docling_text_patch(ROOT)
+    assert probe["applied"] is True, probe
+    assert probe["patches"] == ["D8-03/hyphen-preservation/1", "D8-02/attached-footnotes/1"]
+    assert (probe["docling"], probe["docling_core"]) == ("2.129.0", "2.96.0")
+
+
+def test_an_image_whose_docling_cannot_take_the_text_patches_is_not_ready(
+    fake_docker, repo, tmp_path
+):
+    """Phase 12D9: without the text preservation patches every PDF / scan
+    conversion of the image refuses to run -> NOT_READY, with the reason."""
+
+    def no_patch(s):
+        s["inventory"]["runtimes_baked"]["docling_text_patch"] = False
+        s["inventory"]["runtime_artifacts"]["docling_text_patch"] = {
+            "applied": False,
+            "error": "TextPreservationPatchError: docling-core 2.97.0: the "
+            "D8-02/attached-footnotes/1 patch is written for docling-core 2.96.0 only",
+        }
+
+    fake_docker.edit(no_patch)
+    pkg, _ = _build(repo, tmp_path)
+    readiness = _manifest_of(pkg)["readiness"]
+    assert readiness["status"] == "NOT_READY"
+    assert any(
+        "text preservation patches" in p and "2.97.0" in p for p in readiness["problems"]
+    )
+
+
+def test_an_older_inventory_without_the_text_patch_probe_is_not_ready(
+    fake_docker, repo, tmp_path
+):
+    """An image whose inventory does not say the patches apply is not assumed
+    to take them."""
+    fake_docker.edit(lambda s: s["inventory"]["runtimes_baked"].pop("docling_text_patch"))
+    pkg, _ = _build(repo, tmp_path)
+    readiness = _manifest_of(pkg)["readiness"]
+    assert readiness["status"] == "NOT_READY"
+    assert any("text preservation patches" in p for p in readiness["problems"])
 
 
 def test_build_refuses_a_checkout_without_the_manual_procedure(fake_docker, repo, tmp_path):

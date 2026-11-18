@@ -156,9 +156,11 @@ class Lab:
             "tesseract": "tesseract 5.5.0 (stand-in)",
             "dependencies": {"docling": "stand-in"},
             "runtimes_baked": {"docling": True, "easyocr": True, "tesseract": True,
-                               "tiktoken_offline": True, "docling_tsv_patch": True},
+                               "tiktoken_offline": True, "docling_tsv_patch": True,
+                               "docling_text_patch": True},
             "runtime_artifacts": {"tiktoken": {"encoding": "o200k_base", "loads_offline": True},
-                                  "docling_tsv_patch": {"applied": True}},
+                                  "docling_tsv_patch": {"applied": True},
+                                  "docling_text_patch": {"applied": True}},
         }))  # fmt: skip
         (ctx / "Dockerfile").write_text(
             "FROM busybox:1.36\nCOPY app /app\nRUN chmod 755 /app/.venv/bin/python\n"

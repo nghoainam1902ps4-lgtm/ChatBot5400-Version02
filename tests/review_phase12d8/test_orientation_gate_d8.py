@@ -517,11 +517,8 @@ def test_control_ocr_status_executes_the_gate_for_real(tmp_path, monkeypatch, ca
     assert last.startswith("orientation gate: NOT ACTIVE") and "CRLF" in last
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORI-02: readiness' quality fingerprint reports osd_gate=True from "
-    "the environment variable alone, also when the gate cannot start",
-)
+# was: xfail(strict) D8-ORI-02 "readiness' quality fingerprint reports osd_gate=True
+# from the environment variable alone" - fixed in Phase 12D9 (readiness.quality_config)
 def test_readiness_quality_reports_the_gate_that_really_runs(tmp_path, monkeypatch):
     from open_notebook.ocr import readiness
 
@@ -534,11 +531,8 @@ def test_readiness_quality_reports_the_gate_that_really_runs(tmp_path, monkeypat
     assert readiness.quality_config("tesseract_best")["osd_gate"] is False
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORI-02: `ocr.cli status --json` carries no orientation-gate state "
-    "(text mode only), so automation cannot see an inactive gate",
-)
+# was: xfail(strict) D8-ORI-02 "`ocr.cli status --json` carries no orientation-gate
+# state" - fixed in Phase 12D9 (cli.cmd_status: orientation_gate on Tesseract rows)
 def test_status_json_carries_the_gate_state(tmp_path, monkeypatch, capsys):
     from open_notebook.ocr import cli
 
