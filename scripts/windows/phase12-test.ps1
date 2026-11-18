@@ -19,13 +19,15 @@
   .\scripts\windows\phase12-test.ps1 compare -Pdf qd-mau.pdf -Engine tesseract_agri
   .\scripts\windows\phase12-test.ps1 fixtures
   .\scripts\windows\phase12-test.ps1 legal-gate -State off
+  .\scripts\windows\phase12-test.ps1 orientation -Pdf qd-mau.pdf -Engine tesseract_best -Suspect '3:72,640,290,700'
   .\scripts\windows\phase12-test.ps1 stop
 #>
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, Mandatory = $true)]
     [ValidateSet('check', 'init-env', 'build', 'up', 'status', 'logs', 'import-agri', 'activate-agri',
-                 'agri-status', 'fixtures', 'compare', 'diagnose', 'legal-gate', 'restart-app', 'stop')]
+                 'agri-status', 'fixtures', 'compare', 'diagnose', 'orientation', 'legal-gate',
+                 'restart-app', 'stop')]
     [string]$Action,
     [string]$Model,
     [string]$Version = 'v1',
@@ -34,7 +36,11 @@ param(
     [string]$Engine = 'tesseract_agri',
     [ValidateSet('on', 'off')]
     [string]$State = 'on',
-    [switch]$FullPage
+    [switch]$FullPage,
+    # orientation: suspect regions PAGE:L,T,R,B (page / bbox of 03_layout_clusters.json)
+    [string[]]$Suspect = @(),
+    # orientation: numbers only (no words, no crop images) - for a sanitized report
+    [switch]$NoText
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,7 +55,13 @@ function Write-Step($msg) { Write-Host "[phase12] $msg" -ForegroundColor Cyan }
 function Fail($msg) { Write-Host "[phase12] ERROR: $msg" -ForegroundColor Red; exit 1 }
 
 function Invoke-Compose {
-    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$ComposeArgs)
+    # E0-05 (Phase 12D7): the docker compose arguments travel as ONE explicit
+    # array (-ComposeArgs @(...)). The former ValueFromRemainingArguments made
+    # this an advanced function with PowerShell's common parameters, and in
+    # `Invoke-Compose up -d` PowerShell bound -d to -Debug: docker got `up`
+    # WITHOUT -d and the script stayed attached to the containers. Inside an
+    # array every element is a value, never a parameter name.
+    param([Parameter(Mandatory = $true)][string[]]$ComposeArgs)
     Push-Location $StackDir
     try {
         & docker compose -p $Project -f docker-compose.yml @ComposeArgs
@@ -114,45 +126,65 @@ function Invoke-InitEnv {
 }
 
 function Invoke-Exec {
-    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Cmd)
-    Invoke-Compose exec -T open_notebook @Cmd
+    # A command inside the application container: explicit array too (E0-05).
+    param([Parameter(Mandatory = $true)][string[]]$Cmd)
+    Invoke-Compose -ComposeArgs (@('exec', '-T', 'open_notebook') + $Cmd)
 }
+
+$Python = '/app/.venv/bin/python'
+$OcrCli = @($Python, '-m', 'open_notebook.ocr.cli')
 
 switch ($Action) {
     'check' { Invoke-Check }
     'init-env' { Invoke-InitEnv }
-    'build' { Invoke-Check; Invoke-Compose build open_notebook }
+    'build' { Invoke-Check; Invoke-Compose -ComposeArgs @('build', 'open_notebook') }
     'up' {
         Invoke-Check
         if (-not (Test-Path $EnvFile)) { Fail 'Run "init-env" first.' }
-        Invoke-Compose up -d
+        Invoke-Compose -ComposeArgs @('up', '-d')
         Write-Step "Web: http://127.0.0.1:$(Get-EnvValue 'PHASE12_WEB_PORT' '8504')  API: http://127.0.0.1:$(Get-EnvValue 'PHASE12_API_PORT' '5057')/docs"
     }
-    'status' { Invoke-Compose ps; Invoke-Exec /app/.venv/bin/python -m open_notebook.ocr.cli status }
-    'logs' { Invoke-Compose logs --tail 200 open_notebook }
+    'status' { Invoke-Compose -ComposeArgs @('ps'); Invoke-Exec -Cmd ($OcrCli + @('status')) }
+    'logs' { Invoke-Compose -ComposeArgs @('logs', '--tail', '200', 'open_notebook') }
     'import-agri' {
         if (-not $Model -or -not (Test-Path $Model)) { Fail 'Give -Model <path to vie_agri.traineddata>.' }
         $hash = (Get-FileHash -Algorithm SHA256 $Model).Hash.ToLower()
         Write-Step "SHA-256 of the model on this machine: $hash"
         New-Item -ItemType Directory -Force -Path $ImportDir | Out-Null
         Copy-Item -Path $Model -Destination (Join-Path $ImportDir 'vie_agri.traineddata') -Force
-        Invoke-Exec /app/.venv/bin/python -m open_notebook.ocr.cli custom import --file /import/vie_agri.traineddata --version $Version --notes 'Phase 12 Windows Local'
+        Invoke-Exec -Cmd ($OcrCli + @('custom', 'import', '--file', '/import/vie_agri.traineddata',
+                                      '--version', $Version, '--notes', 'Phase 12 Windows Local'))
         Write-Step "Compare the 'stored ... sha256' line above with $hash, then run: activate-agri -Version $Version"
     }
-    'activate-agri' { Invoke-Exec /app/.venv/bin/python -m open_notebook.ocr.cli custom activate --version $Version; Invoke-Exec /app/.venv/bin/python -m open_notebook.ocr.cli custom status }
-    'agri-status' { Invoke-Exec /app/.venv/bin/python -m open_notebook.ocr.cli custom status }
+    'activate-agri' {
+        Invoke-Exec -Cmd ($OcrCli + @('custom', 'activate', '--version', $Version))
+        Invoke-Exec -Cmd ($OcrCli + @('custom', 'status'))
+    }
+    'agri-status' { Invoke-Exec -Cmd ($OcrCli + @('custom', 'status')) }
     'fixtures' {
-        Invoke-Exec /app/.venv/bin/python scripts/ocr/generate_phase12_fixtures.py --out /phase12-out/fixtures --font-dir /fonts
+        Invoke-Exec -Cmd @($Python, 'scripts/ocr/generate_phase12_fixtures.py', '--out', '/phase12-out/fixtures',
+                           '--font-dir', '/fonts')
         Write-Step "Synthetic PDFs: $OutDir\fixtures (copy the ones you want into import\ to compare them)"
     }
-    { $_ -in @('compare', 'diagnose') } {
+    { $_ -in @('compare', 'diagnose', 'orientation') } {
         if (-not $Pdf) { Fail 'Give -Pdf <file or folder name inside deploy\phase12-test\import>.' }
         if ($Pdf -match '\.\.' -or [System.IO.Path]::IsPathRooted($Pdf)) { Fail '-Pdf must be a name inside the import folder.' }
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-        $script = if ($Action -eq 'compare') { 'scripts/ocr/phase12_compare.py' } else { 'scripts/ocr/phase12_diagnose.py' }
+        $script = switch ($Action) {
+            'compare' { 'scripts/ocr/phase12_compare.py' }
+            'diagnose' { 'scripts/ocr/phase12_diagnose.py' }
+            'orientation' { 'scripts/ocr/phase12_orientation_diagnose.py' }  # E1-05
+        }
         $extra = @()
         if ($FullPage) { $extra += '--full-page' }
-        Invoke-Exec /app/.venv/bin/python $script "/import/$Pdf" --engine $Engine --out "/phase12-out/$Action-$stamp" @extra
+        if ($Action -eq 'orientation') {
+            foreach ($s in $Suspect) {
+                if ($s -notmatch '^\d+:[0-9.]+,[0-9.]+,[0-9.]+,[0-9.]+$') { Fail "-Suspect $s must look like 3:72,640,290,700" }
+                $extra += @('--suspect', $s)
+            }
+            if ($NoText) { $extra += '--no-text' }
+        }
+        Invoke-Exec -Cmd (@($Python, $script, "/import/$Pdf", '--engine', $Engine, '--out', "/phase12-out/$Action-$stamp") + $extra)
         Write-Step "Results (document text, keep local): $OutDir\$Action-$stamp"
     }
     'legal-gate' {
@@ -162,8 +194,8 @@ switch ($Action) {
         $lines += "OCR_LEGAL_NORMALIZATION_ENABLED=$value"
         Set-Content -Path $EnvFile -Value $lines -Encoding ascii
         Write-Step "Gate set to $value; recreating ONLY the application container (database untouched)."
-        Invoke-Compose up -d --no-deps --no-build --force-recreate open_notebook
+        Invoke-Compose -ComposeArgs @('up', '-d', '--no-deps', '--no-build', '--force-recreate', 'open_notebook')
     }
-    'restart-app' { Invoke-Compose up -d --no-deps --no-build --force-recreate open_notebook }
-    'stop' { Invoke-Compose stop; Write-Step 'Stopped. Data kept (no volume or folder deleted).' }
+    'restart-app' { Invoke-Compose -ComposeArgs @('up', '-d', '--no-deps', '--no-build', '--force-recreate', 'open_notebook') }
+    'stop' { Invoke-Compose -ComposeArgs @('stop'); Write-Step 'Stopped. Data kept (no volume or folder deleted).' }
 }
