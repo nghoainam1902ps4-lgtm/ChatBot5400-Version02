@@ -1,4 +1,20 @@
-# Rollback — ChatBot5400 (cập nhật offline, gói định dạng 2)
+# Rollback — ChatBot5400 (cập nhật offline; viết cho gói định dạng 2, cập nhật một phần ở Phase 12D5)
+
+> **Phase 12D5 — đọc trước.** Bộ cập nhật tự động mô tả ở đây là **EXPERIMENTAL / NOT READY — không khuyến nghị cho
+> production**; production dùng [quy trình thủ công](OFFLINE_UPDATE_MANUAL_FALLBACK.md). Khi tài liệu này khác
+> [hợp đồng tích hợp](OFFLINE_UPDATE_INTEGRATION_CONTRACT.md) hoặc `offline_package.py --help`, hai nguồn đó đúng.
+> Thay đổi của 12D5 so với nội dung bên dưới (viết cho 12D3): gói định dạng **3**; `DEPLOY_IMAGE_TAG` (tag cục bộ mà
+> file compose của triển khai dùng) là con trỏ **duy nhất** tới image đã duyệt — không còn `image-override.yml` dùng
+> chung, không còn file pin, `compose-command.txt` chỉ đổi sau một `finish` / `rollback` đã kiểm; công cụ **không tiêm
+> biến môi trường** (`REQUIRED_APP_ENV` phải có trong cấu hình của đơn vị, `preflight` từ chối nếu thiếu);
+> `rollback.sh legal-off` / `legal-on` **từ chối** (Legal bật / tắt bằng cấu hình cục bộ + script vận hành); mỗi lần
+> chạy `update --apply` vào bảo trì trên image đã duyệt, chờ tác vụ nền, tự sao lưu **mới** và chứng minh không có ghi
+> trong lúc sao lưu (không còn `BACKUP_MAX_AGE_MINUTES`); mọi kiểm dữ liệu so với **baseline bất biến** của attempt
+> (bản ghi mất, DB khác hoặc không đọc được = FAIL, không restore tự động); `status` / `health`: mã 7 = lệch, 8 =
+> attempt chưa quyết định / chuyển tiếp bị gián đoạn.
+
+Rollback của **quy trình thủ công** (khuyến nghị cho production): [OFFLINE_UPDATE_MANUAL_FALLBACK.md §10](OFFLINE_UPDATE_MANUAL_FALLBACK.md)
+— chuyển tag triển khai về image trước cập nhật, tạo lại ứng dụng bằng script vận hành, kiểm.
 
 Bốn mức rollback, từ nhẹ đến nặng. **Không mức nào khôi phục database** khi schema không đổi (Phase 12: schema 33 ở
 cả bản 1.2.0 và bản Phase 12; không migration). Công cụ: `/opt/chatbot5400-offline-tools` (gọi là `$T`).
@@ -15,18 +31,16 @@ T=/opt/chatbot5400-offline-tools
 Cách A — giao diện (không tạo lại container): Cài đặt → OCR Engine Manager → *Chuẩn hóa văn bản sau OCR* →
 **Tiêu chuẩn** → *Lưu chế độ chuẩn hóa*. Áp dụng cho tài liệu xử lý **sau** thời điểm này.
 
-Cách B — tắt cổng triển khai (toàn hệ thống dùng Standard, kể cả khi lựa chọn đã lưu là Legal):
+Cách B — tắt cổng triển khai (toàn hệ thống dùng Standard, kể cả khi lựa chọn đã lưu là Legal): đặt
+`OCR_LEGAL_NORMALIZATION_ENABLED=false` (hoặc xóa biến) trong cấu hình cục bộ của đơn vị (override / `.env`), tạo lại
+ứng dụng bằng script vận hành ở chế độ đang dùng, rồi kiểm:
 
 ```bash
-sudo $T/rollback.sh legal-off
+sudo $T/healthcheck.sh
 ```
 
-Tạo lại **chỉ** container ứng dụng với `OCR_LEGAL_NORMALIZATION_ENABLED=false` trong override do công cụ quản lý.
-Lệnh **giữ nguyên chế độ mạng hiện tại** của container: đang chạy bình thường thì vẫn bình thường, đang bảo trì
-(cổng chỉ loopback) thì vẫn bảo trì. Ép chế độ bằng `--maintenance` hoặc `--no-maintenance`. Cấu hình hiệu lực được
-so trước/sau (database, volume, network không đổi), container database được kiểm bằng `docker inspect` trước và
-sau, và ứng dụng được health-check; mã thoát khác 0 nếu không đạt. Quyết định bật/tắt cổng được ghi vào journal và
-**được giữ lại ở lần cập nhật kế tiếp**.
+Từ Phase 12D5 `rollback.sh legal-off` / `legal-on` **từ chối** (mã 2) và in đúng quy trình này: công cụ không ghi
+override, không sửa file của đơn vị (hợp đồng C3).
 
 Tài liệu đã xử lý bằng Legal **giữ nguyên** nội dung đã lưu (trang Source ghi nhãn *Đã chuẩn hóa văn bản pháp lý* và
 phiên bản bộ chuẩn hóa); muốn có bản Standard của một tài liệu thì xử lý lại tài liệu đó (thủ công, theo quyết định

@@ -1,5 +1,11 @@
 # Build gói cập nhật offline trên Windows (máy có Internet)
 
+> **Phase 12D5.** Gói định dạng 3. `build-package.ps1` không còn dừng trên Windows PowerShell 5.1 khi tag chưa tồn
+> tại (R2-22: kiểm tag bằng `docker image ls -q`; chưa chạy được ở Cloud — W-PS-01..03). `build` từ chối image không
+> có nhãn `org.opencontainers.image.revision` = commit (R2-08); build lại thất bại không xóa gói tốt trước đó, hai lần
+> build đồng thời bị chặn (R2-18). Gói kèm [quy trình thủ công](OFFLINE_UPDATE_MANUAL_FALLBACK.md) — đường cập nhật
+> khuyến nghị cho production.
+
 Đầu ra: `dist\offline\ChatBot5400-<version>-linux-amd64-offline.tar.gz` + `.sha256`. Không đụng tới production.
 
 ## 1. Chuẩn bị (một lần)

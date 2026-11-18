@@ -248,7 +248,13 @@ def _repo(tmp: Path) -> Path:
     _git(repo, "commit", "-qm", "v1.2.0")
     _git(repo, "tag", "v1.2.0")
     (repo / "VERSION").write_text("1.3.0\n")
-    _git(repo, "commit", "-qam", "v1.3.0")
+    # every package carries the manual procedure (Phase 12D5): the real one
+    docs = repo / "docs" / "deployment"
+    docs.mkdir(parents=True)
+    for name in ("OFFLINE_UPDATE_MANUAL_FALLBACK.md", "OFFLINE_UPDATE_INTEGRATION_CONTRACT.md"):
+        shutil.copy2(ROOT / "docs" / "deployment" / name, docs / name)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "v1.3.0")
     return repo
 
 

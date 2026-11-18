@@ -1,7 +1,20 @@
 # Cập nhật ChatBot5400 trên máy chủ Ubuntu offline
 
-Áp dụng cho gói định dạng **2** (Phase 12D3). Mọi lệnh chạy **trên máy chủ**, không cần Internet, không cần registry,
-không build, không đụng tới firewall/Tailscale/LAN/mật khẩu.
+Viết cho gói định dạng 2 (Phase 12D3), cập nhật một phần ở Phase 12D5 (gói định dạng **3**). Mọi lệnh chạy **trên
+máy chủ**, không cần Internet, không cần registry, không build, không đụng tới firewall/Tailscale/LAN/mật khẩu.
+
+> **Phase 12D5 — đọc trước.** Bộ cập nhật tự động mô tả ở đây là **EXPERIMENTAL / NOT READY — không khuyến nghị cho
+> production**; production dùng [quy trình thủ công](OFFLINE_UPDATE_MANUAL_FALLBACK.md). Khi tài liệu này khác
+> [hợp đồng tích hợp](OFFLINE_UPDATE_INTEGRATION_CONTRACT.md) hoặc `offline_package.py --help`, hai nguồn đó đúng.
+> Thay đổi của 12D5 so với nội dung bên dưới (viết cho 12D3): gói định dạng **3**; `DEPLOY_IMAGE_TAG` (tag cục bộ mà
+> file compose của triển khai dùng) là con trỏ **duy nhất** tới image đã duyệt — không còn `image-override.yml` dùng
+> chung, không còn file pin, `compose-command.txt` chỉ đổi sau một `finish` / `rollback` đã kiểm; công cụ **không tiêm
+> biến môi trường** (`REQUIRED_APP_ENV` phải có trong cấu hình của đơn vị, `preflight` từ chối nếu thiếu);
+> `rollback.sh legal-off` / `legal-on` **từ chối** (Legal bật / tắt bằng cấu hình cục bộ + script vận hành); mỗi lần
+> chạy `update --apply` vào bảo trì trên image đã duyệt, chờ tác vụ nền, tự sao lưu **mới** và chứng minh không có ghi
+> trong lúc sao lưu (không còn `BACKUP_MAX_AGE_MINUTES`); mọi kiểm dữ liệu so với **baseline bất biến** của attempt
+> (bản ghi mất, DB khác hoặc không đọc được = FAIL, không restore tự động); `status` / `health`: mã 7 = lệch, 8 =
+> attempt chưa quyết định / chuyển tiếp bị gián đoạn.
 
 > **Trạng thái xác minh.** Toàn bộ logic dưới đây đã được kiểm thử với Docker **giả lập** (git, tar, SHA-256,
 > ssh-keygen thật). Hành vi của Docker Engine / Compose thật, PowerShell, OCR thật **chưa được chạy** ở Cloud —
@@ -71,9 +84,13 @@ sudo install -o root -g root -m 0640 /opt/chatbot5400-offline-tools/offline-upda
 sudo nano /etc/chatbot5400/offline-update.conf
 ```
 
-Điền `DEPLOY_DIR`, `COMPOSE_PROJECT`, `COMPOSE_FILES` (đúng thứ tự file máy chủ đang dùng), `MAINTENANCE_OVERRIDE`
-(file override bảo trì đã có — OCR_OPERATOR_GUIDE §11), `BACKUP_CMD` / `BACKUP_VERIFY_CMD` (quy trình backup đã phê
-duyệt), `HEALTH_URL`. File chỉ chứa đường dẫn, không chứa mật khẩu.
+Điền `DEPLOY_DIR`, `COMPOSE_PROJECT`, `COMPOSE_FILES` (đúng thứ tự file mà **script vận hành** dùng),
+`DEPLOY_IMAGE_TAG` (tag cục bộ mà service ứng dụng dùng trong các file đó — hợp đồng C1), `MAINTENANCE_OVERRIDE`
+(file override bảo trì đã có — OCR_OPERATOR_GUIDE §11), `REQUIRED_APP_ENV` (mặc định
+`OCR_RAPIDOCR_PERSISTENT=true OCR_OFFLINE=true`; phải có trong cấu hình của đơn vị), `SIGNATURE_POLICY`,
+`JOBS_WAIT_SECONDS`, `BACKUP_CMD` / `BACKUP_VERIFY_CMD` (quy trình backup đã phê duyệt), `HEALTH_URL`. Khóa cũ:
+`APP_ENV_OVERRIDES` chỉ còn là bí danh của `REQUIRED_APP_ENV`; `BACKUP_MAX_AGE_MINUTES` bị bỏ qua (ghi log). File
+chỉ chứa đường dẫn, không chứa mật khẩu.
 
 File này quyết định lệnh nào chạy với quyền root (`BACKUP_CMD`). Công cụ **từ chối chạy** nếu file cấu hình hoặc
 `allowed_signers` thuộc người dùng khác hoặc ghi được bởi nhóm/người khác. Không còn ghi đè từng khóa bằng biến môi
@@ -148,9 +165,28 @@ sudo $T/update.sh --package-dir <DIR> --backup-reference "<mã backup>"
 
 ### G → P. Thực hiện
 
+Với `BACKUP_CMD` đã cấu hình, một lần chạy làm hết (công cụ tự chạy backup **sau khi** đã dừng ghi):
+
 ```bash
-sudo $T/update.sh --package-dir <DIR> --apply --backup-reference "<mã backup của LẦN NÀY>" --backup-verified
+sudo $T/update.sh --package-dir <DIR> --apply
 ```
+
+Với quy trình backup của đơn vị (không có `BACKUP_CMD`) — **hai lần chạy** (Phase 12D5, R2-04): lần đầu công cụ nạp
+image, đưa ứng dụng vào bảo trì trên image đã duyệt, chờ tác vụ nền, chụp dữ liệu F1 rồi **yêu cầu** backup và dừng:
+
+```bash
+sudo $T/update.sh --package-dir <DIR> --apply
+```
+
+Lúc đó mới làm backup + kiểm restore theo quy trình của đơn vị, rồi chạy lại với mã của **bản backup vừa làm**:
+
+```bash
+sudo $T/update.sh --package-dir <DIR> --apply --backup-reference "<mã backup vừa làm>" --backup-verified
+```
+
+Mã backup đưa vào ngay lần chạy đầu bị **từ chối và đánh dấu đã dùng** (bản đó làm trước khi ghi bị dừng); lần
+chạy sau chỉ nhận mã mới khi dữ liệu vẫn đúng F1 và vẫn cùng container bảo trì — có ghi hoặc ứng dụng bị tạo lại ở
+giữa ⇒ từ chối, yêu cầu backup mới.
 
 Mỗi lần cập nhật là một **attempt** có mã riêng, baseline riêng và **backup riêng**:
 
@@ -179,13 +215,8 @@ Qua SSH tunnel tới `127.0.0.1:8502` / `:5055`:
 
 1. Đăng nhập admin → OCR Engine Manager: engine đang dùng, Agri (phiên bản, SHA-256), "Sẵn sàng xử lý offline".
 2. Tải một PDF không nhạy cảm, chế độ **Tiêu chuẩn** — kết quả như trước.
-3. (Nếu được phê duyệt) bật cổng Legal — lệnh **giữ nguyên** chế độ mạng hiện tại của container (đang bảo trì thì
-   vẫn bảo trì, đang bình thường thì vẫn bình thường; ép bằng `--maintenance` / `--no-maintenance`):
-
-```bash
-sudo $T/rollback.sh legal-on
-```
-
+3. (Nếu được phê duyệt) bật cổng Legal: đặt `OCR_LEGAL_NORMALIZATION_ENABLED=true` trong cấu hình cục bộ của đơn vị
+   và tạo lại ứng dụng bằng script vận hành (Phase 12D5: `rollback.sh legal-on` từ chối và in đúng quy trình này),
    rồi chọn "Văn bản pháp lý" trong cài đặt, tải lại PDF thử. Trang Source hiển thị nhãn *Đã chuẩn hóa văn bản pháp lý*.
 4. Kiểm tra mạng bị chặn thật:
 
@@ -209,11 +240,12 @@ attempt: tài liệu thử tải lên trong lúc nghiệm thu hay một lần re
 chỉ được ghi nhận; kiểm tra chỉ thất bại khi một bảng **đang có dữ liệu trở thành rỗng** (dấu hiệu ứng dụng đang nhìn
 vào một database khác).
 
-## 3. Sau khi hoàn tất: lệnh được phép, kiểm tra lệch, ghim image
+## 3. Sau khi hoàn tất: con trỏ image, kiểm tra lệch (Phase 12D5)
 
-`finish` ghi lệnh Compose **duy nhất** được dùng để tạo lại ứng dụng vào `STATE_DIR/compose-command.txt` (có override
-của công cụ). Thư mục triển khai **không** tự mô tả bản đang chạy: một lệnh `docker compose up -d` thông thường trong
-`<DEPLOY>` dùng định nghĩa cũ (image cũ, không có biến offline).
+`finish` chuyển `DEPLOY_IMAGE_TAG` sang image mới **sau** khi mọi kiểm tra đạt, rồi ghi `STATE_DIR/approved.json` và
+`STATE_DIR/compose-command.txt` (lệnh của chính file compose của đơn vị, không có file nào của công cụ). Vì file
+compose của triển khai dùng tag đó, **mọi** đường khởi động — script vận hành, boot guard, reboot, `docker restart`,
+`docker compose up -d` thường — đều chạy image đã duyệt. Không còn bước "ghim image".
 
 **Phát hiện lệch** — chạy định kỳ và sau mọi thao tác Docker:
 
@@ -225,35 +257,15 @@ sudo $T/status.sh
 sudo $T/healthcheck.sh
 ```
 
-Cả hai so **image ID của container đang chạy** và các biến môi trường của override với journal; lệch ⇒ in
-`IMAGE DRIFT` / `ENVIRONMENT DRIFT` và trả **mã thoát 7**. Khắc phục: chạy lệnh trong `compose-command.txt`.
+So container đang chạy với image mong đợi lúc đó (image của attempt chưa quyết định đã tạo lại ứng dụng, nếu không
+thì `approved.json`), ở **mọi** trạng thái journal; báo cả tag triển khai lệch, biến môi trường bắt buộc thiếu, attempt
+chưa quyết định, chuyển tiếp bị gián đoạn, ứng dụng bị bỏ lại ở chế độ bảo trì, file 12D3 sót lại. Mã thoát 7 = lệch,
+8 = chưa quyết định / gián đoạn, 0 = sạch.
 
-**Ghim image (tùy chọn, cần quyết định của người vận hành)** để `docker compose up -d` thông thường, khởi động lại
-hoặc reboot không quay về bản cũ:
-
-```bash
-sudo $T/pin.sh
-```
-
-(dry-run: in tên image mà file compose của triển khai đang dùng, image nó sẽ trỏ tới, nội dung file sẽ tạo, và dòng
-`COMPOSE_FILE`; không đổi gì.)
-
-```bash
-sudo $T/pin.sh --apply
-```
-
-Việc `--apply` làm, và chỉ làm:
-
-1. `docker tag <image ID mới> <tên image của triển khai>` — tên này phải đúng là tên mà container **trước khi cập
-   nhật** được tạo ra từ đó, nếu không công cụ từ chối. Image cũ vẫn truy cập được qua tag `rollback-<attempt>`.
-2. Tạo `<DEPLOY>/docker-compose.offline-pin.yml` (image + `pull_policy: never` + biến offline). File có sẵn cùng tên
-   được sao lưu vào `STATE_DIR/config-backups/<attempt>/`.
-3. **Không** sửa `.env`, không sửa file compose có sẵn, không đổi cổng, không đổi cấu hình database. Công cụ in dòng
-   `COMPOSE_FILE=…:docker-compose.offline-pin.yml`; **người vận hành** tự thêm vào `<DEPLOY>/.env` nếu muốn cả biến
-   offline cũng bền vững. Chưa thêm ⇒ image vẫn đúng nhưng `status` báo `ENVIRONMENT DRIFT` sau một lệnh `up` thường.
-
-Hoàn tác: `sudo $T/pin.sh --undo`. `rollback.sh app` tự trỏ tên image về image baseline (giữ file pin, vì file chỉ
-nêu tên image của triển khai). Ghim **không** bảo vệ trước `docker compose up --build` / `docker compose build`.
+`pin.sh` (giữ để tương thích): không cờ = báo cáo chỉ đọc (tag triển khai / `approved.json` / container);
+`--apply` = sửa tag triển khai về image đã duyệt (lũy đẳng, từ chối khi có attempt chưa quyết định); `--undo` bị từ
+chối (hoàn tác một phê duyệt là `rollback.sh app`, có kiểm tra). File `docker-compose.offline-pin.yml` của 12D3 nếu
+còn chỉ được báo, không bị xóa — bỏ nó khỏi danh sách file của script vận hành (hợp đồng C8).
 
 ## 4. Đồng bộ mã nguồn offline (tùy chọn)
 

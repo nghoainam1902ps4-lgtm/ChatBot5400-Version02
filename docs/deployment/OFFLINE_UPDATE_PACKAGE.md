@@ -1,9 +1,14 @@
 # Gói cập nhật offline ChatBot5400 — kiến trúc và định dạng
 
 Quyết định: D-35 ([../ocr/DECISIONS.md](../ocr/DECISIONS.md)). Công cụ: `scripts/offline/`.
-Trạng thái Phase 12D3: **tooling đã sửa theo kết quả audit độc lập + kiểm thử với Docker giả lập; gói thật CHƯA
-BUILD** (Cloud không có Docker daemon) — build trên Windows: [OFFLINE_UPDATE_WINDOWS_BUILD.md](OFFLINE_UPDATE_WINDOWS_BUILD.md).
-Định dạng gói: **2** (gói định dạng 1 của Phase 12 bị từ chối; chưa từng có gói định dạng 1 nào được phát hành).
+Trạng thái Phase 12D5: tooling sửa theo hai vòng audit (12D2, 12D4), kiểm thử với Docker giả lập có trạng thái **và**
+diễn tập trên Docker 29 thật với image thay thế; gói của image ứng dụng thật **chưa build** — build trên Windows:
+[OFFLINE_UPDATE_WINDOWS_BUILD.md](OFFLINE_UPDATE_WINDOWS_BUILD.md). Định dạng gói: **3** (thêm
+`image.run_config_sha256`, `image.provenance`; gói định dạng 1 và 2 bị từ chối với "rebuild the package").
+
+> **Production dùng quy trình thủ công** [OFFLINE_UPDATE_MANUAL_FALLBACK.md](OFFLINE_UPDATE_MANUAL_FALLBACK.md) theo
+> [hợp đồng tích hợp](OFFLINE_UPDATE_INTEGRATION_CONTRACT.md). Bộ cập nhật tự động (`update` / `finish` / `rollback`)
+> là **EXPERIMENTAL / NOT READY — không khuyến nghị cho production** cho tới khi nghiệm thu cục bộ.
 
 ## 1. Vì sao cần
 
@@ -25,8 +30,8 @@ ChatBot5400-<version>-linux-amd64-offline.tar.gz
     ├── source/chatbot5400-<version>.bundle       git bundle v1.2.0..refs/cb5400-offline/build/<version>
     ├── source/chatbot5400-<version>-src.tar.gz   git archive (máy chủ không dùng git)
     ├── scripts/  offline_package.py verify-package.sh preflight.sh update.sh finish.sh pin.sh rollback.sh
-    │             healthcheck.sh status.sh offline-update.conf.example
-    └── docs/     OFFLINE_UPDATE_*.md, RELEASE_NOTES.md
+    │             healthcheck.sh status.sh snapshot.sh offline-update.conf.example
+    └── docs/     OFFLINE_UPDATE_*.md (gồm MANUAL_FALLBACK và INTEGRATION_CONTRACT), RELEASE_NOTES.md
 ```
 
 Kèm theo bên ngoài: `<gói>.tar.gz.sha256` — để người build đọc giá trị và gửi cho người vận hành qua **kênh tin cậy
@@ -80,15 +85,17 @@ docker buildx build --platform linux/amd64 --load --target runtime \
 | EasyOCR | `/app/data/ocr/models/easyocr` | giữ nguyên |
 | RapidOCR (PP-OCR onnx) | trong venv của container cũ | **trước khi tạo lại**: `installer.import_rapidocr_weights()` chạy trong container CŨ, chép sang `/app/data/ocr/models/rapidocr` sau khi kiểm SHA-256 theo danh sách của chính RapidOCR; **kết quả được kiểm** (mã thoát, từng file, có file trên volume) — lỗi ⇒ dừng trước khi tạo lại, trừ khi `--accept-missing-rapidocr`; container mới chạy với `OCR_RAPIDOCR_PERSISTENT=true` |
 | Manifest / readiness / phiên bản custom | `/app/data/ocr` | giữ nguyên |
-| Bộ mã hóa token tiktoken `o200k_base` | **trong image** (`/app/tiktoken-cache`, `TIKTOKEN_CACHE_DIR`) | inventory kiểm nạp được khi `--network none`; bước O kiểm tách đoạn chạy được; khi `OCR_OFFLINE=true` và thiếu cache, ứng dụng dùng ước lượng theo từ thay vì treo chờ mạng |
+| Bộ mã hóa token tiktoken `o200k_base` | **trong image** (`/app/tiktoken-cache`, `TIKTOKEN_CACHE_DIR`) | inventory kiểm file cache (SHA-256) và nạp được khi `--network none`; bước O kiểm chính file cache + nạp bảng mã thật (không dựa vào tách đoạn); khi `OCR_OFFLINE=true` mà file cache thiếu hoặc khác SHA-256, ứng dụng **từ chối rõ ràng** (`TokenizerUnavailableError`): không tải, không ước lượng, không tạo chunk (Phase 12D5, R2-10) |
 
-Ngoài trạng thái readiness do ứng dụng ghi, công cụ **tự chụp danh sách file model** (tên + kích thước) trên volume
+Ngoài trạng thái readiness do ứng dụng ghi, công cụ **tự chụp danh sách file model** (tên + kích thước + SHA-256) trên volume
 như container cũ nhìn thấy — `ocr/models/**` (Tesseract fast/best/OSD, Agri, RapidOCR, EasyOCR) và cache Hugging Face
 (Layout Heron, TableFormer) — ngay trước khi tạo lại container, rồi so lại trong container mới: file nào mất, đổi
-kích thước hoặc là liên kết hỏng ⇒ cập nhật `failed`. Không file nào được đọc nội dung, chép hay gửi đi.
+kích thước, đổi nội dung (SHA-256) hoặc là liên kết hỏng ⇒ cập nhật `failed`. Nội dung chỉ được băm trong container,
+không chép, không gửi đi.
 
-Override do công cụ sinh cho container ứng dụng: `OCR_RAPIDOCR_PERSISTENT=true`, `OCR_OFFLINE=true` (cấu hình được
-qua `APP_ENV_OVERRIDES`). Không ghi đè model đang dùng; không tải gì khi khởi động.
+Biến môi trường phiên bản mới cần (`OCR_RAPIDOCR_PERSISTENT=true`, `OCR_OFFLINE=true` — khóa `REQUIRED_APP_ENV`)
+nằm trong **cấu hình của đơn vị** (override cục bộ / `.env`); từ Phase 12D5 công cụ không còn tiêm biến môi trường,
+`preflight` từ chối khi thiếu (hợp đồng C3). Không ghi đè model đang dùng; không tải gì khi khởi động.
 
 **`docker load` thành công không chứng minh pipeline OCR chạy offline**: bước O chạy `ocr.cli readiness --check` (chỉ
 cục bộ) và `healthcheck.sh --prove-offline` kiểm tra container không kết nối được ra ngoài.
@@ -100,12 +107,13 @@ Nếu sau này có artifact chính thức mới bắt buộc (ví dụ Docling �
 
 ```json
 {
-  "package_format_version": 2,
+  "package_format_version": 3,
   "application": {"name": "ChatBot5400", "version": "1.3.0-rc.1", "release_tag": "v1.3.0-rc.1", "supported_source_versions": ["1.2.0"]},
   "platform": "linux/amd64",
   "image": {"tag": "chatbot5400:1.3.0-rc.1", "id": "sha256:…", "config_digest": "sha256:…", "diff_ids": ["sha256:…"],
             "repo_tags": ["chatbot5400:1.3.0-rc.1"], "archive_layout": "docker-archive",
-            "archive": "images/chatbot5400-1.3.0-rc.1.tar", "archive_sha256": "…", "labels": {…}},
+            "archive": "images/chatbot5400-1.3.0-rc.1.tar", "archive_sha256": "…", "labels": {…},
+            "run_config_sha256": "…", "provenance": "verified", "app_version": "1.3.0-rc.1"},
   "source": {"commit": "<40 hex>", "base_ref": "v1.2.0", "base_commit": "f2fdf27…",
              "bundle_ref": "refs/cb5400-offline/build/1.3.0-rc.1", "git_bundle": "source/…bundle", "archive": "source/…-src.tar.gz"},
   "database": {"schema_version": 33, "migration_required": false, "compatible_schema_versions": [33]},
@@ -139,23 +147,29 @@ môi trường của override được kiểm tương tự; giá trị trong ove
   trống**. Giải nén vào thư mục tạm rồi mới đổi tên; lỗi ⇒ xóa thư mục tạm (không để lại cây giải nén dở).
 - File image được đọc **trước `docker load`** (F-25): đúng một image, đúng một tag đã duyệt, digest và layer khớp
   manifest. Preflight từ chối nếu tag đó đã tồn tại trên máy chủ dưới dạng image khác.
-- Báo cáo verify gắn với SHA-256 của gói và manifest; `preflight`/`update`/`rollback --package-dir` kiểm lại manifest,
-  chữ ký và mọi file mỗi lần chạy (F-26a).
+- Báo cáo verify **tin cậy** nằm ở `STATE_DIR/verified/<sha256 của gói>.json` (0600, thư mục 0700), gắn với SHA-256
+  của gói, thư mục giải nén và manifest; `verify-report.json` cạnh gói chỉ để người đọc, **không** được tin (R2-07).
+  `preflight`/`update`/`rollback --package-dir` kiểm lại manifest và mọi file mỗi lần chạy, và từ chối thư mục gói
+  (hoặc thư mục cha) mà người khác ghi được (F-26a).
+- `SIGNATURE_POLICY` (`required` mặc định khi đã cài `ALLOWED_SIGNERS`, nếu không `optional`): với `required`, gói
+  không ký bị từ chối kể cả có `--expected-sha256`, và chữ ký được kiểm lại ở mỗi lần dùng; báo cáo không thể hạ
+  "đã ký" thành "không ký".
+- Danh tính image (R2-06, R2-08): image cục bộ chỉ được coi là image của gói khi cùng ID, hoặc cùng digest cấu hình,
+  hoặc cùng layer **và** cùng `run_config_sha256` (entrypoint, cmd, user, env, workdir, nhãn… + nền tảng); tag đích
+  được kiểm lại ngay trước mỗi lần tạo lại. `build` từ chối image không có nhãn `revision` = commit được đóng gói.
 - Từ chối: checksum sai, thiếu/thừa file, manifest lỗi, sai nền tảng, phiên bản nguồn không hỗ trợ, schema không
   tương thích, chữ ký sai, gói cần migration.
 
 Chi tiết: [OFFLINE_UPDATE_SECURITY.md](OFFLINE_UPDATE_SECURITY.md). Vận hành:
 [OFFLINE_UPDATE_UBUNTU_GUIDE.md](OFFLINE_UPDATE_UBUNTU_GUIDE.md), rollback: [OFFLINE_UPDATE_ROLLBACK.md](OFFLINE_UPDATE_ROLLBACK.md).
 
-## 7. Trạng thái xác minh (Phase 12D3, Cloud)
+## 7. Trạng thái xác minh (Phase 12D5, Cloud)
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Logic build / verify / preflight / update / finish / pin / rollback / health / status | MOCK VERIFIED (`tests/test_offline_package.py` + `tests/review_phase12d2/`: Docker giả lập có trạng thái, ghi lại mọi lệnh; git, tar, SHA-256, ssh-keygen thật) |
-| Bundle git (tạo, verify, list-heads, fetch đúng một ref, fast-forward, phân nhánh, thay đổi cục bộ) | VERIFIED với git thật |
-| `build-package.sh` (kiểm phiên bản trước Docker, đóng gói `--no-build`) | VERIFIED với git thật + Docker giả lập |
-| Shell wrapper | `bash -n` + shellcheck sạch |
-| PowerShell (`build-package.ps1`, `phase12-test.ps1`) | NOT EXECUTED (Cloud không có PowerShell) — chỉ kiểm tĩnh thứ tự lệnh |
-| Build image với `OCR_PREINSTALL_RUNTIMES=true` | NOT BUILT |
-| Định dạng file `docker save` thật, image ID giữa hai image store, hành vi `--no-deps` / `pull_policy` / tên image `build:` của Compose thật | NOT VERIFIED — cổng nghiệm thu Local |
-| Gói thật, `docker load`, nâng cấp/rollback thật, ghim image sau reboot, chặn mạng thật | NOT VERIFIED |
+| Logic build / verify / preflight / update / finish / pin / rollback / health / status / snapshot | MOCK VERIFIED (`tests/test_offline_package.py`, `tests/review_phase12d2/`, `tests/review_phase12d4/`: Docker giả lập có trạng thái; git, tar, SHA-256, ssh-keygen thật) |
+| Hành vi Docker / Compose thật: `docker save` (bố cục OCI + docker-archive của Docker 29 containerd), `docker load`, chuyển tag triển khai, `up -d --no-deps`, override bảo trì chỉ loopback, `docker compose up -d` thường / `docker restart` giữ image của tag, DB container giữ ID | VERIFIED trên Docker 29.10 + Compose 5.7.1 thật với image thay thế (busybox) — `tests/test_offline_real_docker.py`, `tests/test_offline_manual_fallback_real_docker.py` (`CB5400_REAL_DOCKER=1`) |
+| Bundle git, `build-package.sh` | VERIFIED với git thật |
+| Shell wrapper | `bash -n` + shellcheck |
+| PowerShell (`build-package.ps1`, `phase12-test.ps1`) | NOT EXECUTED (Cloud không có PowerShell) |
+| Image ứng dụng thật với `OCR_PREINSTALL_RUNTIMES=true`, SurrealDB thật, script vận hành / boot guard thật, Docker của Ubuntu production | NOT VERIFIED — LOCAL (`docs/review/PHASE12D5_LOCAL_ACCEPTANCE_CHECKLIST.md`) |
