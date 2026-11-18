@@ -222,7 +222,7 @@ def test_convert_file_legal(converted):
 def test_convert_file_legal_failure_keeps_standard(converted, monkeypatch):
     doc, pdf, _ = converted
 
-    def boom(d, include_text=False):
+    def boom(d, include_text=False, evidence=None):
         raise RuntimeError("bad document")
 
     monkeypatch.setattr(legal_normalizer, "normalize_document", boom)
@@ -231,6 +231,24 @@ def test_convert_file_legal_failure_keeps_standard(converted, monkeypatch):
     )
     assert out == doc.export_to_markdown()
     assert meta["legal_normalization_status"] == "failed"
+
+
+def test_convert_file_legal_without_merge_evidence_still_normalizes(
+    converted, monkeypatch
+):
+    """Phase 12D5: reading Docling's pre-merge elements is optional evidence; a
+    failure there never fails the conversion nor drops the Legal output."""
+    doc, pdf, _ = converted
+
+    def broken(result):
+        raise TypeError("elements is not iterable")
+
+    monkeypatch.setattr(legal_normalizer, "source_evidence", broken)
+    out, meta = docling_extract.convert_file(
+        pdf, _cfg(), OcrSettings(text_normalization="legal")
+    )
+    assert out == legal_normalizer.normalize_document(doc).content
+    assert meta["legal_normalization_status"] == "applied"
 
 
 def test_convert_file_legal_outside_its_scope_says_skipped(converted):

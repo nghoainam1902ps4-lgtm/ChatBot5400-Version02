@@ -378,8 +378,15 @@ def convert_file(
         from open_notebook.ocr import legal_normalizer
 
         # The element texts before Docling's own merge (R2-01): evidence that
-        # lets the normalizer put back a hyphen Docling removed, nothing else.
-        evidence = legal_normalizer.source_evidence(result)
+        # confirms the parts of an item Docling merged, nothing else. Reading
+        # it never fails the conversion: without it a merge is only reported.
+        try:
+            evidence = legal_normalizer.source_evidence(result)
+        except Exception as e:  # noqa: BLE001 - evidence is optional
+            logger.warning(
+                "Legal normalization: no merge evidence ({}: {})", type(e).__name__, e
+            )
+            evidence = None
         output, normalization = legal_normalizer.normalize_or_fallback(
             doc, evidence=evidence
         )
