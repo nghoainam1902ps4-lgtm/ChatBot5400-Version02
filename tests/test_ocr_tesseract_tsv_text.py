@@ -20,6 +20,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -54,7 +55,7 @@ def tsv(*words: str) -> str:
 
 
 FAKE = textwrap.dedent(
-    '''\
+    """\
     #!{python}
     import os, sys
     a = sys.argv[1:]
@@ -67,7 +68,7 @@ FAKE = textwrap.dedent(
         sys.exit(0)
     with open(os.environ["FAKE_TSV"], "rb") as fh:
         sys.stdout.buffer.write(fh.read())
-    '''
+    """
 )
 
 
@@ -152,7 +153,10 @@ def test_numeric_only_crops_keep_leading_zeros_and_trailing_dots(fake_model):
 
 
 def test_empty_text_rows_are_still_filtered_like_upstream(fake_model):
-    raw = tsv("0001") + "5\t1\t1\t1\t1\t2\t200\t12\t50\t40\t96\t\n5\t1\t1\t1\t1\t3\t300\t12\t50\t40\t96\t   \n"
+    raw = (
+        tsv("0001")
+        + "5\t1\t1\t1\t1\t2\t200\t12\t50\t40\t96\t\n5\t1\t1\t1\t1\t3\t300\t12\t50\t40\t96\t   \n"
+    )
     assert fake_model(raw) == ["0001"]
     assert fake_model(tsv()) == [] and fake_model(tsv(), patched=False) == []
 
@@ -182,7 +186,9 @@ def _upstream_parse(raw):
         tsv("Điều", "1."),
         tsv(*TOKENS),
         # malformed numeric fields: NA / empty / nan keep their upstream meaning (NaN)
-        HEADER + "\n" + "5\t1\t1\t1\t1\t1\tNA\t1\t\t30\tnan\t0001\n5\t1\t1\t1\t1\t2\t5\t1\t9\t30\t91\tNA\n",
+        HEADER
+        + "\n"
+        + "5\t1\t1\t1\t1\t1\tNA\t1\t\t30\tnan\t0001\n5\t1\t1\t1\t1\t2\t5\t1\t9\t30\t91\tNA\n",
     ],
 )
 def test_numeric_columns_have_the_upstream_types_and_values(raw):
@@ -385,7 +391,9 @@ def test_real_tesseract_crop_cells_equal_the_raw_tsv(real_model, tmp_path, text)
 def test_real_tesseract_numeric_crop_is_rewritten_by_upstream(real_model, tmp_path):
     image = _render(tmp_path / "crop.png", ["0001"])
     assert _raw_words(image) == ["0001"]
-    upstream = [str(t) for t in P.upstream_function()(real_model, str(image), None)["text"]]
+    upstream = [
+        str(t) for t in P.upstream_function()(real_model, str(image), None)["text"]
+    ]
     assert upstream == ["1.0"]  # the E0-07 defect with the real binary
 
 
@@ -416,18 +424,20 @@ def test_real_full_page_ocr_through_doclings_ocr_stage(tmp_path):
     def cells(patched: bool) -> list[str]:
         cls = upstream_mod.TesseractOcrCliModel
         saved = cls.__dict__["_run_tesseract"]
-        cls._run_tesseract = (
-            P.upstream_function() if not patched else saved
+        setattr(  # noqa: B010 - a class attribute, restored in finally
+            cls, "_run_tesseract", P.upstream_function() if not patched else saved
         )
         if patched:
             P.apply()
         try:
             in_doc = InputDocument(
-                path_or_stream=pdf, format=InputFormat.PDF, backend=PyPdfiumDocumentBackend
+                path_or_stream=pdf,
+                format=InputFormat.PDF,
+                backend=PyPdfiumDocumentBackend,
             )
             conv = ConversionResult(input=in_doc)
             page = Page(page_no=0)
-            page._backend = in_doc._backend.load_page(0)
+            page._backend = cast(Any, in_doc._backend).load_page(0)
             page.size = page._backend.get_size()
             model = cls(
                 enabled=True,
@@ -440,11 +450,13 @@ def test_real_full_page_ocr_through_doclings_ocr_stage(tmp_path):
             list(model(conv, [page]))
             return [c.text for c in page.cells]
         finally:
-            cls._run_tesseract = saved
+            setattr(cls, "_run_tesseract", saved)  # noqa: B010
 
     up, fixed = cells(False), cells(True)
     for token in ("0001/2024/QĐ-NHNo", "0001", "12.50%/năm.", "000123"):
         assert token in fixed
     assert "NA" in fixed and "N/A" in fixed
-    assert "NA" not in up and "N/A" not in up  # upstream drops them on the full page too
+    assert (
+        "NA" not in up and "N/A" not in up
+    )  # upstream drops them on the full page too
     assert [t for t in fixed if t not in ("NA", "N/A")] == up

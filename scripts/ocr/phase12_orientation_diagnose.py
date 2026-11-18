@@ -321,9 +321,10 @@ class OrientationProbe:
         _perform_osd.__cb5400_upstream__ = getattr(osd, "__cb5400_upstream__", osd)  # type: ignore[attr-defined]
         _run_tesseract.__cb5400_upstream__ = getattr(run, "__cb5400_upstream__", run)  # type: ignore[attr-defined]
         _run_tesseract.__cb5400_patch__ = getattr(run, "__cb5400_patch__", None)  # type: ignore[attr-defined]
-        cls.get_ocr_rects = get_ocr_rects
-        cls._perform_osd = _perform_osd
-        cls._run_tesseract = _run_tesseract
+        # class attributes of THIS process only; remove() puts the saved ones back
+        setattr(cls, "get_ocr_rects", get_ocr_rects)  # noqa: B010
+        setattr(cls, "_perform_osd", _perform_osd)  # noqa: B010
+        setattr(cls, "_run_tesseract", _run_tesseract)  # noqa: B010
         return self
 
     def remove(self) -> None:

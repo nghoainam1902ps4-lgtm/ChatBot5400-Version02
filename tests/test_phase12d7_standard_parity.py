@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -30,8 +31,9 @@ FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 _spec = importlib.util.spec_from_file_location(
     "phase12_standard_diff", ROOT / "scripts" / "ocr" / "phase12_standard_diff.py"
 )
+assert _spec is not None and _spec.loader is not None
 D = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(D)  # type: ignore[union-attr]
+_spec.loader.exec_module(D)
 
 LINES = [
     "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
@@ -117,15 +119,19 @@ def _ocr(pdf: Path, regions, patched: bool, crops: Path | None) -> list[str]:
             shutil.copyfile(ifilename, crops / f"page_c{n[0]:03d}.png")
         return saved_osd(model, ifilename)
 
-    cls._run_tesseract = patched_fn if patched else docling_patches.upstream_function()
-    cls._perform_osd = keep_crop
+    setattr(  # noqa: B010 - a class attribute, restored in finally
+        cls,
+        "_run_tesseract",
+        patched_fn if patched else docling_patches.upstream_function(),
+    )
+    setattr(cls, "_perform_osd", keep_crop)  # noqa: B010
     try:
         in_doc = InputDocument(
             path_or_stream=pdf, format=InputFormat.PDF, backend=PyPdfiumDocumentBackend
         )
         conv = ConversionResult(input=in_doc)
         page = Page(page_no=1)
-        page._backend = in_doc._backend.load_page(0)
+        page._backend = cast(Any, in_doc._backend).load_page(0)
         page.size = page._backend.get_size()
         page.predictions.layout = LayoutPrediction(
             clusters=[
@@ -146,8 +152,8 @@ def _ocr(pdf: Path, regions, patched: bool, crops: Path | None) -> list[str]:
         )
         list(model(conv, [page]))
     finally:
-        cls._run_tesseract = patched_fn
-        cls._perform_osd = saved_osd
+        setattr(cls, "_run_tesseract", patched_fn)  # noqa: B010
+        setattr(cls, "_perform_osd", saved_osd)  # noqa: B010
     lines = []
     for b in regions:
         words = [

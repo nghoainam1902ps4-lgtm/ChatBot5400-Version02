@@ -8,8 +8,9 @@ ROOT = Path(__file__).resolve().parents[1]
 _spec = importlib.util.spec_from_file_location(
     "phase12_standard_diff", ROOT / "scripts" / "ocr" / "phase12_standard_diff.py"
 )
+assert _spec is not None and _spec.loader is not None
 D = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(D)  # type: ignore[union-attr]
+_spec.loader.exec_module(D)
 
 HEADER = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
 
@@ -26,7 +27,9 @@ def test_old_parser_form_matches_the_e0_07_defect():
     assert D.old_parser_form("2024") == "2024.0"
     assert D.old_parser_form("NA") is None and D.old_parser_form("N/A") is None
     assert D.old_parser_form("true") == "True"
-    assert D.old_parser_form("Điều") == "Điều" and D.old_parser_form("1/2024") == "1/2024"
+    assert (
+        D.old_parser_form("Điều") == "Điều" and D.old_parser_form("1/2024") == "1/2024"
+    )
 
 
 def test_each_class(tmp_path):
@@ -43,11 +46,26 @@ def test_each_class(tmp_path):
     for name, (b, a) in docs.items():
         (before / f"{name}.md").write_text(b, encoding="utf-8")
         (after / f"{name}.md").write_text(a, encoding="utf-8")
-    (tsv / "fixed_p001.tsv").write_text(_tsv("Số:", "0001", "ngày", "2024"), encoding="utf-8")
+    (tsv / "fixed_p001.tsv").write_text(
+        _tsv("Số:", "0001", "ngày", "2024"), encoding="utf-8"
+    )
     (tsv / "na_p001.tsv").write_text(_tsv("Mã", "NA"), encoding="utf-8")
     (tsv / "regression_p001.tsv").write_text(_tsv("Điều", "2."), encoding="utf-8")
-    rc = D.main(["--before", str(before), "--after", str(after), "--tsv", str(tsv), "--out", str(tmp_path / "o")])
-    report = json.loads((tmp_path / "o" / "standard_diff.json").read_text(encoding="utf-8"))
+    rc = D.main(
+        [
+            "--before",
+            str(before),
+            "--after",
+            str(after),
+            "--tsv",
+            str(tsv),
+            "--out",
+            str(tmp_path / "o"),
+        ]
+    )
+    report = json.loads(
+        (tmp_path / "o" / "standard_diff.json").read_text(encoding="utf-8")
+    )
     got = {k: v["class"] for k, v in report["documents"].items()}
     assert got == {
         "same": D.UNCHANGED,
@@ -66,4 +84,16 @@ def test_no_unexpected_difference_exits_0(tmp_path):
     after.mkdir()
     (before / "x.md").write_text("Số: 1.0", encoding="utf-8")
     (after / "x.md").write_text("Số: 0001", encoding="utf-8")
-    assert D.main(["--before", str(before), "--after", str(after), "--out", str(tmp_path / "o")]) == 0
+    assert (
+        D.main(
+            [
+                "--before",
+                str(before),
+                "--after",
+                str(after),
+                "--out",
+                str(tmp_path / "o"),
+            ]
+        )
+        == 0
+    )

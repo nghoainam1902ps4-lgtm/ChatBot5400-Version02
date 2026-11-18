@@ -20,6 +20,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -34,8 +35,9 @@ _spec = importlib.util.spec_from_file_location(
     "phase12_orientation_diagnose",
     ROOT / "scripts" / "ocr" / "phase12_orientation_diagnose.py",
 )
+assert _spec is not None and _spec.loader is not None
 TOOL = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(TOOL)  # type: ignore[union-attr]
+_spec.loader.exec_module(TOOL)
 
 
 def _tessdata() -> str | None:
@@ -364,6 +366,7 @@ def test_probe_on_doclings_real_ocr_stage_records_without_changing_anything(
     from open_notebook.ocr import compat, docling_patches
 
     real = shutil.which("tesseract")
+    assert real is not None
     gate_cmd = options.tesseract_command(real)
     assert gate_cmd == str(GATE.resolve())  # ingestion's command: the gate
     page_img = Image.new("L", (2480, 900), 255)
@@ -393,7 +396,7 @@ def test_probe_on_doclings_real_ocr_stage_records_without_changing_anything(
         )
         conv = ConversionResult(input=in_doc)
         page = Page(page_no=1)
-        page._backend = in_doc._backend.load_page(0)
+        page._backend = cast(Any, in_doc._backend).load_page(0)
         page.size = page._backend.get_size()
         page.predictions.layout = LayoutPrediction(
             clusters=[
@@ -468,7 +471,7 @@ def test_crops_mode_prepares_the_engine_tessdata_like_ingestion(tmp_path, monkey
     tessdata.mkdir(parents=True)
     for lang in ("vie", "osd"):
         (tessdata / f"{lang}.traineddata").symlink_to(
-            Path(TESSDATA) / f"{lang}.traineddata"
+            Path(str(TESSDATA)) / f"{lang}.traineddata"
         )
     monkeypatch.setenv("OCR_MODELS_DIR", str(models))
     monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
