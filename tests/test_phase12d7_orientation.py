@@ -162,6 +162,48 @@ def test_the_dockerfile_repairs_and_self_tests_the_gate():
     assert any("--version" in s and "OCR_TESSERACT_REAL=/bin/true" in s for s in steps)
 
 
+def _gate_run_problems(dockerfile: str) -> list[str]:
+    """Why the image could be built with a gate that does not start
+    (D8-ORI-05, Phase 12D9): the self-test's failure swallowed, or the gate
+    copied again after the repair."""
+    runtime = dockerfile.split("AS runtime-base", 1)[1].split("AS single", 1)[0]
+    joined = runtime.replace("\\\n", " ")
+    lines = joined.splitlines()
+    at = [i for i, line in enumerate(lines) if "tesseract_gate.py" in line]
+    if len(at) != 1:
+        return ["the gate is not handled by exactly one RUN step"]
+    run = lines[at[0]]
+    found = []
+    tail = run[run.index("tesseract_gate.py --version") :]
+    if "||" in run or ";" in tail or "|" in tail.replace("||", ""):
+        found.append("the self-test's exit status can be ignored")
+    if "set +e" in run:
+        found.append("errors are switched off in the step")
+    for line in lines[at[0] + 1 :]:
+        words = line.split()
+        if words[:1] == ["COPY"] and any(
+            w in (".", "./", "open_notebook", "open_notebook/") or "tesseract_gate" in w
+            for w in words[1:-1]
+        ):
+            found.append("the sources are copied again after the repair")
+    return found
+
+
+def test_the_gate_self_test_can_fail_the_build():
+    """D8-ORI-05 (Phase 12D9): checked on the real Dockerfile and on the ways
+    a build could swallow the self-test."""
+    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert _gate_run_problems(text) == []
+    self_test = "tesseract_gate.py --version >/dev/null"
+    for bad in (" || true", " || :", "; true", " | cat"):
+        assert _gate_run_problems(text.replace(self_test, self_test + bad)), bad
+    later = text.replace(
+        "# Copy supervisord configuration",
+        "COPY . /app\n# Copy supervisord configuration",
+    )
+    assert "the sources are copied again after the repair" in _gate_run_problems(later)
+
+
 def test_the_dockerfile_step_turns_a_windows_copy_into_the_committed_file(tmp_path):
     """Replays the Dockerfile's own commands on a CRLF, non-executable copy."""
     app = tmp_path / "app"
@@ -224,7 +266,9 @@ def _run_crops(tmp_path, *extra: str) -> tuple[dict, list, dict]:
             "vie",
             "--tessdata",
             str(TESSDATA),
-            *extra,
+            # Phase 12D9: numbers only by default; these tests read the words
+            # (was: words by default, --no-text to drop them)
+            *(extra if "--no-text" in extra else ("--with-text", *extra)),
         ]
     )
     assert rc == 0
@@ -480,7 +524,15 @@ def test_crops_mode_prepares_the_engine_tessdata_like_ingestion(tmp_path, monkey
     out = tmp_path / "out"
     assert (
         TOOL.main(
-            ["--crops", str(tmp_path / "crops"), "--out", str(out), "--lang", "vie"]
+            [
+                "--crops",
+                str(tmp_path / "crops"),
+                "--out",
+                str(out),
+                "--lang",
+                "vie",
+                "--with-text",
+            ]  # fmt: skip
         )
         == 0
     )

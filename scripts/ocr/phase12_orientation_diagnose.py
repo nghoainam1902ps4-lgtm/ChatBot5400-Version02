@@ -33,10 +33,13 @@ Written in ``--out`` (owner-only permissions):
                                    OCR words / mean confidence as applied and
                                    with the other orientation
   orientation_summary.json         counts, the crops to look at first, suspects
-  crops/<id>.png                   the crop before rotation        (not with --no-text)
+  crops/<id>.png                   the crop before rotation        (--with-text only)
   crops/<id>.applied.tsv           OCR words with the rotation applied   (idem)
   crops/<id>.alternative.tsv       OCR words with the other orientation  (idem)
   07_markdown_standard.md          PDF mode: the Standard text of this run (idem)
+
+Since Phase 12D9 the default output holds numbers only (no words, no images,
+no Markdown, no file name); ``--with-text`` keeps them, in owner-only files.
 
 ``--suspect PAGE:L,T,R,B`` (repeatable) marks the crops overlapping a suspect
 region; PAGE and the box are the ``page`` / ``bbox`` of a cluster in
@@ -61,6 +64,7 @@ Examples (inside the test container)::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -173,11 +177,16 @@ def word_stats(df: Any) -> dict[str, Any]:
 
 
 def rotated_copy(image: Path, degrees: int, dest: Path) -> Path:
-    """The crop rotated the way Docling does it (``rotate(-deg, expand=True)``)."""
+    """The crop rotated the way Docling rotates it for Tesseract's answer
+    ``degrees`` ("Orientation in degrees", clockwise): Docling's
+    ``parse_tesseract_orientation`` turns it into ``(-degrees) % 360`` and the
+    crop is ``rotate(-that, expand=True)`` (D8-ORI-01, Phase 12D9: 90 and 270
+    were turned the opposite way before)."""
     from PIL import Image
 
+    docling = (-int(degrees)) % 360
     with Image.open(image) as im:
-        im.rotate(-degrees, expand=True).save(dest)
+        im.rotate(-docling, expand=True).save(dest)
     return dest
 
 
@@ -307,7 +316,11 @@ class OrientationProbe:
                 raise
             rec["docling_osd"] = "ok"
             try:
-                rec["applied_rotation"] = int(tm._parse_orientation(df))
+                docling = int(tm._parse_orientation(df))
+                # one convention for every angle of the report: Tesseract's
+                # (gate_would_pass, osd_raw); Docling's own value kept beside it
+                rec["applied_rotation"] = (-docling) % 360
+                rec["docling_rotation"] = docling
             except Exception:  # noqa: BLE001 - reported, Docling raises the same
                 rec["applied_rotation"] = None
             return df
@@ -592,14 +605,15 @@ def run_pdf(args: argparse.Namespace, out: Path) -> dict[str, Any]:
             "orientation detection per crop exists for the Tesseract engines only"
         )
     gate = tesseract_gate_state()
-    probe = OrientationProbe(out, gate, keep_text=not args.no_text)
+    probe = OrientationProbe(out, gate, keep_text=_keep_text(args))
     cfg = ContentCoreConfig(document_engine="docling", docling_ocr=True)
     with probe:
         result, converter, prep = docling_extract.convert_document(str(pdf), cfg, ocr)
     env = {
         "schema": SCHEMA,
         "mode": "pdf",
-        "file_name": pdf.name,
+        "file_name": pdf.name if _keep_text(args) else None,
+        "file_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(),
         "engine": describe(ocr.engine, ocr.custom_version),
         "force_full_page": ocr.force_full_page,
         "versions": _versions(),
@@ -612,7 +626,7 @@ def run_pdf(args: argparse.Namespace, out: Path) -> dict[str, Any]:
     }
     env.update(prep.as_meta())
     env.update(docling_extract.pipeline_identity(converter))
-    if not args.no_text:
+    if _keep_text(args):
         _write(out / "07_markdown_standard.md", result.document.export_to_markdown())
     return {"env": env, "records": probe.records}
 
@@ -645,7 +659,7 @@ def run_crops(args: argparse.Namespace, out: Path) -> dict[str, Any]:
         raise SystemExit(f"{args.engine}: no language (no active custom version?)")
     tessdata = args.tessdata or str(paths.tessdata_dir())
     records = []
-    keep = not args.no_text
+    keep = _keep_text(args)
     if keep:
         (out / "crops").mkdir(exist_ok=True)
     for n, image in enumerate(images, 1):
@@ -771,10 +785,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="PAGE:L,T,R,B (repeatable)",
     )
     p.add_argument(
-        "--no-text", action="store_true", help="numbers only: no words, no images"
+        "--with-text",
+        action="store_true",
+        help="also keep OCR words, crop images and the Markdown (owner-only "
+        "files, never printed). Default: numbers only (Phase 12D9).",
+    )
+    p.add_argument(
+        "--no-text",
+        action="store_true",
+        help="numbers only (the default since Phase 12D9; kept for old commands)",
     )
     p.add_argument("--overwrite", action="store_true")
     return p
+
+
+def _keep_text(args: argparse.Namespace) -> bool:
+    """Words / images only on request (metadata-only by default, Phase 12D9)."""
+    return bool(getattr(args, "with_text", False)) and not args.no_text
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -784,7 +811,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     out = Path(args.out).resolve()
     _prepare_out(out, args.overwrite)
     run = run_crops(args, out) if args.crops else run_pdf(args, out)
-    summary = _finalize(run["records"], args.suspect, keep_text=not args.no_text)
+    summary = _finalize(run["records"], args.suspect, keep_text=_keep_text(args))
     summary["hint"] = _hint(run["env"]["gate"], summary)
     _write(out / "00_orientation_environment.json", run["env"])
     _write(out / "orientation_crops.json", run["records"])
@@ -807,9 +834,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(
         f"Written to {out}"
         + (
-            ""
-            if args.no_text
-            else " (contains document text and images: keep it local)."
+            " (contains document text and images: keep it local)."
+            if _keep_text(args)
+            else " (numbers only)."
         )
     )
     return 0

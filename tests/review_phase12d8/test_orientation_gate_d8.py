@@ -560,23 +560,9 @@ def _docling_way(image: Any, tesseract_degrees: int) -> Any:
 @pytest.mark.parametrize(
     "degrees",
     [
-        pytest.param(
-            90,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="D8-ORI-01: rotated_copy() turns a 90-degree answer the "
-                "opposite way to Docling (the result is upside down)",
-            ),
-        ),
+        90,  # was: xfail(strict) D8-ORI-01 - fixed in Phase 12D9 (rotated_copy)
         180,
-        pytest.param(
-            270,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="D8-ORI-01: rotated_copy() turns a 270-degree answer the "
-                "opposite way to Docling (the result is upside down)",
-            ),
-        ),
+        270,  # was: xfail(strict) D8-ORI-01 - fixed in Phase 12D9 (rotated_copy)
     ],
 )
 def test_tool_rotates_a_crop_exactly_like_docling(tmp_path, degrees):
@@ -608,6 +594,7 @@ def _run_crops(tmp_path: Path, crops: Path) -> tuple[list, dict]:
             "vie",
             "--tessdata",
             str(TESSDATA),
+            "--with-text",  # Phase 12D9: numbers only by default (was: words)
         ]
     )
     assert rc == 0
@@ -654,11 +641,7 @@ def _sideways(tmp_path: Path, pil_ccw: int) -> tuple[Path, int]:
 
 
 @needs_tesseract
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORI-01: crops mode rotates a 90/270 crop the wrong way, so its "
-    "'applied' reading is upside-down garbage where ingestion reads the text",
-)
+# was: xfail(strict) D8-ORI-01 - fixed in Phase 12D9 (rotated_copy / one angle convention)
 def test_crops_mode_reads_a_sideways_crop_like_ingestion(tmp_path, monkeypatch):
     pytest.importorskip("docling")
     monkeypatch.setenv(tesseract_gate.REAL_ENV, str(REAL))
@@ -669,11 +652,7 @@ def test_crops_mode_reads_a_sideways_crop_like_ingestion(tmp_path, monkeypatch):
 
 
 @needs_tesseract
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORI-01: crops mode accuses a CORRECT confident sideways rotation "
-    "('candidates for a WRONG rotation above the threshold')",
-)
+# was: xfail(strict) D8-ORI-01 - fixed in Phase 12D9 (rotated_copy / one angle convention)
 def test_crops_mode_does_not_accuse_a_correct_sideways_rotation(tmp_path, monkeypatch):
     pytest.importorskip("docling")
     monkeypatch.setenv(tesseract_gate.REAL_ENV, str(REAL))
@@ -759,11 +738,7 @@ def _probe_docling_stage(
 
 
 @needs_tesseract
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORI-01: PDF mode records 'gate_would_pass' in Tesseract's angle "
-    "and 'applied_rotation' in Docling's (360 - angle): 270 vs 90 for one crop",
-)
+# was: xfail(strict) D8-ORI-01 - fixed in Phase 12D9 (rotated_copy / one angle convention)
 def test_pdf_mode_reports_one_angle_convention(tmp_path):
     pytest.importorskip("docling")
     probe, gated, _ = _probe_docling_stage(tmp_path, pil_ccw=90)
@@ -779,12 +754,7 @@ def test_pdf_mode_reports_one_angle_convention(tmp_path):
 
 
 @needs_tesseract
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-ORI-01: for a refused 90/270 rotation the tool reads the "
-    "'alternative' upside down, so it reports 'no evidence of a wrong rotation' "
-    "although the ungated reading is the correct text",
-)
+# was: xfail(strict) D8-ORI-01 - fixed in Phase 12D9 (rotated_copy / one angle convention)
 def test_pdf_mode_shows_that_a_refused_sideways_rotation_read_better(
     tmp_path, monkeypatch
 ):
