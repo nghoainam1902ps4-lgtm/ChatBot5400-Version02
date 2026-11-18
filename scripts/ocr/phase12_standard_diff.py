@@ -110,11 +110,20 @@ def classify_hunk(old: list[str], new: list[str], evidence: Optional[set[str]]) 
 def compare(before: str, after: str, evidence: Optional[set[str]]) -> dict[str, Any]:
     a, b = tokens(before), tokens(after)
     hunks = []
-    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes():
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(
+        a=a, b=b, autojunk=False
+    ).get_opcodes():
         if op == "equal":
             continue
         kind = classify_hunk(a[i1:i2], b[j1:j2], evidence)
-        hunks.append({"class": kind, "before": a[i1:i2][:20], "after": b[j1:j2][:20], "at_token": i1})
+        hunks.append(
+            {
+                "class": kind,
+                "before": a[i1:i2][:20],
+                "after": b[j1:j2][:20],
+                "at_token": i1,
+            }
+        )
     if not hunks:
         verdict = UNCHANGED
     elif any(h["class"] == UNEXPECTED for h in hunks):
@@ -127,20 +136,31 @@ def compare(before: str, after: str, evidence: Optional[set[str]]) -> dict[str, 
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--before", required=True, help="folder of v1.2.0 Standard outputs (*.md)")
-    p.add_argument("--after", required=True, help="folder of candidate Standard outputs (*.md)")
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--before", required=True, help="folder of v1.2.0 Standard outputs (*.md)"
+    )
+    p.add_argument(
+        "--after", required=True, help="folder of candidate Standard outputs (*.md)"
+    )
     p.add_argument("--tsv", help="folder of raw Tesseract TSV files (<name>*.tsv)")
     p.add_argument("--out", required=True)
     args = p.parse_args(argv)
     before, after = Path(args.before), Path(args.after)
     tsv_dir = Path(args.tsv) if args.tsv else None
     report: dict[str, Any] = {"schema": "chatbot5400-standard-diff/1", "documents": {}}
-    names = sorted({f.stem for f in before.glob("*.md")} | {f.stem for f in after.glob("*.md")})
+    names = sorted(
+        {f.stem for f in before.glob("*.md")} | {f.stem for f in after.glob("*.md")}
+    )
     for name in names:
         fa, fb = before / f"{name}.md", after / f"{name}.md"
         if not fa.is_file() or not fb.is_file():
-            report["documents"][name] = {"class": NOT_VERIFIED, "reason": "missing on one side"}
+            report["documents"][name] = {
+                "class": NOT_VERIFIED,
+                "reason": "missing on one side",
+            }
             continue
         evidence = None
         if tsv_dir is not None:
@@ -155,11 +175,21 @@ def main(argv: Optional[list[str]] = None) -> int:
     report["summary"] = counts
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "standard_diff.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-    lines = ["# Standard parity after E0-07", "", "| document | class | hunks |", "|---|---|---|"]
+    (out / "standard_diff.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    lines = [
+        "# Standard parity after E0-07",
+        "",
+        "| document | class | hunks |",
+        "|---|---|---|",
+    ]
     for name, doc in report["documents"].items():
         lines.append(f"| {name} | {doc['class']} | {len(doc.get('hunks', []))} |")
-    lines += ["", "Summary: " + ", ".join(f"{k}: {v}" for k, v in sorted(counts.items()))]
+    lines += [
+        "",
+        "Summary: " + ", ".join(f"{k}: {v}" for k, v in sorted(counts.items())),
+    ]
     (out / "standard_diff.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(json.dumps(counts, ensure_ascii=False))
     return 1 if counts.get(UNEXPECTED) else 0
