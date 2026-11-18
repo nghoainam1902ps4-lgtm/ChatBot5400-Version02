@@ -16,8 +16,10 @@ mode, the engine of ``--engine``), and that very conversion writes
                                  conversion status, versions, engine, commit.
 
 Run it in the application environment (the container, models installed). On a
-checkout without the evidence capture (v1.2.0) it exports the outputs and the
-manifest only - that is the ``--before`` side of the gate.
+checkout without the evidence capture (v1.2.0, which has no patch module) it
+exports the outputs and the manifest only - that is the ``--before`` side of
+the gate. The v1.2.0 image does not ship this script: copy it to
+``/app/scripts/ocr/`` of that container first (``docker compose cp``).
 
 Privacy: the outputs and the evidence hold document text. They are written
 with owner-only permissions under ``--out`` and never printed: the console
@@ -102,8 +104,10 @@ def export(
     convert: Any = None,
 ) -> dict[str, Any]:
     """Convert every PDF of ``input_dir``; returns the manifest."""
-    from open_notebook.ocr import docling_patches as P
-
+    try:
+        from open_notebook.ocr import docling_patches as P
+    except ImportError:  # v1.2.0 has no patch module at all
+        P = None
     capture = getattr(P, "evidence_capture", None)  # absent on v1.2.0
     if convert is None:
         from content_core import ContentCoreConfig
@@ -116,6 +120,9 @@ def export(
         def convert(path: Path) -> tuple[str, dict[str, Any]]:
             return convert_file(str(path), ContentCoreConfig(), settings)
 
+    if out.exists() and any(out.iterdir()):
+        # outputs of two runs must never mix: a stale <name>.md would be compared
+        raise SystemExit(f"--out must be a new or empty folder: {out}")
     _private_dir(out)
     pdfs = sorted(p for p in input_dir.iterdir() if p.suffix.lower() == ".pdf")
     names = [p.stem for p in pdfs]

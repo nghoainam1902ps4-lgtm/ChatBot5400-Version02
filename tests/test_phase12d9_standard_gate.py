@@ -437,4 +437,63 @@ def test_export_skips_nothing_and_records_failures(gate, monkeypatch):
             "error": "IncompleteConversionError",
         }
     ]
+    # failed on both sides: no output anywhere, the document must not vanish
     shutil.copytree(gate.after, gate.before, dirs_exist_ok=True)
+    rc, report = gate.diff()
+    assert rc == D.EXIT_INVALID
+    assert report["documents"]["hong"] == {
+        "class": D.NOT_VERIFIED,
+        "reason": "conversion failed",
+    }
+    assert "a document failed to convert on the after side" in report["run_problems"]
+
+
+def test_a_stale_output_beside_a_failed_conversion_is_not_compared(tmp_path):
+    before, after = tmp_path / "b", tmp_path / "a"
+    for folder in (before, after):
+        folder.mkdir()
+        (folder / "x.md").write_text("Số: 1.0", encoding="utf-8")
+    (after / "manifest.json").write_text(
+        json.dumps(
+            {"documents": [{"name": "x", "error": "IncompleteConversionError"}]}
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "o"
+    rc = D.main(["--before", str(before), "--after", str(after), "--out", str(out)])
+    report = json.loads((out / "standard_diff.json").read_text(encoding="utf-8"))
+    assert rc == D.EXIT_INVALID
+    assert report["documents"]["x"]["class"] == D.NOT_VERIFIED
+
+
+def test_the_export_refuses_a_folder_holding_another_run(tmp_path):
+    inputs, out = tmp_path / "in", tmp_path / "out"
+    inputs.mkdir()
+    out.mkdir()
+    (out / "old.md").write_text("x", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        X.export(inputs, out, "tesseract_best", convert=lambda _p: ("", {}))
+
+
+def test_the_export_runs_where_the_patch_module_does_not_exist(tmp_path, monkeypatch):
+    """The ``--before`` side runs on the v1.2.0 image, which has no
+    ``docling_patches`` module: the export must still write the outputs and the
+    manifest (no evidence), not stop on the import."""
+    import open_notebook.ocr as ocr_pkg
+
+    monkeypatch.delattr(ocr_pkg, "docling_patches", raising=False)
+    monkeypatch.setitem(sys.modules, "open_notebook.ocr.docling_patches", None)
+    inputs = tmp_path / "in"
+    inputs.mkdir()
+    (inputs / "a.pdf").write_bytes(b"%PDF-1.4 synthetic")
+    out = tmp_path / "v120"
+    manifest = X.export(
+        inputs,
+        out,
+        "tesseract_best",
+        convert=lambda _p: ("Số: 1.0", {"conversion_status": "success"}),
+    )
+    assert manifest["evidence"] is False
+    assert [d["name"] for d in manifest["documents"]] == ["a"]
+    assert (out / "a.md").read_text(encoding="utf-8") == "Số: 1.0"
+    assert not list(out.glob("*.evidence"))

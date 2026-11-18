@@ -722,6 +722,18 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _failed_documents(folder: Path) -> list[str]:
+    """Documents the export of ``folder`` could not convert (manifest ``error``)."""
+    data = _manifest(folder)
+    if not data or data.get("invalid"):
+        return []
+    return sorted(
+        str(d.get("name"))
+        for d in data.get("documents", [])
+        if isinstance(d, dict) and "error" in d
+    )
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -821,6 +833,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                 if doc["class"] not in (UNEXPECTED, UNCHANGED):
                     doc["class"] = NOT_VERIFIED
         report["documents"][name] = doc
+    for side, folder in (("before", before), ("after", after)):
+        # a conversion that failed is never "not compared": the run proves nothing
+        # for that document, and a stale output beside it must not be compared
+        for name in _failed_documents(folder):
+            problems.append(f"a document failed to convert on the {side} side")
+            entry = report["documents"].setdefault(name, {"class": NOT_VERIFIED})
+            if entry["class"] != UNEXPECTED:
+                entry["class"] = NOT_VERIFIED
+            entry["reason"] = "conversion failed"
     counts: dict[str, int] = {}
     for doc in report["documents"].values():
         counts[doc["class"]] = counts.get(doc["class"], 0) + 1
