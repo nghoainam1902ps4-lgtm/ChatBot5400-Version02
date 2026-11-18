@@ -460,13 +460,16 @@ def test_merge_elements_is_upstream_except_the_hard_hyphen_branch():
     elif_ = o.orelse[0]
     assert _dump(elif_.test) == _dump(hard)
     assert _dump(elif_.orelse) == _dump(t.orelse)
-    assert [ast.unparse(s) for s in elif_.body] == [
-        "_record_merge(new_item, merged_elem)",  # Standard gate evidence (off by default)
-        "prov = ProvenanceItem(page_no=prov.page_no, charspan=(len(new_item.text), "
-        "len(new_item.text) + len(merged_elem.text)), bbox=prov.bbox)",
-        "new_item.text = new_item.text + merged_elem.text",
-        "new_item.orig = new_item.orig + merged_elem.text",
-    ]
+    assert (
+        [ast.unparse(s) for s in elif_.body]
+        == [
+            "_record_merge(new_item, merged_elem)",  # Standard gate evidence (off by default)
+            "prov = ProvenanceItem(page_no=prov.page_no, charspan=(len(new_item.text), "
+            "len(new_item.text) + len(merged_elem.text)), bbox=prov.bbox)",
+            "new_item.text = new_item.text + merged_elem.text",
+            "new_item.orig = new_item.orig + merged_elem.text",
+        ]
+    )
 
 
 def test_footnote_serializers_call_upstream_and_only_append_notes():

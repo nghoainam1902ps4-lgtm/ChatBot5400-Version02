@@ -536,18 +536,18 @@ def _identity_verdict(
         # of the document item it shows (a paragraph shown as a heading, a
         # heading as a paragraph, a quote, a code block ... is a change)
         if line_kinds is not None and item_units:
-            want = view.kind_of(entry)
+            kind_wanted = view.kind_of(entry)
             # a list item and a paragraph read alike: Legal shows list items as
             # paragraphs with their source marker, a "1." / "- " paragraph is
             # drawn as a list - only a heading, quote, code block, table row or
             # placeholder is another kind of block
             got = _TEXT_KIND.get(line_kinds[li], line_kinds[li])
-            if _TEXT_KIND.get(want, want) != got:
+            if _TEXT_KIND.get(kind_wanted, kind_wanted) != got:
                 altered.append(
                     {
                         "units": [u["id"] for u in item_units],
                         "pages": sorted({u["page"] for u in item_units}),
-                        "expected": want,
+                        "expected": kind_wanted,
                         "found": got,
                         "why": "block kind changed",
                     }

@@ -31,8 +31,7 @@ def _tsv(*words):
         HEADER
         + PARENTS
         + "".join(
-            f"5\t1\t1\t1\t1\t{i}\t0\t0\t9\t9\t95\t{w}\n"
-            for i, w in enumerate(words, 1)
+            f"5\t1\t1\t1\t1\t{i}\t0\t0\t9\t9\t95\t{w}\n" for i, w in enumerate(words, 1)
         )
     )
 
