@@ -1,0 +1,1418 @@
+{
+ "schema": "chatbot5400-finding-status/12d8",
+ "phase": "12D8 final review before release-candidate acceptance",
+ "review_target": "4587eb77e25935db2d4375fe55be64f22341d1bb (feature/legal-document-normalization, PR #50 Draft)",
+ "review_branch": "review/phase12d8-codex-final-audit",
+ "baseline": {
+  "v1.2.0": "f2fdf2714a7c0b5b196132f71cfc091928befc06",
+  "candidate_before_runtime_fixes": "904c15c973d9ebfccedcece39fe12387d6082deb"
+ },
+ "independence_note": "Đề bài giao cho một reviewer thuộc họ model KHÁC với bên phát triển (Codex). Phiên thực hiện review này là một phiên Claude Code mới — CÙNG họ model với bên phát triển, không phải Codex. Yêu cầu 'khác họ model' KHÔNG được đáp ứng; phiên này không dùng lại ngữ cảnh của các phiên 12D3–12D7 và mọi kết luận dựa trên mã, test tự viết và lệnh tự chạy.",
+ "runtime_code_changed": false,
+ "environment": "Cloud Linux, Python 3.12, Docling 2.129.0, docling-core 2.96.0, pandas 3.0.0, Tesseract 5.3.4 (vie, eng, osd), EasyOCR 1.7.2 cài sau, ssh-keygen cài sau. KHÔNG có: Windows, PowerShell, Docker daemon, Layout Heron / TableFormer, PDF nghiệp vụ, model Agri, bảng mã tiktoken (proxy chặn).",
+ "status_values": {
+  "VERIFIED IN CLOUD": "sửa trong mã và test đạt ở Cloud trong lượt chạy của 12D8",
+  "FIXED IN CODE — LOCAL GATE OPEN": "sửa trong mã, test Cloud đạt, chưa có bằng chứng Windows / runtime thật",
+  "VERIFIED ON WINDOWS": "không finding nào (không có bằng chứng Windows trong repo)",
+  "EVIDENCE REQUIRED": "không có báo cáo nguồn trong repo"
+ },
+ "summary": {
+  "new_findings": 37,
+  "new_by_severity": {
+   "P0": 0,
+   "P1": 1,
+   "P2": 11,
+   "P3": 20,
+   "P4": 5
+  },
+  "code_release_blockers": [
+   "D8-03",
+   "D8-01",
+   "D8-02"
+  ],
+  "acceptance_tool_blockers_before_local_gates": [
+   "D8-STD-01",
+   "D8-STD-02",
+   "D8-STD-03",
+   "D8-STD-04",
+   "D8-ORI-01 (chỉ vùng 90°/270°)",
+   "D8-OFF-11 (máy build không có uv)"
+  ],
+  "fix_before_release_non_blocking": [
+   "D8-OFF-01",
+   "D8-OFF-02",
+   "D8-OFF-05",
+   "D8-OFF-10",
+   "D8-OFF-13",
+   "D8-OFF-14"
+  ],
+  "prior_51": {
+   "FIXED IN CODE — LOCAL GATE OPEN": 27,
+   "VERIFIED IN CLOUD": 24
+  },
+  "prior_51_verified_on_windows": 0,
+  "verdict": {
+   "INDEPENDENT REVIEW": "PARTIAL (review đầy đủ đã thực hiện; yêu cầu khác họ model không đáp ứng; không có Windows / Docker / model layout)",
+   "E0-07 PATCH": "PASS",
+   "LEGAL CONTENT PRESERVATION": "PARTIAL",
+   "STANDARD EXPECTED-DIFF": "PARTIAL",
+   "OFFLINE MANUAL FALLBACK": "PARTIAL",
+   "AUTOMATIC UPDATER": "EXPERIMENTAL",
+   "CODE RELEASE BLOCKERS": 3,
+   "READY FOR FINAL LOCAL ACCEPTANCE": "CONDITIONAL",
+   "READY FOR RELEASE": "NO",
+   "READY FOR PRODUCTION": "NO",
+   "RUNTIME CODE UNCHANGED": true,
+   "PRODUCTION UNCHANGED": true
+  }
+ },
+ "regression_12d8": {
+  "backend_raw": "3010 passed / 11 failed / 78 skipped / 1 error (tests/ trừ tests/test_chunking.py và tests/review_phase12d8; môi trường chưa có EasyOCR và ssh-keygen)",
+  "backend_same_10_failures_as_baseline": true,
+  "backend_extra_failure_and_error": "tests/test_ocr_engine_manager.py::TestLifecycle::test_assert_ready_raises_value_error (EasyOCR chưa cài) và ERROR test_forged_verify_report_does_not_replace_authentication (thiếu ssh-keygen): cả hai ĐẠT sau khi cài (384 passed trên 5 file liên quan, 0 skip)",
+  "test_chunking": "31 đạt; 3 test cần tải bảng mã bị treo (proxy 403): TestChunkText::test_cjk_text_is_chunked_by_tokens, ::test_explicit_content_type_plain, ::test_secondary_chunking_for_large_sections",
+  "backend_normalised": "3048 passed / 10 failed / 73 skipped / 3 không chạy được — khớp báo cáo 12D7 (3047 + 1 test thêm ở dde8645)",
+  "frontend": "438 / 438 (lượt đầu 1 test quá 30 s do máy đang tải nặng; chạy lại đạt), tsc sạch, lint 0 lỗi / 7 cảnh báo cũ",
+  "review_tests_12d8": "204 passed / 71 xfailed (strict) / 0 failed",
+  "not_run": [
+   "CB5400_REAL_DOCKER (không có daemon)",
+   "bảng mã o200k_base thật (không có cache)",
+   "pipeline OCR đầy đủ với model layout",
+   "Windows / PowerShell"
+  ]
+ },
+ "new_findings": [
+  {
+   "finding_id": "D8-03",
+   "severity": "P1",
+   "area": "OCR text (Standard + Legal, mọi engine)",
+   "title": "Docling bỏ dấu gạch nối cuối dòng / cuối từ OCR khi ghép chữ của một vùng layout: số hiệu văn bản, khoảng năm, mã số bị đổi",
+   "file": ".venv/…/docling/models/stages/page_assemble/page_assemble_model.py (upstream 2.129.0); không có bản vá trong open_notebook/ocr/docling_patches.py",
+   "lines": "page_assemble_model.py:115-153 (sanitize_text), gọi tại :200-205",
+   "root_cause": "PageAssembleModel.sanitize_text nối các cell của một cluster; cell kết thúc bằng '-' dính liền chữ/số và cell sau bắt đầu bằng chữ/số ⇒ bỏ '-' và nối liền (quy tắc dehyphen cho tiếng Anh). Với RapidOCR / EasyOCR / lớp chữ PDF mỗi cell là một DÒNG; với Tesseract mỗi cell là một TỪ nên quy tắc áp dụng cả giữa dòng ('2021- 2025', 'VT- KHTC', '1- Điều 5'). Tiếng Việt không ngắt từ bằng gạch nối nên gần như mọi '-' cuối dòng là ký tự thật.",
+   "reproduction": "pytest tests/review_phase12d8/test_tsv_patch_d8.py -k 'd8_03 or hyphen' (Tesseract 5.3.4 thật → stage OCR thật của Docling có bản vá E0-07 → LayoutPostprocessor thật → PageAssembleModel thật)",
+   "reproduced": "đã chạy (Cloud, Tesseract thật + mã Docling thật; không có Layout Heron)",
+   "actual": "TSV thô và ô OCR: '05/2024/TT-' 'BNNPTNT' ⇒ chữ phần tử: '05/2024/TTBNNPTNT'; '2021-' '2025' ⇒ '20212025'; '0001-' '0002.' ⇒ '00010002.'; 'VT-' 'KHTC;' ⇒ 'VTKHTC;'; '1-' 'Điều' ⇒ '1Điều'. Giống nhau ở v1.2.0 và ứng viên (Docling không đổi), cả Standard lẫn Legal.",
+   "expected": "Mọi ký tự Tesseract ghi trong TSV có mặt trong nội dung lưu; số hiệu / khoảng năm không đổi.",
+   "minimal_fix": "Quyết định của chủ dự án (như D-39): (a) bản vá có kiểm soát thứ hai cho sanitize_text (chốt phiên bản + SHA-256, giữ '-' và nối bằng khoảng trắng khi cell sau không phải phần nối của từ), kèm lớp 'expected diff' mới cho Standard; hoặc (b) chấp nhận bằng văn bản như giới hạn đã biết có từ v1.2.0 và tối thiểu thêm cảnh báo ở Legal (so chữ phần tử với cell gốc trong conv_res.assembled). Không sửa trong review này.",
+   "release_blocker": "CÓ theo tiêu chí §10 (P1 mở; nội dung pháp lý bị đổi). Không phải hồi quy: có từ v1.2.0 ⇒ cần quyết định của chủ dự án.",
+   "tests": [
+    "tests/review_phase12d8/test_tsv_patch_d8.py::test_d8_03_identifiers_keep_their_hyphen_through_page_assembly[*] (xfail strict)",
+    "tests/review_phase12d8/test_tsv_patch_d8.py::test_d8_03_real_ocr_element_text_keeps_every_hyphen_of_the_raw_tsv (xfail strict)",
+    "tests/review_phase12d8/test_tsv_patch_d8.py::test_control_real_ocr_cells_are_raw_but_element_text_loses_hyphens",
+    "tests/review_phase12d8/test_tsv_patch_d8.py::test_control_docling_page_assembly_drops_the_hyphen_of_identifiers[*]"
+   ],
+   "origin": "upstream Docling 2.129.0; có từ v1.2.0; đúng loại finding mà W-12D7-02d dự liệu ('token có ở TSV và ô OCR nhưng mất ở nội dung lưu')",
+   "note": "sanitize_text còn đổi “ ” ‘ ’ thành nháy thẳng, • thành ·, ⁄ thành / (đổi ký tự, không mất nghĩa)."
+  },
+  {
+   "finding_id": "D8-01",
+   "severity": "P2",
+   "area": "Legal normalizer 1.3.0",
+   "title": "Legal đảo thứ tự đọc khi tách phép nối liên trang của Docling: phần tách ra được chèn lại theo tọa độ, mà tọa độ đó sai khi hai trang khác chiều cao; ở trang hai cột phần tách bị đẩy ra sau đoạn đầu cột phải",
+   "file": "open_notebook/ocr/legal_normalizer.py",
+   "lines": "1364-1366 (_reading_key), 1480-1562 (_split_item, vòng lặp 1548-1559)",
+   "root_cause": "_split_item đặt phần tách bằng cách bỏ qua mọi anh em có (trang, top) nhỏ hơn phần tách — kể cả item TEXT / tiêu đề, không chỉ những item Docling đã bỏ qua khi nối (header, footer, bảng, ảnh, caption, footnote). Bbox của phần ở trang sau do Docling ghi bằng chiều cao của trang ĐẦU (readingorder_model._merge_elements dùng page_height của element đầu) nên top lệch đúng (H2 − H1). 12D7 làm lỗi lộ rộng hơn: mọi phép nối liên trang của Docling giờ đều được tách và chèn lại.",
+   "reproduction": "pytest tests/review_phase12d8/test_legal_d8.py -k d8_01 (ReadingOrderModel thật của Docling, kích thước trang theo từng trang)",
+   "reproduced": "đã chạy (Cloud; layout tổng hợp qua mã Docling thật). Cùng kết quả với normalizer 1.2.0 của 904c15c ⇒ có từ 12D5, không phải mới ở 12D7.",
+   "actual": "Trang 1 cao 820 pt, trang 2 cao 842 pt: Legal lưu 'Tổ chức… theo quy định' / 'Điều 6. Hiệu lực thi hành' / 'của pháp luật hiện hành…' / 'Thông tư này có hiệu lực…'. Ngang→dọc (595→842): phần nối nằm sau cả Điều 6 và nội dung của nó. Hai cột: 'Điều 6…' (cột phải) đứng trước phần nối (cột trái). Không mất chữ; chỉ có cảnh báo upstream_merge_undone ('shown apart again'), không nói vị trí chưa được kiểm.",
+   "expected": "Phần tách đứng ngay sau phần đầu, chỉ vượt qua những item Docling đã bỏ qua và nằm trước nó; không bao giờ vượt qua TEXT / LIST / tiêu đề.",
+   "minimal_fix": "Trong _split_item: (1) dừng vòng lặp khi anh em kế tiếp không thuộc nhóm nhãn Docling bỏ qua khi nối (PAGE_HEADER, PAGE_FOOTER, TABLE, PICTURE, CAPTION, FOOTNOTE); (2) khi so vị trí, đổi bbox của provenance thứ ≥ 2 bằng chiều cao của trang chứa provenance ĐẦU (đúng phép Docling đã dùng). Thêm fixture kích thước trang hỗn hợp và hai cột vào oracle.",
+   "release_blocker": "CÓ theo tiêu chí §10 (thứ tự nội dung pháp lý bị đổi ở chế độ Legal). Sửa nhỏ, chỉ trong Legal.",
+   "tests": [
+    "tests/review_phase12d8/test_legal_d8.py::test_d8_01_mixed_page_heights_keep_the_reading_order[*] (xfail strict)",
+    "tests/review_phase12d8/test_legal_d8.py::test_d8_01_two_columns_keep_the_reading_order (xfail strict)",
+    "tests/review_phase12d8/test_legal_d8.py::test_control_d8_01_today_the_continuation_lands_after_the_next_article",
+    "tests/review_phase12d8/test_legal_d8.py::test_control_docling_records_the_merged_part_with_the_first_pages_height"
+   ],
+   "origin": "12D5 (R2-01: _split_item); phạm vi ảnh hưởng tăng ở 12D7 (E1-09)",
+   "note": "92 fixture của oracle đều dùng trang 595×842 ⇒ điểm mù của benchmark."
+  },
+  {
+   "finding_id": "D8-02",
+   "severity": "P2",
+   "area": "Legal + Standard (serializer)",
+   "title": "Footnote mà Docling gắn vào bảng / ảnh không có trong nội dung Markdown — ở Standard (upstream, như v1.2.0) và cả Legal; không có cảnh báo",
+   "file": "open_notebook/ocr/legal_normalizer.py (không xuất footnote của FloatingItem); upstream: docling_core/transforms/serializer/common.py",
+   "lines": "legal_normalizer.py:539-672 (_build_serializer); common.py:434-435 (bỏ qua footnote 'handled by the floating item'), serializer Markdown không gọi serialize_footnotes",
+   "root_cause": "ReadingOrderModel gắn phần tử FOOTNOTE đứng ngay sau bảng / ảnh vào item đó (item.footnotes). Serializer Markdown của docling-core 2.96.0 không xuất footnote của bảng / ảnh. Legal cứu chữ furniture xuất hiện một lần và chữ trong ảnh, nhưng không cứu footnote này.",
+   "reproduction": "pytest tests/review_phase12d8/test_legal_d8.py -k 'd8_02 or attaches'",
+   "reproduced": "đã chạy (Cloud; ReadingOrderModel thật)",
+   "actual": "'(1) Theo Thông tư số 15/2024/TT-BNNPTNT ngày 01/02/2024.' dưới bảng (hoặc ảnh): có trong doc.texts, không có trong Standard, không có trong Legal, warnings rỗng. Footnote không gắn vào bảng / ảnh thì được giữ (kiểm chứng).",
+   "expected": "Legal: chữ của footnote có trong nội dung (ngay sau bảng / ảnh) hoặc tối thiểu có cảnh báo có trang. Standard: giữ hành vi v1.2.0 (parity).",
+   "minimal_fix": "Legal: trong LegalDocSerializer xuất item.footnotes ngay sau bảng / ảnh (docling-core đã có serialize_footnotes) + cảnh báo 'attached_footnote_kept'; thêm fixture 'footnote ngay dưới bảng' vào oracle. Standard: ghi giới hạn đã biết.",
+   "release_blocker": "CÓ theo tiêu chí §10 cho chế độ Legal (mất nội dung pháp lý, im lặng). Standard: không phải hồi quy (hành vi v1.2.0).",
+   "tests": [
+    "tests/review_phase12d8/test_legal_d8.py::test_d8_02_legal_keeps_a_footnote_attached_to_a_table_or_picture[*] (xfail strict)",
+    "tests/review_phase12d8/test_legal_d8.py::test_control_docling_attaches_the_note_and_the_standard_export_drops_it[*]",
+    "tests/review_phase12d8/test_legal_d8.py::test_control_a_footnote_that_is_not_attached_is_kept"
+   ],
+   "origin": "upstream docling-core 2.96.0; có từ v1.2.0; Legal chưa bao giờ xử lý",
+   "note": "Fixture f13_footnotes chỉ có footnote không kèm bảng ⇒ oracle không thấy."
+  },
+  {
+   "finding_id": "D8-STD-01",
+   "severity": "P2",
+   "area": "Công cụ nghiệm thu Standard expected-diff",
+   "title": "Khác biệt byte (xuống dòng, gộp đoạn, NBSP) được báo 'unchanged', exit 0",
+   "file": "scripts/ocr/phase12_standard_diff.py",
+   "lines": "84-85, 110-135",
+   "root_cause": "So sánh trên text.split(); byte_identical được tính nhưng chỉ ghi vào JSON, không ảnh hưởng lớp, bản tóm tắt hay mã thoát.",
+   "reproduction": "pytest tests/review_phase12d8/test_standard_diff_d8.py -k STD_01 / byte",
+   "reproduced": "đã chạy",
+   "actual": "'Điều 1…\\n\\nĐiều 2…' → 'Điều 1… Điều 2…' (gộp đoạn), bảng dồn một dòng, space→NBSP: 'unchanged', rc 0.",
+   "expected": "Tiêu chí là 'mọi byte khác phải giống': khác byte mà cùng token phải là lớp thất bại.",
+   "minimal_fix": "unchanged chỉ khi before == after; cùng token nhưng khác byte ⇒ lớp riêng, rc ≠ 0.",
+   "release_blocker": "Không chặn runtime; CHẶN việc dùng công cụ làm cổng W-12D7-02e.",
+   "tests": [
+    "tests/review_phase12d8/test_standard_diff_d8.py (xfail strict, nhóm D8-STD-01)"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-STD-02",
+   "severity": "P2",
+   "area": "Công cụ nghiệm thu Standard expected-diff",
+   "title": "Bằng chứng TSV là túi từ của cả tài liệu: một token ở bất kỳ vùng nào 'chứng minh' mọi hunk; không xét ngữ cảnh vùng OCR",
+   "file": "scripts/ocr/phase12_standard_diff.py",
+   "lines": "88-107",
+   "root_cause": "evidence = tập mọi từ mức 5 của mọi TSV khớp tên; old_parser_form áp theo từng token trong khi pandas chỉ đổi số khi CẢ vùng là số.",
+   "reproduction": "pytest tests/review_phase12d8/test_standard_diff_d8.py -k STD_02",
+   "reproduced": "đã chạy (TSV dựng + phép parse pandas thật)",
+   "actual": "Vùng '0001', v1.2.0 in '1.0', ứng viên in '1' (vẫn mất số 0) ⇒ 'expected parser fix' vì số trang '1' có ở TSV khác; 'Phiên bản 2.0' (vùng hỗn hợp) → '2' ⇒ expected; một 'NA' chứng minh ba 'NA' chèn thêm.",
+   "expected": "Mỗi hunk phải gắn với đúng vùng OCR: chạy phép parse upstream thật trên TSV của vùng đó, kết quả phải bằng token cũ và từ thô phải bằng token mới; mỗi lần xuất hiện dùng một lần.",
+   "minimal_fix": "Kiểm theo từng file TSV (từng crop) thay vì tập từ toàn tài liệu.",
+   "release_blocker": "Không chặn runtime; CHẶN việc dùng công cụ làm cổng W-12D7-02e.",
+   "tests": [
+    "tests/review_phase12d8/test_standard_diff_d8.py (xfail strict, nhóm D8-STD-02)"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-STD-03",
+   "severity": "P2",
+   "area": "Công cụ nghiệm thu Standard expected-diff",
+   "title": "Quy trình trong checklist không tạo được bằng chứng cho công cụ; khớp tên file theo tiền tố",
+   "file": "scripts/ocr/phase12_standard_diff.py; docs/review/PHASE12D7_LOCAL_ACCEPTANCE_CHECKLIST.md (W-12D7-02e)",
+   "lines": "standard_diff.py:167",
+   "root_cause": "rglob(f'{name}*.tsv'): 'qd1' nhận TSV của 'qd10'; phase12_diagnose.py ghi 01_tesseract_pNNN.tsv và 07_markdown_standard.md — không theo quy ước <tên>.md / <tên>*.tsv; TSV của diagnose là Direct OCR toàn trang, không phải crop theo vùng của ingestion; cách xuất Standard từ image v1.2.0 không được mô tả.",
+   "reproduction": "pytest tests/review_phase12d8/test_standard_diff_d8.py -k STD_03",
+   "reproduced": "đã chạy (va chạm tiền tố); phần quy trình: đọc mã",
+   "actual": "Sửa thật ở 22 PDF sẽ là 'not verified' (không có TSV khớp), và theo D8-STD-04 công cụ vẫn thoát 0.",
+   "expected": "Một bước xuất được mô tả rõ, tạo đúng TSV của từng crop của chính lần ingestion (công cụ orientation đã bắt được crop; cần lưu TSV thô cùng lần gọi).",
+   "minimal_fix": "Khớp tên chính xác / manifest; mô tả bước xuất; lưu TSV thô của từng lần gọi _run_tesseract.",
+   "release_blocker": "Không chặn runtime; phải xong trước W-12D7-02e.",
+   "tests": [
+    "tests/review_phase12d8/test_standard_diff_d8.py (xfail strict, nhóm D8-STD-03)"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-STD-04",
+   "severity": "P2",
+   "area": "Công cụ nghiệm thu Standard expected-diff",
+   "title": "Mã thoát 0 cho kết quả không chứng minh gì",
+   "file": "scripts/ocr/phase12_standard_diff.py",
+   "lines": "159-164, 195",
+   "root_cause": "Chỉ 'unexpected regression' làm rc = 1.",
+   "reproduction": "pytest tests/review_phase12d8/test_standard_diff_d8.py -k STD_04",
+   "reproduced": "đã chạy",
+   "actual": "Tài liệu thiếu ở bản ứng viên ⇒ 'not verified', rc 0; không có file .md nào ⇒ '{}', rc 0; chèn 'nan' / 'None' / 'null' không có trong TSV ⇒ 'not verified', rc 0.",
+   "expected": "Tài liệu thiếu một phía = hồi quy; rc ≠ 0 khi có 'not verified' hoặc 0 tài liệu.",
+   "minimal_fix": "Như trên; từ NA chèn thêm mà TSV không có ⇒ unexpected.",
+   "release_blocker": "Không chặn runtime; CHẶN việc dùng công cụ làm cổng W-12D7-02e.",
+   "tests": [
+    "tests/review_phase12d8/test_standard_diff_d8.py (xfail strict, nhóm D8-STD-04)"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORI-01",
+   "severity": "P2",
+   "area": "Công cụ chẩn đoán hướng xoay",
+   "title": "phase12_orientation_diagnose.py xoay vùng 90° / 270° ngược chiều với Docling",
+   "file": "scripts/ocr/phase12_orientation_diagnose.py",
+   "lines": "175 (rotated_copy), 662, 679, 432-437, 310 / 151",
+   "root_cause": "rotated_copy dùng rotate(-deg) với góc thô của Tesseract; Docling đổi trước thành (-deg) % 360 (parse_tesseract_orientation) rồi mới rotate(-…). Hai cách chỉ trùng ở 180°; test 12D7 chỉ dùng 0° / 180°.",
+   "reproduction": "pytest tests/review_phase12d8/test_orientation_gate_d8.py -k 'rotates or crops_mode or pdf_mode'",
+   "reproduced": "đã chạy (Tesseract thật)",
+   "actual": "Vùng nằm ngang (thô 270, conf 3.01): công cụ đọc ra chữ rác conf 48.5, Docling đọc đúng conf 94.9; chiều kia: báo oan 'alternative_reads_better'; chế độ PDF: bỏ sót (false negative).",
+   "expected": "Công cụ đọc vùng đúng như ingestion; một quy ước góc duy nhất.",
+   "minimal_fix": "rotate theo -parse_tesseract_orientation(str(deg)); thêm test 90 / 270.",
+   "release_blocker": "Không (ingestion không bị ảnh hưởng; triệu chứng E1-05 là 180°, công cụ xử lý đúng). Kết luận của W-12D7-01c cho vùng nằm ngang chưa dùng được.",
+   "tests": [
+    "tests/review_phase12d8/test_orientation_gate_d8.py (6 xfail strict)"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-01",
+   "severity": "P2",
+   "area": "Offline — automatic updater",
+   "title": "Chính công cụ không nói update / finish / rollback là EXPERIMENTAL",
+   "file": "scripts/offline/offline_package.py; scripts/offline/update.sh, finish.sh, rollback.sh",
+   "lines": "1-71 (docstring), 5360-5411 (build_parser)",
+   "root_cause": "Nhãn EXPERIMENTAL chỉ có trong Markdown; --help và các wrapper không có; update --apply không cần cờ xác nhận. Hướng dẫn Ubuntu tuyên bố --help có hiệu lực hơn tài liệu.",
+   "reproduction": "pytest tests/review_phase12d8/test_offline_d8.py -k experimental",
+   "reproduced": "đã chạy",
+   "actual": "grep 'experimental' trong công cụ: chỉ một thông báo từ chối build (dòng 1983).",
+   "expected": "Banner trong --help và khi chạy update / finish / rollback.",
+   "minimal_fix": "Thêm banner vào epilog và đầu ba lệnh; nên yêu cầu cờ tường minh cho --apply.",
+   "release_blocker": "Không chặn runtime; nên sửa trước phát hành (nhỏ).",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py::test_the_tool_itself_says_the_automatic_updater_is_experimental (xfail strict)"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-02",
+   "severity": "P2",
+   "area": "Offline — tài liệu phát hành",
+   "title": "Release notes 1.3.0-rc.1 trình bày updater tự động như đường nâng cấp offline; không nhắc quy trình thủ công hay EXPERIMENTAL",
+   "file": "docs/ocr/OCR_RELEASE_NOTES_V1.3.0_RC1.md; docs/ocr/PHASE12_CLOUD_HANDOVER.md",
+   "lines": "52-56, 71, 75, 91; 176-177",
+   "root_cause": "Tài liệu viết trước quyết định 12D5 và chưa cập nhật; đây là file sẽ được đóng vào gói thành docs/RELEASE_NOTES.md.",
+   "reproduction": "pytest tests/review_phase12d8/test_offline_d8.py -k release_notes",
+   "reproduced": "đã chạy",
+   "actual": "Không có 'MANUAL_FALLBACK' / 'EXPERIMENTAL' trong release notes.",
+   "expected": "Release notes dẫn production tới OFFLINE_UPDATE_MANUAL_FALLBACK.md.",
+   "minimal_fix": "Sửa ba đoạn trong release notes.",
+   "release_blocker": "Không chặn runtime; phải sửa trước phát hành.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py::test_release_notes_send_production_to_the_manual_procedure (xfail strict)"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-06",
+   "severity": "P2 (tiềm ẩn)",
+   "area": "Offline — build",
+   "title": "migration_required không bao giờ đúng qua đường build chính thức",
+   "file": "scripts/offline/offline_package.py; build-package.sh / .ps1",
+   "lines": "2228, 5264",
+   "root_cause": "build không so migration giữa --base-ref và commit; wrapper không có tham số; quy trình thủ công chỉ có chốt 'dừng nếu migration_required là True'.",
+   "reproduction": "pytest tests/review_phase12d8/test_offline_d8.py -k migration",
+   "reproduced": "đã chạy",
+   "actual": "Thêm 34.surrealql ⇒ manifest vẫn migration_required: false.",
+   "expected": "build tự suy ra từ diff migration; quy trình thủ công so schema của app đang chạy với manifest.",
+   "minimal_fix": "Suy ra trong build; thêm một bước ở §3 / §4 của quy trình thủ công.",
+   "release_blocker": "Không cho rc.1 (git diff f2fdf27..HEAD -- open_notebook/database rỗng, schema 33 hai phía).",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py::test_build_notices_a_migration_added_since_the_base_ref (xfail strict)"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-11",
+   "severity": "P2 (chỉ đọc mã)",
+   "area": "Offline — Windows build",
+   "title": "build-package.ps1 hỏng khi máy có Python nhưng không có uv",
+   "file": "scripts/offline/build-package.ps1",
+   "lines": "28-30, 37",
+   "root_cause": "$python = if (…) { @('uv',…) } elseif (…) { @('python') }: 'if' dùng như biểu thức trải mảng một phần tử thành chuỗi ⇒ $python[0] là ký tự 'p' ⇒ & 'p' …",
+   "reproduction": "Chưa chạy (không có PowerShell); kiểm văn bản: tests/review_phase12d8/test_offline_d8.py -k one_element",
+   "reproduced": "KHÔNG chạy — suy từ ngữ nghĩa PowerShell",
+   "actual": "Dừng ở check-version với CommandNotFound, trước mọi lệnh Docker (thất bại an toàn).",
+   "expected": "Chạy được với 'Python 3.10+ hoặc uv' như tài liệu ghi.",
+   "minimal_fix": "[string[]]$python = if … hoặc ,@('python').",
+   "release_blocker": "Không chặn runtime; phải sửa hoặc đưa vào W-12D7-04 (máy không có uv).",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py::test_build_package_ps1_keeps_a_one_element_python_command_an_array (xfail strict)"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-03",
+   "severity": "P3",
+   "area": "Offline — build",
+   "title": "Build thất bại sau khi đổi tên gói (ghi .sha256 lỗi) làm mất cặp gói + hash trước đó; lỗi là traceback OSError",
+   "file": "scripts/offline/offline_package.py",
+   "lines": "scripts/offline/offline_package.py:2037-2047",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Build thất bại sau khi đổi tên gói (ghi .sha256 lỗi) làm mất cặp gói + hash trước đó; lỗi là traceback OSError",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "ghi + fsync hash mới ra file tạm trước khi đổi tên gói",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-04",
+   "severity": "P3",
+   "area": "Offline — build",
+   "title": "Kill giữa 'cất .sha256 cũ' và 'đổi tên gói': gói cũ còn nhưng mất hash, không lần build nào khôi phục",
+   "file": "scripts/offline/offline_package.py",
+   "lines": "scripts/offline/offline_package.py:2032-2038, 1902-1910",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Kill giữa 'cất .sha256 cũ' và 'đổi tên gói': gói cũ còn nhưng mất hash, không lần build nào khôi phục",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "khôi phục / dọn .previous-* khi giữ khóa",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-05",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "§3.3–3.5 không ràng buộc payload với manifest đã ký: SHA256SUMS không được ký, không so với manifest, không thấy file thừa (chỉ hash kênh tin cậy §3.1 xác thực payload)",
+   "file": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md",
+   "lines": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md:100-110",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "§3.3–3.5 không ràng buộc payload với manifest đã ký: SHA256SUMS không được ký, không so với manifest, không thấy file thừa (chỉ hash kênh tin cậy §3.1 xác thực payload)",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "một dòng python3 -I so mọi file và tập file với manifest['files']",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-07",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "Thư mục làm việc đoán trước được (/var/tmp/cb5400-<ver>), install -d chấp nhận thư mục người khác tạo sẵn; chạy lại §4 nối thêm vào $NOTES gây 'STOP' giả",
+   "file": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md",
+   "lines": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md:58, 89",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Thư mục làm việc đoán trước được (/var/tmp/cb5400-<ver>), install -d chấp nhận thư mục người khác tạo sẵn; chạy lại §4 nối thêm vào $NOTES gây 'STOP' giả",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "mktemp -d hoặc mkdir -m 700; ghi $NOTES bằng '>' mỗi lượt",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-08",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "snapshot --compare chỉ phát hiện id bị thiếu, không thấy bản ghi bị sửa tại chỗ",
+   "file": "scripts/offline/offline_package.py:5182-5216; MANUAL_FALLBACK §7",
+   "lines": "scripts/offline/offline_package.py:5182-5216; MANUAL_FALLBACK §7",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "snapshot --compare chỉ phát hiện id bị thiếu, không thấy bản ghi bị sửa tại chỗ",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "báo khác biệt data.tables hoặc lặp phép so F1==F2",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-10",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "Rollback: ứng dụng được lùi và mở lại TRƯỚC khi mã nguồn được đưa về, không recreate sau đó",
+   "file": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md",
+   "lines": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md:289-303",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Rollback: ứng dụng được lùi và mở lại TRƯỚC khi mã nguồn được đưa về, không recreate sau đó",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "thứ tự: tag → mã nguồn → recreate",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-12",
+   "severity": "P3",
+   "area": "Offline — Windows",
+   "title": "phase12-test.ps1 còn dùng 2>$null với lệnh native dưới ErrorActionPreference=Stop (chỉ đọc mã)",
+   "file": "scripts/windows/phase12-test.ps1",
+   "lines": "scripts/windows/phase12-test.ps1:88, 99",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "phase12-test.ps1 còn dùng 2>$null với lệnh native dưới ErrorActionPreference=Stop (chỉ đọc mã)",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "bỏ chuyển hướng stderr như đã làm ở build-package.ps1 (R2-22)",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-13",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "Lệnh python -c nhiều dòng nằm trong mục danh sách bị thụt lề: chép từ file .md thô (gói chỉ có bản thô) ⇒ IndentationError ở bước bắt buộc 'chờ job nền'",
+   "file": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md",
+   "lines": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md:164-173, 205-213",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Lệnh python -c nhiều dòng nằm trong mục danh sách bị thụt lề: chép từ file .md thô (gói chỉ có bản thô) ⇒ IndentationError ở bước bắt buộc 'chờ job nền'",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "bỏ thụt lề khối lệnh",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-14",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "Phép chứng minh F1 == F2 đạt cả khi không đọc được dữ liệu (data: null ở cả hai)",
+   "file": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md",
+   "lines": "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md:229",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Phép chứng minh F1 == F2 đạt cả khi không đọc được dữ liệu (data: null ở cả hai)",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "sys.exit(a is None or a != b)",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-15",
+   "severity": "P3",
+   "area": "Offline — hợp đồng tích hợp",
+   "title": "Hợp đồng adapter để --no-deps là tùy chọn; 'DB không bị recreate' dựa vào script vận hành không bị ràng buộc (chỉ đọc mã; phát hiện được sau bằng kiểm container DB)",
+   "file": "docs/deployment/OFFLINE_UPDATE_INTEGRATION_CONTRACT.md",
+   "lines": "docs/deployment/OFFLINE_UPDATE_INTEGRATION_CONTRACT.md:38, 48",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Hợp đồng adapter để --no-deps là tùy chọn; 'DB không bị recreate' dựa vào script vận hành không bị ràng buộc (chỉ đọc mã; phát hiện được sau bằng kiểm container DB)",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "bắt buộc --no-deps; đưa vào Local gate",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORI-02",
+   "severity": "P3",
+   "area": "Orientation gate",
+   "title": "Cổng không khởi động được chỉ lộ ở một dòng status dạng chữ và một WARNING: readiness.quality_config()['osd_gate'] = True theo biến môi trường; status --json không có trạng thái cổng; metadata chuyển đổi không ghi",
+   "file": "open_notebook/ocr/readiness.py:237; open_notebook/ocr/cli.py:262-283; open_notebook/ocr/options.py:248-257",
+   "lines": "open_notebook/ocr/readiness.py:237; open_notebook/ocr/cli.py:262-283; open_notebook/ocr/options.py:248-257",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Cổng không khởi động được chỉ lộ ở một dòng status dạng chữ và một WARNING: readiness.quality_config()['osd_gate'] = True theo biến môi trường; status --json không có trạng thái cổng; metadata chuyển đổi không ghi",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "thêm osd_gate_active (từ tesseract_gate_state) vào quality_config, JSON và metadata",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_orientation_gate_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORI-03",
+   "severity": "P3",
+   "area": "Orientation gate",
+   "title": ".gitattributes không sửa checkout Windows đã có: sau khi pull file cổng vẫn w/crlf (blob không đổi nên Git không ghi lại); chỉ sed trong Dockerfile bảo vệ. W-12D7-00c sẽ hiện w/crlf sau pull — dễ đọc nhầm là sửa không đạt",
+   "file": ".gitattributes:7; tests/test_phase12d7_orientation.py; checklist W-12D7-00c",
+   "lines": ".gitattributes:7; tests/test_phase12d7_orientation.py; checklist W-12D7-00c",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": ".gitattributes không sửa checkout Windows đã có: sau khi pull file cổng vẫn w/crlf (blob không đổi nên Git không ghi lại); chỉ sed trong Dockerfile bảo vệ. W-12D7-00c sẽ hiện w/crlf sau pull — dễ đọc nhầm là sửa không đạt",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "ghi rõ trong hướng dẫn Windows / lệnh renormalize",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_orientation_gate_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORI-04",
+   "severity": "P3",
+   "area": "Orientation gate — tài liệu",
+   "title": "W-12D7-01a kết luận 'nguyên nhân E1-05 xác nhận' chỉ từ việc có \\r / dòng log: điều đó chứng minh cổng đã tắt, không chứng minh 11 vùng bị xoay vì thế",
+   "file": "docs/review/PHASE12D7_LOCAL_ACCEPTANCE_CHECKLIST.md",
+   "lines": "docs/review/PHASE12D7_LOCAL_ACCEPTANCE_CHECKLIST.md:24",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "W-12D7-01a kết luận 'nguyên nhân E1-05 xác nhận' chỉ từ việc có \\r / dòng log: điều đó chứng minh cổng đã tắt, không chứng minh 11 vùng bị xoay vì thế",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "'xác nhận' phải cần 01a + 01c (OSD thô < 2.0 ở từng vùng)",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_orientation_gate_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-STD-05",
+   "severity": "P3",
+   "area": "Standard expected-diff",
+   "title": "old_parser_form không đúng pandas ở biên (chữ số Unicode, ≥ 2**63, 'NAN'); sửa thật trong bảng Markdown đổi dòng kẻ ⇒ báo nhầm 'unexpected regression'",
+   "file": "scripts/ocr/phase12_standard_diff.py",
+   "lines": "scripts/ocr/phase12_standard_diff.py:66-81",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "old_parser_form không đúng pandas ở biên (chữ số Unicode, ≥ 2**63, 'NAN'); sửa thật trong bảng Markdown đổi dòng kẻ ⇒ báo nhầm 'unexpected regression'",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "dùng chính phép parse pandas; bỏ qua dòng kẻ bảng",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_standard_diff_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORC-01",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Hàng của bảng không được so chữ ở chế độ identity (đổi chỗ ô / hàng trong tài liệu + đầu ra: 0/138 bị phát hiện)",
+   "file": "scripts/ocr/phase12_oracle.py",
+   "lines": "scripts/ocr/phase12_oracle.py:452-453, 467-503",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Hàng của bảng không được so chữ ở chế độ identity (đổi chỗ ô / hàng trong tài liệu + đầu ra: 0/138 bị phát hiện)",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "so khóa từng hàng với ' | '.join(row)",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORC-02",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Khối code (fence / thụt 4) vô hình với display_lines: chữ bịa trong đó không bị thấy",
+   "file": "scripts/ocr/phase12_metrics.py",
+   "lines": "scripts/ocr/phase12_metrics.py:35-74",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Khối code (fence / thụt 4) vô hình với display_lines: chữ bịa trong đó không bị thấy",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "xuất token fence / code_block",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORC-03",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Chữ artifact đã bỏ (số trang, header) có thể được chèn lại ở chỗ khác mà không bị tính",
+   "file": "scripts/ocr/phase12_oracle.py",
+   "lines": "scripts/ocr/phase12_oracle.py:508-518, 752-754",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Chữ artifact đã bỏ (số trang, header) có thể được chèn lại ở chỗ khác mà không bị tính",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "tính item không provenance là chèn",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORC-04",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Cấu trúc khối (đoạn ↔ tiêu đề, blockquote) không được đo",
+   "file": "scripts/ocr/phase12_metrics.py",
+   "lines": "scripts/ocr/phase12_metrics.py",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Cấu trúc khối (đoạn ↔ tiêu đề, blockquote) không được đo",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "so loại khối",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORC-05",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Đảo thứ tự bão hòa ở fixture Docling vốn đã đảo (f12_two_columns, d5_f02_voucher_*): chỉ 15/37 phép hoán vị thêm bị thấy; cổng pytest chỉ là Legal <= Standard",
+   "file": "tests/test_phase12d5_oracle.py; scripts/ocr/phase12_oracle.py",
+   "lines": "tests/test_phase12d5_oracle.py; scripts/ocr/phase12_oracle.py",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Đảo thứ tự bão hòa ở fixture Docling vốn đã đảo (f12_two_columns, d5_f02_voucher_*): chỉ 15/37 phép hoán vị thêm bị thấy; cổng pytest chỉ là Legal <= Standard",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "so thứ tự với ground truth, không với Standard",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORC-06",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Nối liên trang của cặp gt='join' không bị tính là lỗi dù 12D7 cấm mọi phép nối; chính sách chỉ được giữ bởi test riêng và counts tự báo",
+   "file": "scripts/ocr/phase12_oracle.py; tests/test_ocr_phase12_scripts.py",
+   "lines": "scripts/ocr/phase12_oracle.py; tests/test_ocr_phase12_scripts.py",
+   "root_cause": "xem báo cáo PHASE12D8_CODEX_FINAL_REVIEW.md",
+   "reproduction": "tests/review_phase12d8/ (xfail strict hoặc control mang mã này)",
+   "reproduced": "đã chạy, trừ mục ghi 'chỉ đọc mã'",
+   "actual": "Nối liên trang của cặp gt='join' không bị tính là lỗi dù 12D7 cấm mọi phép nối; chính sách chỉ được giữ bởi test riêng và counts tự báo",
+   "expected": "hành vi an toàn tương ứng",
+   "minimal_fix": "đổi gt='join' thành lỗi khi nối",
+   "release_blocker": "Không",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-OFF-09",
+   "severity": "P4",
+   "area": "Offline — khóa",
+   "title": "Mọi OSError của flock / msvcrt.locking đều được báo là 'đang bị tiến trình <pid cũ> giữ'",
+   "file": "scripts/offline/offline_package.py:485-495",
+   "lines": "scripts/offline/offline_package.py:485-495",
+   "root_cause": "xem báo cáo",
+   "reproduction": "xem báo cáo",
+   "reproduced": "đã chạy / đọc mã",
+   "actual": "Mọi OSError của flock / msvcrt.locking đều được báo là 'đang bị tiến trình <pid cũ> giữ'",
+   "expected": "—",
+   "minimal_fix": "phân biệt EWOULDBLOCK với lỗi khác",
+   "release_blocker": "Không",
+   "tests": [],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-ORI-05",
+   "severity": "P4",
+   "area": "Orientation gate — test",
+   "title": "Test Dockerfile của 12D7 không bắt được bước tự kiểm bị nuốt lỗi (|| true, | cat, COPY sau đó); Dockerfile thật thì đúng",
+   "file": "tests/test_phase12d7_orientation.py:144-175",
+   "lines": "tests/test_phase12d7_orientation.py:144-175",
+   "root_cause": "xem báo cáo",
+   "reproduction": "xem báo cáo",
+   "reproduced": "đã chạy / đọc mã",
+   "actual": "Test Dockerfile của 12D7 không bắt được bước tự kiểm bị nuốt lỗi (|| true, | cat, COPY sau đó); Dockerfile thật thì đúng",
+   "expected": "—",
+   "minimal_fix": "đã ghim bằng test_verified_dockerfile_gate_step_cannot_swallow_a_failure",
+   "release_blocker": "Không",
+   "tests": [],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-08",
+   "severity": "P4",
+   "area": "Bản vá TSV",
+   "title": "TSV hỏng mà MỌI dòng có trường thứ 13: cột chỉ mục ngầm được định kiểu khác upstream (str thay vì float); cột và chữ vẫn như upstream, không ảnh hưởng ô OCR",
+   "file": "open_notebook/ocr/docling_patches.py:117-130",
+   "lines": "open_notebook/ocr/docling_patches.py:117-130",
+   "root_cause": "xem báo cáo",
+   "reproduction": "xem báo cáo",
+   "reproduced": "đã chạy / đọc mã",
+   "actual": "TSV hỏng mà MỌI dòng có trường thứ 13: cột chỉ mục ngầm được định kiểu khác upstream (str thay vì float); cột và chữ vẫn như upstream, không ảnh hưởng ô OCR",
+   "expected": "—",
+   "minimal_fix": "không cần sửa; ghi nhận",
+   "release_blocker": "Không",
+   "tests": [],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-09",
+   "severity": "P4",
+   "area": "Báo cáo hồi quy / test",
+   "title": "Báo cáo 12D5 / 12D7 không ghi tên 3 test bị deselect; một test dùng ssh-keygen không có skip marker; một test phụ thuộc việc EasyOCR đã cài",
+   "file": "docs/review/PHASE12D7_REGRESSION_REPORT.md; tests/review_phase12d4/test_offline_evidence_trust_build.py:39; tests/test_ocr_engine_manager.py",
+   "lines": "docs/review/PHASE12D7_REGRESSION_REPORT.md; tests/review_phase12d4/test_offline_evidence_trust_build.py:39; tests/test_ocr_engine_manager.py",
+   "root_cause": "xem báo cáo",
+   "reproduction": "xem báo cáo",
+   "reproduced": "đã chạy / đọc mã",
+   "actual": "Báo cáo 12D5 / 12D7 không ghi tên 3 test bị deselect; một test dùng ssh-keygen không có skip marker; một test phụ thuộc việc EasyOCR đã cài",
+   "expected": "—",
+   "minimal_fix": "ghi tên test; thêm skip marker",
+   "release_blocker": "Không",
+   "tests": [],
+   "origin": "new in 12D8",
+   "note": null
+  },
+  {
+   "finding_id": "D8-10",
+   "severity": "P4",
+   "area": "Bản vá TSV — hiển thị",
+   "title": "ocr.cli status in trạng thái cổng hướng xoay nhưng không in trạng thái bản vá TSV (docling_patches.status() chỉ được dùng bởi inventory của gói offline)",
+   "file": "open_notebook/ocr/cli.py:262-283",
+   "lines": "open_notebook/ocr/cli.py:262-283",
+   "root_cause": "xem báo cáo",
+   "reproduction": "xem báo cáo",
+   "reproduced": "đã chạy / đọc mã",
+   "actual": "ocr.cli status in trạng thái cổng hướng xoay nhưng không in trạng thái bản vá TSV (docling_patches.status() chỉ được dùng bởi inventory của gói offline)",
+   "expected": "—",
+   "minimal_fix": "in thêm một dòng 'tsv text patch: applied / refused'",
+   "release_blocker": "Không",
+   "tests": [],
+   "origin": "new in 12D8",
+   "note": null
+  }
+ ],
+ "phase12e_findings": [
+  {
+   "finding_id": "E0-07",
+   "severity": "P1",
+   "status_12d7": "FIXED IN CLOUD",
+   "status_12d8": "VERIFIED IN CLOUD — LOCAL GATE OPEN",
+   "review_note_12d8": "12D8: ô OCR = TSV thô của CHÍNH lần gọi (Tesseract thật, vùng chỉ có số và vùng hỗn hợp), fuzz 2000 TSV so từng cột với upstream, bản vá chạy trong tiến trình ingestion, đường lỗi không trả options Tesseract. Còn lại: 22 PDF, Agri, Best, image thật (W-12D7-02). Finding riêng D8-03 ở tầng sau ô OCR.",
+   "verified_on_windows": false
+  },
+  {
+   "finding_id": "E1-09",
+   "severity": "P1",
+   "status_12d7": "FIXED IN CLOUD",
+   "status_12d8": "FIXED IN CODE — NEW DEFECT D8-01",
+   "review_note_12d8": "12D8: không còn phép nối do Legal tạo; mọi phép nối liên trang của Docling có charspan khớp đều được tách. NHƯNG vị trí chèn lại phần tách sai khi trang khác chiều cao / hai cột (D8-01). Còn nối liên trang khi Docling bỏ gạch nối mà không có bằng chứng (cảnh báo upstream_dehyphenation).",
+   "verified_on_windows": false
+  },
+  {
+   "finding_id": "E1-04",
+   "severity": "P1",
+   "status_12d7": "LOCAL VERIFICATION REQUIRED",
+   "status_12d8": "FIXED IN CODE — NOT VERIFIED ON WINDOWS",
+   "review_note_12d8": "12D8: nhánh flock kiểm bằng tiến trình thật (từ chối, kill -9, không truncate, không xóa file khóa); nhánh msvcrt chỉ mô phỏng. D8-OFF-03 / 04: cửa sổ đổi tên chưa nguyên tử hoàn toàn.",
+   "verified_on_windows": false
+  },
+  {
+   "finding_id": "E1-03",
+   "severity": null,
+   "status_12d7": "LOCAL VERIFICATION REQUIRED",
+   "status_12d8": "VERIFIED IN CLOUD — LOCAL GATE OPEN",
+   "review_note_12d8": "12D8: số trong thân, bảng, ảnh giữ nguyên qua Legal (test_verified_table_numbers_markers_and_picture_text_are_kept). 22 PDF chưa chạy.",
+   "verified_on_windows": false
+  },
+  {
+   "finding_id": "E1-05",
+   "severity": null,
+   "status_12d7": "NEEDS LOCAL EVIDENCE",
+   "status_12d8": "NEEDS LOCAL EVIDENCE",
+   "review_note_12d8": "12D8: cơ chế CRLF và bước sửa trong Dockerfile đã phát lại (rc 127 / 126 khi cổng hỏng ⇒ build thất bại); cổng byte-giống v1.2.0, ngưỡng 2.0 không đổi; 864 vùng tổng hợp: 0 góc sai với conf ≥ 2.0. CHƯA có bằng chứng CRLF là nguyên nhân của 11 vùng Windows. Công cụ chẩn đoán sai ở 90° / 270° (D8-ORI-01).",
+   "verified_on_windows": false
+  },
+  {
+   "finding_id": "E0-05",
+   "severity": null,
+   "status_12d7": "LOCAL VERIFICATION REQUIRED",
+   "status_12d8": "FIXED IN CODE — NOT EXECUTED",
+   "review_note_12d8": "12D8: chỉ kiểm văn bản (không có PowerShell); còn 2>$null ở hai lệnh native (D8-OFF-12).",
+   "verified_on_windows": false
+  },
+  {
+   "finding_id": "E1-01",
+   "severity": null,
+   "status_12d7": "EVIDENCE REQUIRED",
+   "status_12d8": "EVIDENCE REQUIRED",
+   "review_note_12d8": "Báo cáo 12E1 đã làm sạch không có trong repo: không đánh giá được.",
+   "verified_on_windows": false
+  },
+  {
+   "finding_id": "E1-02",
+   "severity": null,
+   "status_12d7": "EVIDENCE REQUIRED",
+   "status_12d8": "EVIDENCE REQUIRED",
+   "review_note_12d8": "Báo cáo 12E1 đã làm sạch không có trong repo: không đánh giá được.",
+   "verified_on_windows": false
+  },
+  {
+   "finding_id": "E1-06",
+   "severity": null,
+   "status_12d7": "EVIDENCE REQUIRED",
+   "status_12d8": "EVIDENCE REQUIRED",
+   "review_note_12d8": "Báo cáo 12E1 đã làm sạch không có trong repo: không đánh giá được.",
+   "verified_on_windows": false
+  },
+  {
+   "finding_id": "E0/E1 P3-P4 (khác)",
+   "severity": "P3/P4",
+   "status_12d7": "EVIDENCE REQUIRED",
+   "status_12d8": "EVIDENCE REQUIRED",
+   "review_note_12d8": "Báo cáo 12E1 đã làm sạch không có trong repo: không đánh giá được.",
+   "verified_on_windows": false
+  }
+ ],
+ "prior_findings_12d2_12d4": [
+  {
+   "finding_id": "F-01",
+   "severity": "P1",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-LEG-01, W-LEG-02, W-LEG-13, W-RC-07",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-02",
+   "severity": "P1",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-RC-09, W-LEG-03, W-LEG-04, W-LEG-05, W-LEG-19, W-LEG-25",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-03",
+   "severity": "P1",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-LEG-06, W-LEG-07, W-LEG-10, W-LEG-11, W-LEG-20, W-LEG-22",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-04",
+   "severity": "P1",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-01, W-OFF-02, W-OFF-03, W-PS-01..03",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-08",
+   "severity": "P1",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-17, W-OFF-18, W-OFF-32, W-FB-05",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-11",
+   "severity": "P1",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-INT-01..10, W-FB-08, W-FB-09",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-05",
+   "severity": "P2",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "F-06",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-LEG-08, W-LEG-21",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-07",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-LEG-16, W-LEG-23, W-STD-06",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-09",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-19",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-10",
+   "severity": "P2",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "F-20",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-04, W-OFF-05, W-OFF-06",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-21",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-13, W-OFF-29, W-OFF-33",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-22",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-TOK-01..06, W-OFF-08, W-OFF-21, W-OFF-22, W-RAG-06, W-RAG-08",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "T-01",
+   "severity": "P2",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "T-03",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-PIPE-01..05, W-RC-01..09",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-12",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "F-13",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "F-14",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "F-15",
+   "severity": "P3",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-STD-01..06",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-16",
+   "severity": "P3",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-LEG-17",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-17",
+   "severity": "P3",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-RAG-09, W-LEG-24",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-23",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "F-24",
+   "severity": "P3",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-16, W-OFF-26, W-OFF-27, W-FB-10",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "F-25",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "F-26",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "F-27",
+   "severity": "P3",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-01 (PowerShell 5.1 và 7), W-PS-01",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "T-02",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "F-18",
+   "severity": "P4",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-01",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-RC-08, W-LEG-22",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "R2-02",
+   "severity": "P3",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-LEG-24",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "R2-03",
+   "severity": "P4",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-04",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-32, W-FB-05",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "R2-05",
+   "severity": "P1",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-33, W-OFF-13",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "R2-06",
+   "severity": "P3",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-OFF-40",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "R2-07",
+   "severity": "P2",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-08",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-09",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-10",
+   "severity": "P3",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-TOK-01..06, W-RAG-08, W-RAG-10",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "R2-11",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-RC-07",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "R2-12",
+   "severity": "P1",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-13",
+   "severity": "P2",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-14",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-15",
+   "severity": "P2",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-16",
+   "severity": "P2",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-INT-05, W-INT-08, W-OFF-36",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  },
+  {
+   "finding_id": "R2-17",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-18",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-19",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-20",
+   "severity": "P3",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-21",
+   "severity": "P4",
+   "status_12d5": "FIXED IN CLOUD",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": null,
+   "status_12d8": "VERIFIED IN CLOUD"
+  },
+  {
+   "finding_id": "R2-22",
+   "severity": "P4",
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in_code": true,
+   "verified_in_cloud_12d8": "test hồi quy của finding đạt trong lượt chạy toàn bộ của 12D8 (không dựng lại riêng từng finding)",
+   "verified_on_windows_or_real_runtime": false,
+   "evidence_gap": "chưa có bằng chứng Local trong repo: W-PS-01, W-PS-02, W-PS-03",
+   "status_12d8": "FIXED IN CODE — LOCAL GATE OPEN"
+  }
+ ]
+}
