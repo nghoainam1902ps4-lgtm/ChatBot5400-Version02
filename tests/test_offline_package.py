@@ -695,7 +695,10 @@ def test_build_package_ps1_has_the_same_order_static():
     """PowerShell cannot run in Cloud: STATIC check only (LOCAL VERIFICATION REQUIRED)."""
     ps = (ROOT / "scripts" / "offline" / "build-package.ps1").read_text()
     check = ps.index("'check-version'")
-    assert check < ps.index("docker image inspect") < ps.index("docker buildx build")
+    assert check < ps.index("& docker image ls -q $tag") < ps.index("docker buildx build")
+    # R2-22: no native command with redirected stderr under $ErrorActionPreference = 'Stop'
+    # (Windows PowerShell 5.1 turns it into a terminating error); still STATIC only
+    assert "$ErrorActionPreference = 'Stop'" in ps and "2>$null" not in ps
     assert "merge-base --is-ancestor" in ps and "'--repo', $Root" in ps
     sh = (ROOT / "scripts" / "offline" / "build-package.sh").read_text()
     assert (

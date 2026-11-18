@@ -44,8 +44,14 @@ try {
     & git merge-base --is-ancestor $BaseRef $commit
     if ($LASTEXITCODE -ne 0) { Fail "BaseRef $BaseRef is not an ancestor of HEAD" }
     if (-not $NoBuild) {
-        & docker image inspect $tag 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { Fail "image $tag already exists: remove it deliberately or use -NoBuild" }
+        # R2-22: inspecting the tag with stderr redirected to $null stopped the
+        # script under Windows PowerShell 5.1 when the tag does not exist (the
+        # normal case): redirected stderr of a native command becomes a terminating
+        # NativeCommandError with $ErrorActionPreference = 'Stop'. `image ls -q`
+        # prints the image id or nothing, and writes nothing to stderr.
+        $existing = (& docker image ls -q $tag | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) { Fail 'docker image ls failed' }
+        if ($existing) { Fail "image $tag already exists: remove it deliberately or use -NoBuild" }
         & docker buildx build --platform $Platform --load `
             --build-arg OCR_INSTALL_TESSERACT=true `
             --build-arg OCR_PREINSTALL_RUNTIMES=true `
