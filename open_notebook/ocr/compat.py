@@ -51,6 +51,8 @@ DOCLING_FINGERPRINTS: dict[str, str] = {
     "docling.models.stages.ocr.auto_ocr_model:OcrAutoModel.__init__": "1e905edb7f52504381e3e5737ac511fc48190927d79bf1e0c7e9d4cc994cf990",
     "docling.models.stages.ocr.tesseract_ocr_cli_model:TesseractOcrCliModel._run_tesseract": "e0623aa9536128c833896869f39e27e52c10f66aa0ac51cb76418e3d61de233c",
     "docling.models.stages.ocr.tesseract_ocr_cli_model:TesseractOcrCliModel._set_languages": "0490147bdbe9dac9ecfc7b11af8030c0e4cddbf94e8e80814ec041929f0cef84",
+    # Phase 12D9 (E2-04): the upstream OCR loop docling_patches replaces
+    "docling.models.stages.ocr.tesseract_ocr_cli_model:TesseractOcrCliModel.__call__": "98ecbc9142a99b163a2d5f42326f44dfb43f0eef000e19fee75899c3be006482",
     # Phase 12D9 (D8-03 / D8-02): the upstream functions docling_patches patches
     "docling.models.stages.page_assemble.page_assemble_model:PageAssembleModel.sanitize_text": "7c6242f7b90cdfe9bb7f6023018280c9bc122bb29e1b3b76f5715564fa41b03e",
     "docling.models.stages.page_assemble.page_assemble_model:PageAssembleModel.__call__": "b20525771b0b21e7f9d0421f42e4ce0f43b6fef8ef02fd57006321e741cec37e",

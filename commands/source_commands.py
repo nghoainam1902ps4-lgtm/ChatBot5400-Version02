@@ -9,6 +9,7 @@ from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import ConfigurationError, ContextLengthExceededError
+from open_notebook.ocr.docling_extract import IncompleteConversionError
 from open_notebook.utils.job_input_guard import (
     UnsafeJobInput,
     require_record_id,
@@ -79,6 +80,7 @@ async def process_source_command(
     Process source content using the source_graph workflow
     """
     start_time = time.time()
+    source: Optional[Source] = None
 
     try:
         logger.info(f"Starting source processing for source: {input_data.source_id}")
@@ -169,6 +171,16 @@ async def process_source_command(
             processing_time=processing_time,
         )
 
+    except IncompleteConversionError as e:
+        # E2-04 (Phase 12D9): the document could not be converted completely
+        # (an OCR region / page failed). Nothing was stored or embedded; say
+        # whether the Source still has its earlier, complete content.
+        if source is not None and (source.full_text or "").strip():
+            e = e.keeping_previous()
+        logger.error(
+            f"Source processing failed (permanent) for {input_data.source_id}: {e}"
+        )
+        raise e from None
     except ValueError as e:
         # Validation errors are permanent failures. Re-raise so surreal-commands
         # marks the job as `failed` (stop_on=[ValueError] already prevents

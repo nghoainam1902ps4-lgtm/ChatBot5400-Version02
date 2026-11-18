@@ -261,8 +261,46 @@ def _normalised(fn) -> str:
     return ast.dump(_Normalise().visit(tree), include_attributes=False)
 
 
+class _E204(ast.NodeTransformer):
+    """Phase 12D9 (E2-04): the patched run keeps stderr (to classify a failure,
+    never logged) and has a timeout; everything else is upstream's."""
+
+    seen: list[str] = []
+
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        if ast.unparse(node.func) == "subprocess.run":
+            kept = []
+            for kw in node.keywords:
+                if kw.arg == "timeout":
+                    self.seen.append(f"timeout={ast.unparse(kw.value)}")
+                    continue
+                if kw.arg == "stderr" and ast.unparse(kw.value) == "PIPE":
+                    self.seen.append("stderr=PIPE")
+                    kw = ast.keyword(
+                        arg="stderr", value=ast.Name(id="DEVNULL", ctx=ast.Load())
+                    )
+                kept.append(kw)
+            node.keywords = kept
+        return node
+
+
 def test_patched_method_is_upstream_except_the_tsv_parse():
-    assert _normalised(P._run_tesseract) == _normalised(P.upstream_function())
+    # was: assert _normalised(P._run_tesseract) == _normalised(P.upstream_function())
+    tree = ast.parse(textwrap.dedent(inspect.getsource(P._run_tesseract)))
+    _E204.seen = []
+    ours = ast.unparse(_E204().visit(tree))
+    assert _E204.seen == ["stderr=PIPE", "timeout=RECOGNITION_TIMEOUT_SECONDS"]
+    assert _normalised_source(ours) == _normalised(P.upstream_function())
+
+
+def _normalised_source(source: str) -> str:
+    tree = ast.parse(source)
+    body = tree.body[0].body  # type: ignore[attr-defined]
+    tree.body[0].body = [  # type: ignore[attr-defined]
+        n for n in body if not isinstance(n, ast.ImportFrom)
+    ]
+    return ast.dump(_Normalise().visit(tree), include_attributes=False)
 
 
 # --------------------------------------------------------------------------- #

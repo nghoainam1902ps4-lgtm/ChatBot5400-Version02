@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 from dataclasses import replace
 from typing import Any
@@ -358,7 +359,21 @@ def convert_document(
                 prep.scale = None  # measured for Tesseract only
         prep.mode = decision
         converter = build_converter(cc_config, ocr, scale=prep.scale)
-        result = converter.convert(prep.path or path)
+        try:
+            result = converter.convert(prep.path or path)
+        except Exception as e:
+            # E2-04: every page failed and Docling raised ConversionError; when an
+            # OCR region is the reason, this is not a transient job error
+            found = _ocr_region_failures(str(e))
+            if found:
+                logger.error(
+                    f"Docling conversion of {os.path.basename(path)} failed: "
+                    f"{len(found)} OCR region(s) could not be recognised ({found[0]})"
+                )
+                raise IncompleteConversionError(
+                    ocr_region=True, details=f"status=failure, {found[0]}"
+                ) from None
+            raise
     finally:
         prep.cleanup()
     return result, converter, prep
@@ -371,6 +386,8 @@ def convert_file(
     started = time.time()
     ocr = ocr.pinned()  # a custom engine reads ONE model version for the whole file
     result, converter, prep = convert_document(path, cc_config, ocr)
+    # E2-04: a result with a failed OCR region / page is never stored as complete
+    reject_incomplete(result, path)
     doc = result.document
     fmt = getattr(cc_config, "docling_output_format", "markdown")
     normalization: dict[str, Any] = {}
@@ -448,13 +465,93 @@ def _custom_meta(ocr: OcrSettings) -> dict[str, Any]:
     }
 
 
+# E2-04 (Phase 12D9): what the Source shows when a conversion is incomplete.
+INCOMPLETE_OCR = "Nhận dạng tài liệu chưa hoàn tất do một vùng OCR gặp lỗi."
+INCOMPLETE_PAGE = "Chuyển đổi tài liệu chưa hoàn tất do một trang không xử lý được."
+NOT_STORED = "Tài liệu chưa được đưa vào kho tri thức."
+PREVIOUS_KEPT = "Nội dung cũ của tài liệu vẫn được giữ nguyên."
+PLEASE_RETRY = "Vui lòng thử lại."
+
+
+class IncompleteConversionError(ValueError):
+    """E2-04 (Phase 12D9): Docling's result is incomplete - an OCR region or a
+    page could not be processed. Nothing is stored or embedded; the job fails
+    without automatic retry (ValueError, D-08) and the user can retry it. The
+    message is metadata only (no document text, no stderr)."""
+
+    def __init__(
+        self, *, ocr_region: bool, details: str, kept_previous: bool = False
+    ) -> None:
+        self.ocr_region, self.details, self.kept_previous = (
+            ocr_region,
+            details,
+            kept_previous,
+        )
+        head = INCOMPLETE_OCR if ocr_region else INCOMPLETE_PAGE
+        middle = PREVIOUS_KEPT if kept_previous else NOT_STORED
+        super().__init__(f"{head} {middle} {PLEASE_RETRY} [{details}]")
+
+    def keeping_previous(self) -> "IncompleteConversionError":
+        """The same failure, for a Source whose earlier content stays."""
+        return IncompleteConversionError(
+            ocr_region=self.ocr_region, details=self.details, kept_previous=True
+        )
+
+
+def _ocr_region_failures(text: str) -> list[str]:
+    """The OCR region failures (docling_patches.OcrRegionError, metadata only)
+    named in ``text``."""
+    from open_notebook.ocr.docling_patches import OCR_REGION_FAILED
+
+    return re.findall(re.escape(OCR_REGION_FAILED) + r": [^;\n\]]*", text or "")
+
+
+def reject_incomplete(result: Any, path: str) -> None:
+    """E2-04 (Phase 12D9, owner decision): raise IncompleteConversionError unless
+    Docling converted EVERY page without an error.
+
+    Before 12D9 a partial result (``PARTIAL_SUCCESS``: a page or an OCR region
+    Docling could not process) was stored with a warning; a Tesseract region
+    whose recognition failed was even dropped with SUCCESS. Neither is stored
+    as a complete Source any more: no content, no embedding, an earlier valid
+    version of the Source stays as it is.
+    """
+    status = getattr(result, "status", None)
+    name = str(getattr(status, "value", status) or "").lower() or None
+    errors = list(getattr(result, "errors", None) or [])
+    if name == "success" and not errors:
+        return
+    ocr = [
+        found
+        for e in errors
+        for found in _ocr_region_failures(str(getattr(e, "error_message", "")))
+    ]
+    pages = sorted({e.page_no for e in errors if getattr(e, "page_no", None)})
+    parts = [f"status={name}", f"errors={len(errors)}"]
+    if pages:
+        parts.append("pages=" + ",".join(str(p) for p in pages))
+    if ocr:
+        parts.append(ocr[0])
+    else:
+        modules = sorted(
+            {str(getattr(e, "module_name", "") or "?") for e in errors} - {""}
+        )
+        if modules:
+            parts.append("components=" + ",".join(modules))
+    details = ", ".join(parts)
+    logger.error(
+        f"Docling result of {os.path.basename(path)} refused (incomplete): {details}"
+    )
+    raise IncompleteConversionError(ocr_region=bool(ocr), details=details)
+
+
 def conversion_outcome(result: Any, path: str) -> dict[str, Any]:
     """Docling's own verdict on the conversion, made visible.
 
     Docling does not raise for a partial conversion (a page or an OCR region it
     could not process): it returns what it has with ``PARTIAL_SUCCESS`` and an
-    error list. The result is kept as before - failing the document would be a
-    behaviour change - but it is no longer silent.
+    error list. Since Phase 12D9 (E2-04) such a result is refused before this
+    is reached (``reject_incomplete``); stored Sources record success / 0.
     """
     status = getattr(result, "status", None)
     name = str(getattr(status, "value", status) or "").lower() or None

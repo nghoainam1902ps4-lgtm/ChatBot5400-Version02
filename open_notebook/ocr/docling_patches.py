@@ -25,10 +25,11 @@ THE PATCH reads the ``text`` column as plain strings with no NA conversion
 pandas' default NA strings (``na_values`` per column), so their types and
 values are exactly the upstream ones - including malformed numeric fields.
 The empty-row filter, the command line, logging and everything else are the
-upstream code, unchanged (a test compares the AST with upstream). Nothing in
-pandas is patched; nothing else in Docling is touched. RapidOCR / EasyOCR do
-not use this code. The recognised text is never modified: what Tesseract
-wrote in the TSV is what the OCR cell holds.
+upstream code, unchanged (a test compares the AST with upstream) - except, since
+Phase 12D9 (E2-04, see below), stderr kept for classification and a timeout.
+Nothing in pandas is patched. RapidOCR / EasyOCR do not use this code. The
+recognised text is never modified: what Tesseract wrote in the TSV is what the
+OCR cell holds.
 
 GUARDS: applied only when ``docling`` is exactly :data:`DOCLING_VERSION` and
 the upstream function's source has exactly :data:`UPSTREAM_SHA256` (the source
@@ -69,9 +70,13 @@ import importlib
 import importlib.metadata
 import inspect
 import io
+import os
 import re
 import subprocess
 import threading
+import time
+from dataclasses import dataclass
+from pathlib import Path
 from subprocess import DEVNULL, PIPE
 from typing import Any, Optional
 
@@ -163,7 +168,13 @@ def _run_tesseract(self: Any, ifilename: str, osd: Optional[Any]):
     _log.info("command: {}".format(" ".join(cmd)))
 
     output = subprocess.run(
-        cmd, stdout=PIPE, stderr=DEVNULL, stdin=DEVNULL, check=True, shell=False
+        cmd,
+        stdout=PIPE,
+        stderr=PIPE,  # E2-04: read (bounded) only to classify a failure, never logged
+        stdin=DEVNULL,
+        check=True,
+        shell=False,
+        timeout=RECOGNITION_TIMEOUT_SECONDS,  # E2-04: a hung run fails and is retried
     )
 
     # _log.info(output)
@@ -229,19 +240,43 @@ def problems() -> list[str]:
             f"(sha256 {digest[:16]}..., expected {UPSTREAM_SHA256[:16]}...): the TSV text "
             "patch (E0-07) must be re-verified for it"
         )
+    try:
+        call_source = inspect.getsource(call_upstream())
+    except Exception as e:  # noqa: BLE001 - reported
+        return [*found, f"{CALL_TARGET} cannot be read ({type(e).__name__})"]
+    digest = hashlib.sha256(call_source.encode("utf-8")).hexdigest()
+    if digest != CALL_SHA256:
+        found.append(
+            f"{CALL_TARGET} is not the verified docling {DOCLING_VERSION} source "
+            f"(sha256 {digest[:16]}..., expected {CALL_SHA256[:16]}...): the OCR region "
+            "failure patch (E2-04) must be re-verified for it"
+        )
     return found
+
+
+def call_upstream() -> Any:
+    """The original upstream ``TesseractOcrCliModel.__call__``, patched or not."""
+    current = _upstream_class().__dict__.get("__call__")
+    return getattr(current, "__cb5400_upstream__", current)
 
 
 def is_applied() -> bool:
     try:
-        current = _upstream_class().__dict__.get("_run_tesseract")
+        cls = _upstream_class()
     except Exception:  # noqa: BLE001 - docling not importable
         return False
-    return getattr(current, "__cb5400_patch__", None) == PATCH_ID
+    run = cls.__dict__.get("_run_tesseract")
+    call = cls.__dict__.get("__call__")
+    return (
+        getattr(run, "__cb5400_patch__", None) == PATCH_ID
+        and getattr(call, "__cb5400_patch__", None) == REGION_PATCH_ID
+    )
 
 
 def apply() -> None:
-    """Apply the patch (idempotent). Raise TsvPatchError when it cannot be applied."""
+    """Apply the Tesseract patches - E0-07 (TSV text) and E2-04 (a failed OCR
+    region is never dropped) - all or nothing, idempotent. Raise TsvPatchError
+    when they cannot be applied."""
     with _lock:
         if is_applied():
             return
@@ -250,31 +285,405 @@ def apply() -> None:
             raise TsvPatchError(
                 "Tesseract OCR is disabled: "
                 + "; ".join(found)
-                + ". Without the patch numbers recognised by Tesseract change in the text "
-                "(0001 -> 1.0). Use the verified Docling version or update the patch."
+                + ". Without the patches numbers recognised by Tesseract change in the "
+                "text (0001 -> 1.0) and a failed OCR region is dropped without an error. "
+                "Use the verified Docling version or update the patch."
             )
         cls = _upstream_class()
-        original = cls.__dict__["_run_tesseract"]
+        if (
+            getattr(cls.__dict__["_run_tesseract"], "__cb5400_patch__", None)
+            != PATCH_ID
+        ):
+            original = cls.__dict__["_run_tesseract"]
 
-        def patched(self: Any, ifilename: str, osd: Optional[Any]):
-            return _run_tesseract(self, ifilename, osd)
+            def patched(self: Any, ifilename: str, osd: Optional[Any]):
+                return _run_tesseract(self, ifilename, osd)
 
-        patched.__cb5400_patch__ = PATCH_ID  # type: ignore[attr-defined]
-        patched.__cb5400_upstream__ = original  # type: ignore[attr-defined]
-        patched.__doc__ = original.__doc__
-        patched.__name__ = original.__name__
-        patched.__qualname__ = original.__qualname__
-        cls._run_tesseract = patched
+            patched.__cb5400_patch__ = PATCH_ID  # type: ignore[attr-defined]
+            patched.__cb5400_upstream__ = original  # type: ignore[attr-defined]
+            patched.__doc__ = original.__doc__
+            patched.__name__ = original.__name__
+            patched.__qualname__ = original.__qualname__
+            cls._run_tesseract = patched
+        if (
+            getattr(cls.__dict__["__call__"], "__cb5400_patch__", None)
+            != REGION_PATCH_ID
+        ):
+            original_call = cls.__dict__["__call__"]
+
+            def patched_call(self: Any, conv_res: Any, page_batch: Any) -> Any:
+                return _tesseract_call(self, conv_res, page_batch)
+
+            patched_call.__cb5400_patch__ = REGION_PATCH_ID  # type: ignore[attr-defined]
+            patched_call.__cb5400_upstream__ = original_call  # type: ignore[attr-defined]
+            patched_call.__doc__ = original_call.__doc__
+            patched_call.__name__ = original_call.__name__
+            patched_call.__qualname__ = original_call.__qualname__
+            cls.__call__ = patched_call
 
 
 def status() -> dict[str, Any]:
     """For diagnostics / status output."""
     return {
         "patch": PATCH_ID,
+        "patches": [PATCH_ID, REGION_PATCH_ID],
         "docling": _installed_docling(),
         "applied": is_applied(),
         "problems": problems() if not is_applied() else [],
     }
+
+
+# =========================================================================== #
+# Phase 12D9, E2-04: a failed Tesseract recognition never drops a region
+# =========================================================================== #
+#
+# Upstream ``TesseractOcrCliModel.__call__`` catches the CalledProcessError of a
+# failed RECOGNITION run, logs it and continues: the words of that region are
+# not in the page, and the page and the conversion report SUCCESS, errors=0
+# (Windows, Phase 12E2: 13 of 49 tokens lost with Best, 63 of 100 with Agri v2,
+# 445 of 1220 on a real document; the cause was not visible because the run's
+# stderr goes to DEVNULL). A failed OSD run is a different case: with an explicit
+# language list (every engine of the application) recognition still runs and
+# nothing is lost; only without one (auto script) upstream skips the region.
+#
+# THE PATCH (owner decision, Phase 12D9), same guards as E0-07:
+# * ``_run_tesseract`` keeps stderr - only its last STDERR_TAIL_BYTES are read,
+#   to classify a failure; it is never logged or shown - and gets a timeout;
+# * ``__call__`` is upstream's except two places (a test compares the AST): the
+#   OSD failure is logged without the raw stderr (and, in auto-script mode, the
+#   region fails instead of being skipped), and recognition goes through
+#   ``_recognize_region``. A failure that can be transient is retried at most
+#   RECOGNITION_RETRIES times after a short pause, on the SAME crop image,
+#   command, language and model files (the model version pinned for the job is
+#   never changed); a missing executable or model file is not retried. When it
+#   still fails, OcrRegionError is raised instead of skipping the region:
+#   Docling records the page as failed (ConversionResult.errors, status
+#   PARTIAL_SUCCESS / FAILURE) and the application refuses the result
+#   (``docling_extract.reject_incomplete``): no Source content, no embedding.
+# Logged: page, region, language / model, category, exit code, attempts and the
+# outcome - never OCR text, stderr, images or document content.
+
+REGION_PATCH_ID = "E2-04/tesseract-region-failure/1"
+CALL_TARGET = f"{UPSTREAM_MODULE}:TesseractOcrCliModel.__call__"
+# sha256(inspect.getsource(TesseractOcrCliModel.__call__)) at docling 2.129.0
+CALL_SHA256 = "98ecbc9142a99b163a2d5f42326f44dfb43f0eef000e19fee75899c3be006482"
+RECOGNITION_RETRIES = 2  # after the first attempt: at most 3 runs per region
+RETRY_BACKOFF_SECONDS = (0.5, 1.5)
+RECOGNITION_TIMEOUT_SECONDS = 600.0  # one region; far above any real run
+STDERR_TAIL_BYTES = 4096
+OCR_REGION_FAILED = "OCR_REGION_FAILED"  # leads every OcrRegionError message
+
+_DATA_FILE_MARKERS = (
+    "error opening data file",
+    "failed loading language",
+    "couldn't load any languages",
+    "could not initialize tesseract",
+    "tessdata_prefix",
+)
+_MEMORY_MARKERS = ("out of memory", "bad_alloc", "cannot allocate")
+_IMAGE_MARKERS = (
+    "cannot open input file",
+    "error in pixread",
+    "pixreadstream",
+    "leptonica error",
+    "image file format",
+)
+
+
+class OcrRegionError(RuntimeError):
+    """A Tesseract OCR region could not be recognised, after the bounded
+    retries. NOT a CalledProcessError: upstream would skip the region again.
+    The message holds metadata only (it becomes Docling's ErrorItem)."""
+
+    def __init__(
+        self,
+        *,
+        page_no: Any,
+        region: int,
+        engine: str,
+        category: str,
+        exit_code: Optional[int],
+        attempts: int,
+    ) -> None:
+        self.page_no, self.region, self.engine = page_no, region, engine
+        self.category, self.exit_code, self.attempts = category, exit_code, attempts
+        super().__init__(
+            f"{OCR_REGION_FAILED}: page {page_no}, region {region}, engine Tesseract "
+            f"({engine}), category {category}, exit code {exit_code}, attempts {attempts}"
+        )
+
+
+@dataclass(frozen=True)
+class RecognitionFailure:
+    category: str
+    exit_code: Optional[int]
+    retryable: bool
+
+
+def _stderr_tail(stderr: Any) -> str:
+    if not stderr:
+        return ""
+    if isinstance(stderr, str):
+        stderr = stderr.encode("utf-8", "replace")
+    return bytes(stderr[-STDERR_TAIL_BYTES:]).decode("utf-8", "replace")
+
+
+def _arg(cmd: Any, flag: str) -> Optional[str]:
+    try:
+        args = [str(a) for a in cmd]
+        return args[args.index(flag) + 1]
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def _model_files_present(cmd: Any) -> Optional[bool]:
+    """Whether every ``-l`` model file of ``cmd`` is a readable file now
+    (None: the command does not say where they are)."""
+    langs = _arg(cmd, "-l")
+    folder = _arg(cmd, "--tessdata-dir") or os.environ.get("TESSDATA_PREFIX")
+    if not langs or not folder:
+        return None
+    for lang in langs.split("+"):
+        f = Path(folder) / f"{lang}.traineddata"
+        if not (f.is_file() and os.access(f, os.R_OK)):
+            return False
+    return True
+
+
+def stderr_category(stderr: Any) -> str:
+    """A category for a Tesseract stderr - the text itself is never kept."""
+    tail = _stderr_tail(stderr).lower()
+    if any(m in tail for m in _DATA_FILE_MARKERS):
+        return "data_file_unreadable"
+    if any(m in tail for m in _MEMORY_MARKERS):
+        return "out_of_memory"
+    if any(m in tail for m in _IMAGE_MARKERS):
+        return "image_unreadable"
+    return "other" if tail.strip() else "no_stderr"
+
+
+def classify_recognition_failure(exc: BaseException) -> RecognitionFailure:
+    """Category, exit code and whether a retry can help (E2-04)."""
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return RecognitionFailure("timeout", None, True)
+    if isinstance(exc, FileNotFoundError):
+        return RecognitionFailure("executable_missing", None, False)
+    if isinstance(exc, PermissionError):
+        return RecognitionFailure("executable_not_permitted", None, False)
+    if isinstance(exc, subprocess.CalledProcessError):
+        code = exc.returncode
+        category = stderr_category(exc.stderr)
+        if category == "data_file_unreadable":
+            # the file is missing (configuration: a retry cannot help) or it is
+            # there and could not be read this time (I/O: retried)
+            if _model_files_present(exc.cmd) is False:
+                return RecognitionFailure("model_missing", code, False)
+            return RecognitionFailure(category, code, True)
+        if category in ("out_of_memory", "image_unreadable"):
+            return RecognitionFailure(category, code, True)
+        if code is not None and code < 0:
+            return RecognitionFailure("killed_by_signal", code, True)
+        return RecognitionFailure("exit_nonzero", code, True)
+    if isinstance(exc, OSError):
+        return RecognitionFailure("os_error", getattr(exc, "errno", None), True)
+    return RecognitionFailure("unknown", None, False)
+
+
+def _engine_label(model: Any) -> str:
+    return "+".join(getattr(model, "_native_codes", None) or []) or "auto-script"
+
+
+def _recognize_region(
+    model: Any, fname: str, df_osd: Any, *, page: Any, region: int
+) -> Any:
+    """``model._run_tesseract`` with the bounded retry of E2-04; raises
+    OcrRegionError when the region cannot be recognised."""
+    from docling.models.stages.ocr.tesseract_ocr_cli_model import _log
+
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            return model._run_tesseract(fname, df_osd)
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            OSError,
+        ) as exc:
+            failure = classify_recognition_failure(exc)
+            if failure.retryable and attempt <= RECOGNITION_RETRIES:
+                _log.warning(
+                    "Tesseract recognition failed (page %s, region %s, lang %s, attempt "
+                    "%s of %s, category %s, exit code %s): retrying the same crop",
+                    page.page_no,
+                    region + 1,
+                    _engine_label(model),
+                    attempt,
+                    RECOGNITION_RETRIES + 1,
+                    failure.category,
+                    failure.exit_code,
+                )
+                time.sleep(
+                    RETRY_BACKOFF_SECONDS[min(attempt, len(RETRY_BACKOFF_SECONDS)) - 1]
+                )
+                continue
+            _log.error(
+                "Tesseract recognition failed (page %s, region %s, lang %s, %s "
+                "attempt(s), category %s, exit code %s): the region is not dropped, "
+                "the page fails",
+                page.page_no,
+                region + 1,
+                _engine_label(model),
+                attempt,
+                failure.category,
+                failure.exit_code,
+            )
+            raise OcrRegionError(
+                page_no=page.page_no,
+                region=region + 1,
+                engine=_engine_label(model),
+                category=failure.category,
+                exit_code=failure.exit_code,
+                attempts=attempt,
+            ) from None
+
+
+def _osd_region_error(
+    model: Any, page: Any, region: int, stderr: Any
+) -> OcrRegionError:
+    return OcrRegionError(
+        page_no=page.page_no,
+        region=region + 1,
+        engine=_engine_label(model),
+        category="osd_failed_auto_script_" + stderr_category(stderr),
+        exit_code=None,
+        attempts=1,
+    )
+
+
+def _withheld(stderr: Any) -> str:
+    return f"[stderr withheld: {len(stderr or b'')} bytes, {stderr_category(stderr)}]"
+
+
+def _tesseract_call(self: Any, conv_res: Any, page_batch: Any) -> Any:
+    """Upstream docling 2.129.0 ``TesseractOcrCliModel.__call__`` except (E2-04):
+    the OSD failure log carries no raw stderr (and fails the region in
+    auto-script mode), and recognition retries / fails the region
+    (``_recognize_region``) instead of skipping it."""
+    import pandas as pd
+    from docling.models.stages.ocr.tesseract_ocr_cli_model import (
+        BoundingBox,
+        CoordOrigin,
+        TextCell,
+        TimeRecorder,
+        _log,
+        _parse_orientation,
+        settings,
+        tempfile,
+        tesseract_box_to_bounding_rectangle,
+    )
+
+    if not self.enabled:
+        yield from page_batch
+        return
+
+    for page_i, page in enumerate(page_batch):
+        assert page._backend is not None
+        if not page._backend.is_valid():
+            yield page
+        else:
+            with TimeRecorder(conv_res, "ocr"):
+                ocr_rects = self.get_ocr_rects(page)
+
+                all_ocr_cells = []
+                for ocr_rect_i, ocr_rect in enumerate(ocr_rects):
+                    # Skip zero area boxes
+                    if ocr_rect.area() == 0:
+                        continue
+                    high_res_image = page._backend.get_page_image(
+                        scale=self.scale, cropbox=ocr_rect
+                    )
+                    try:
+                        with tempfile.NamedTemporaryFile(
+                            suffix=".png", mode="w+b", delete=False
+                        ) as image_file:
+                            fname = image_file.name
+                            high_res_image.save(image_file)
+                        doc_orientation = 0
+                        df_osd: Optional[pd.DataFrame] = None
+                        try:
+                            df_osd = self._perform_osd(fname)
+                            doc_orientation = _parse_orientation(df_osd)
+                        except subprocess.CalledProcessError as exc:
+                            _log.error(
+                                "OSD failed (doc %s, page: %s, "
+                                "OCR rectangle: %s, processed image file %s):\n %s",
+                                conv_res.input.file,
+                                page_i,
+                                ocr_rect_i,
+                                image_file,
+                                _withheld(exc.stderr),
+                            )
+                            # Skipping if OSD fail when in auto mode, otherwise proceed
+                            # to OCR in the hope OCR will succeed while OSD failed
+                            if self._auto_script:
+                                raise _osd_region_error(
+                                    self, page, ocr_rect_i, exc.stderr
+                                ) from None
+                        if doc_orientation != 0:
+                            high_res_image = high_res_image.rotate(
+                                -doc_orientation, expand=True
+                            )
+                            high_res_image.save(fname)
+                        df_result = _recognize_region(
+                            self, fname, df_osd, page=page, region=ocr_rect_i
+                        )
+                    finally:
+                        if os.path.exists(fname):
+                            os.remove(fname)
+
+                    # _log.info(df_result)
+
+                    # Print relevant columns (bounding box and text)
+                    for ix, row in df_result.iterrows():
+                        text = row["text"]
+                        conf = row["conf"]
+
+                        left, top = float(row["left"]), float(row["top"])
+                        right = left + float(row["width"])
+                        bottom = top + row["height"]
+                        bbox = BoundingBox(
+                            l=left,
+                            t=top,
+                            r=right,
+                            b=bottom,
+                            coord_origin=CoordOrigin.TOPLEFT,
+                        )
+                        rect = tesseract_box_to_bounding_rectangle(
+                            bbox,
+                            original_offset=ocr_rect,
+                            scale=self.scale,
+                            orientation=doc_orientation,
+                            im_size=high_res_image.size,
+                        )
+                        cell = TextCell(
+                            index=ix,
+                            text=str(text),
+                            orig=str(text),
+                            from_ocr=True,
+                            confidence=conf / 100.0,
+                            rect=rect,
+                        )
+                        all_ocr_cells.append(cell)
+
+                # Post-process the cells
+                self.post_process_cells(all_ocr_cells, page, conv_res)
+
+            # DEBUG code:
+            if settings.debug.visualize_ocr:
+                self.draw_ocr_rects_and_cells(conv_res, page, ocr_rects)
+
+            yield page
 
 
 # =========================================================================== #
