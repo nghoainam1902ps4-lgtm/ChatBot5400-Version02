@@ -26,7 +26,9 @@ Windows phải làm trên máy Windows. Cloud không có Windows, PowerShell, mo
 | `edc6d9c` | 5 — **PowerShell invocation**: `-ComposeArgs @(...)`, hành động `orientation` | E0-05 |
 | `dde8645` | 3 (bổ sung) — chế độ `--crops` của công cụ hướng xoay chuẩn bị tessdata như ingestion | E1-05 |
 | `2938100` | 6 — **Regression tests**: E1-03, Standard parity trên stage OCR thật | E1-03, §9 |
-| (commit cuối) | 7 — **Documentation**: 7 tài liệu PHASE12D7 + D-38 / D-39 / D-40, release notes, hướng dẫn Windows | |
+| `ef7daa7` | 7 — **Documentation**: tài liệu PHASE12D7 + D-38 / D-39 / D-40, release notes, hướng dẫn Windows | |
+| `c4ed2b3` | mypy: không lỗi mới (81, như 12D5) — sửa kiểu trong file mới, không đổi hành vi | |
+| (commit cuối) | 7 (tiếp) — báo cáo hồi quy với số liệu cuối; trạng thái finding theo commit mã cuối | |
 
 ## 3. Tóm tắt từng finding
 
@@ -62,5 +64,27 @@ Windows phải làm trên máy Windows. Cloud không có Windows, PowerShell, mo
 
 ## 6. Kết luận
 
-Xem §8 của [PHASE12D7_REGRESSION_REPORT.md](PHASE12D7_REGRESSION_REPORT.md) và tin nhắn bàn giao. Không phát hành,
+Hồi quy: backend **3047 passed / 10 failed (cùng tên với 12D5) / 73 skipped / 3 deselected**; bảng mã thật 17/17 và
+110/110; offline + review 12D2 / 12D4 409/409; Docker thật 3/3; test mới 125/125; frontend 438/438, `tsc` sạch, lint
+0 lỗi; `mypy` 81 (không lỗi mới); benchmark tái lập giống hệt. Chi tiết: [PHASE12D7_REGRESSION_REPORT.md](PHASE12D7_REGRESSION_REPORT.md).
+
+```
+PHASE 12D7: COMPLETED
+E0-07 TSV PRESERVATION: VERIFIED
+E1-04 CROSS-PLATFORM BUILD LOCK: LOCAL VERIFICATION REQUIRED
+E1-09 UNSAFE LEGAL JOIN: FIXED
+E1-03 NUMERIC PRESERVATION: PARTIAL
+E1-05 ORIENTATION: NEEDS LOCAL EVIDENCE
+STANDARD EXPECTED-DIFF PARITY: PARTIAL
+LEGAL CONTENT PRESERVATION: PASS ON SYNTHETIC
+OFFLINE PACKAGE: NOT VERIFIED ON WINDOWS
+READY FOR INDEPENDENT REVIEW: YES
+READY FOR WINDOWS RETEST: YES
+READY FOR RELEASE: NO
+READY FOR PRODUCTION: NO
+PRODUCTION UNCHANGED
+```
+
+E0-07 VERIFIED = TSV thô bằng chữ của ô OCR Docling, kiểm ở Cloud; ingestion của 22 PDF thật vẫn là mục W-12D7-02.
+E1-09 FIXED và LEGAL CONTENT PRESERVATION dựa trên fixture tổng hợp; phản ví dụ scan thật: W-12D7-03b. Không phát hành,
 không merge, không triển khai production. Dừng ở đây để review độc lập và Windows retest.
