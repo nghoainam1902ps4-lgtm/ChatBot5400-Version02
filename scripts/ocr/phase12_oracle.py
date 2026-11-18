@@ -447,16 +447,17 @@ def _identity_verdict(
     sequence: list[tuple[int, dict[str, Any]]] = []  # (line index, unit)
     shown: set[str] = set()
     for ei, li in entry_line.items():
-        e = view.entries[ei]
-        holders = by_item.get(id(e["item"]), [])
-        if e["row"] is not None:
-            holders = [u for u in holders if u.get("row") == e["row"]]
-        elif isinstance(e["item"], view.T["PictureItem"]):
-            holders = [u for u in holders if u["kind"] == "picture"]
+        entry = view.entries[ei]
+        item_units: list[dict[str, Any]] = by_item.get(id(entry["item"]), [])
+        if entry["row"] is not None:
+            item_units = [x for x in item_units if x.get("row") == entry["row"]]
+        elif isinstance(entry["item"], view.T["PictureItem"]):
+            item_units = [x for x in item_units if x["kind"] == "picture"]
         # several units of ONE item (a join / a merge) appear in provenance order
-        for u in sorted(holders, key=lambda u: _prov_rank(view, u, e["item"])):
-            sequence.append((li, u))
-            shown.add(u["id"])
+        rank_item = entry["item"]
+        for unit in sorted(item_units, key=lambda x: _prov_rank(view, x, rank_item)):
+            sequence.append((li, unit))
+            shown.add(unit["id"])
     sequence.sort(key=lambda x: (x[0], x[1]["index"]))
 
     # 4. merges and changed text inside one item

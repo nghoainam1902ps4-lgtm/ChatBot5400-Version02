@@ -32,6 +32,7 @@ import sys
 import tarfile
 import threading
 from pathlib import Path
+from typing import Any, Dict, List
 
 import pytest
 
@@ -246,7 +247,7 @@ def fake_docker(tmp_path, monkeypatch):
     docker = bin_dir / "docker"
     docker.write_text(FAKE_DOCKER)
     docker.chmod(0o755)
-    state = {
+    state: Dict[str, Any] = {
         "log": str(tmp_path / "docker.log"),
         "root": str(tmp_path),
         "images": {
@@ -483,7 +484,9 @@ def _verify(pkg, dest, *extra):
 def _manifest_of(pkg):
     with tarfile.open(pkg) as t:
         top = t.getnames()[0].split("/")[0]
-        return json.loads(t.extractfile(f"{top}/manifest.json").read())
+        fh = t.extractfile(f"{top}/manifest.json")
+        assert fh is not None
+        return json.loads(fh.read())
 
 
 # --------------------------------------------------------------------------- #
@@ -2692,7 +2695,7 @@ def test_finish_fails_when_a_table_with_data_is_empty_afterwards(
 
 
 def _fp(**tables):
-    raw = {t: {"ids": [], "updated": None} for t in OP.RECORD_TABLES}
+    raw: Dict[str, Dict[str, Any]] = {t: {"ids": [], "updated": None} for t in OP.RECORD_TABLES}
     for t, ids in tables.items():
         raw[t] = {"ids": ids, "updated": None}
     return OP.make_fingerprint(raw)
@@ -2722,7 +2725,7 @@ def test_data_verdict():
 
 
 def test_make_fingerprint_is_canonical_and_rejects_garbage():
-    raw = {t: {"ids": [], "updated": None} for t in OP.RECORD_TABLES}
+    raw: Dict[str, Dict[str, Any]] = {t: {"ids": [], "updated": None} for t in OP.RECORD_TABLES}
     raw["source"] = {"ids": ["source:b", "source:a"], "updated": ["u2", "u1"]}
     a = OP.make_fingerprint(raw)
     assert a["summary"]["tables"]["source"]["count"] == 2
@@ -2735,6 +2738,7 @@ def test_make_fingerprint_is_canonical_and_rejects_garbage():
     b = OP.make_fingerprint(edited)["summary"]["tables"]["source"]
     assert b["ids_sha256"] == a["summary"]["tables"]["source"]["ids_sha256"]
     assert b["updated_sha256"] != a["summary"]["tables"]["source"]["updated_sha256"]
+    bad: Any
     for bad in (
         None, [], {"source": {"ids": []}},
         dict(raw, note={"ids": "x"}), dict(raw, note={"ids": [], "updated": ["u"]}),
@@ -3495,7 +3499,7 @@ def test_interrupted_step_is_reported_and_a_rollback_restores_image_and_source(
     if command == "rollback":
         assert _finish(conf) == 0
     real_run, real_save = OP.run, OP.Journal.save
-    fired = []
+    fired: List[Any] = []
 
     def run(cmd, *a, **k):
         if matcher is not None and not fired and matcher(cmd):
@@ -3560,7 +3564,7 @@ REAL_CONFIG_BLOB = (
     '4dffbbc0df2f9942062cb34d","sha256:eb73bb1f2a67cbd1f99fba2b437ae06877ae36a5cc0252dbe7c58'
     'bc7b221244b"]}}'
 )
-REAL_INSPECT_CONFIG = {
+REAL_INSPECT_CONFIG: Dict[str, Any] = {
     "ArgsEscaped": True,
     "Cmd": ["sh", "-c", "while true; do sleep 3600; done"],
     "Env": ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],

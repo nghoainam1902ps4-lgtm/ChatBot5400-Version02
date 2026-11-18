@@ -139,7 +139,7 @@ def test_control_r2_05_data_verdict_normal_mode():
     accepted 120 -> 1 in normal mode); an identical state passes the exact check."""
 
     def fp(sources, embeddings):
-        raw = {t: {"ids": [], "updated": None} for t in OP.RECORD_TABLES}
+        raw: dict = {t: {"ids": [], "updated": None} for t in OP.RECORD_TABLES}
         raw["source"]["ids"] = [f"source:{i}" for i in range(1, sources + 1)]
         raw["source_embedding"]["ids"] = [f"source_embedding:{i}" for i in range(1, embeddings + 1)]
         return OP.make_fingerprint(raw)

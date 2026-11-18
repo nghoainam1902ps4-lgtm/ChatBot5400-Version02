@@ -4010,11 +4010,13 @@ def cmd_update(args: argparse.Namespace) -> int:
                 "(--acknowledge-data-change after the investigation) and start again.",
                 EXIT_UPDATE,
             )
+        if f1 is None:  # data_verdict already refused unreadable data; for the type checker
+            raise Refused("F1: the data could not be read", EXIT_UPDATE)
         journal.step("F1_fingerprint", sha256=f1["summary"]["sha256"], counts=fp_counts(f1))
         take_backup(dep, cfg, journal, args, f1)
         f2 = fingerprint(dep)
         good, detail = data_verdict({}, f2, exact=f1["summary"])
-        if not good:
+        if not good or f2 is None:
             raise Refused(
                 f"F2 after the backup differs from F1: {detail} Something wrote while the backup "
                 "was taken / verified, so the backup does not hold the data that would be "
@@ -4068,7 +4070,7 @@ def cmd_update(args: argparse.Namespace) -> int:
         )
         f3 = fingerprint(dep)
         good, detail = data_verdict({}, f3, exact=f1["summary"])
-        if not good:
+        if not good or f3 is None:
             raise Refused(
                 f"F3 right before the recreate differs from F1: {detail} Something wrote "
                 "after the backup. Nothing was recreated; run update again.",
@@ -4430,7 +4432,7 @@ def assess(
     status = journal.data.get("status")
     pending = journal.open_intents()
     container = dep.app_container()
-    running = dep.container_image_id(container) if container else None
+    running = dep.container_image_id(container) if container else ""
     primary, alternatives, why = expected_images(journal, approved)
     if not container:
         drift.append("the application container is not running")
@@ -4505,7 +4507,7 @@ def assess(
         "drift": drift,
         "undecided": undecided,
         "notes": notes,
-        "running_image_id": running,
+        "running_image_id": running or None,
         "expected_image_id": primary,
         "deploy_tag_image_id": tag_id,
     }

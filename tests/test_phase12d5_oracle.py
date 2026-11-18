@@ -78,7 +78,7 @@ def _line_owner(fx, doc, lines):
     """line index -> declared units it shows (via the oracle's own identity view)."""
     view = O._DocView(doc, True)
     units = O.expected_units(fx)
-    carrier = {}
+    carrier: dict = {}
     for u in units:
         for item, _ in view.holders(u):
             if item.content_layer == view.BODY:
