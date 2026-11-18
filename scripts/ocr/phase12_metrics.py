@@ -221,6 +221,54 @@ def page_boundary_report(
 _LIST_MARKER_ORDERED = re.compile(r"^(\s{0,3})(\d{1,9})([.)])(?=\s|$)")
 _LIST_MARKER_BULLET = re.compile(r"^(\s{0,3})([-+*])(?=\s|$)")
 _FENCE = re.compile(r"^\s{0,3}(```|~~~)")
+_HEADING = re.compile(r"^(\s{0,3}#{1,6}\s+)(.*)$")
+_THEMATIC_DASHES = re.compile(r"^(\s{0,3})-(?:\s*-){2,}\s*$")
+_SERIALIZER_COMMENT = re.compile(r"^\s*<!--[^<>]*-->\s*$")  # <!-- image --> & co.
+_ASCII_PUNCT = frozenset("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+# Characters Markdown (CommonMark + GFM tables / strikethrough / autolinks, and
+# remark-math for "$") would read as syntax inside a line.
+_INLINE_SPECIAL = frozenset("`*_[]~$<|")
+# Entities the Legal serializer itself writes: "&lt;" (a "<" that would open
+# HTML) and "&#124;" (a "|" inside a table cell, by Docling) - shown as "<" / "|".
+_KEPT_ENTITIES = ("&lt;", "&#124;")
+
+
+# A bare URL: GFM turns it into a link VERBATIM (escapes inside it would be
+# displayed), so it is copied as it is; "_" / "&" inside it are literal anyway.
+_URL = re.compile(r"(?:https?://|www\.)[^\s<>]*", re.IGNORECASE)
+
+
+def _escape_inline(text: str, table: bool = False) -> str:
+    """Backslash every Markdown-significant character of printed text, once."""
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        url = (
+            _URL.match(text, i)
+            if text[i] in "hHwW" and (i == 0 or not text[i - 1].isalnum())
+            else None
+        )
+        if url and url.end() > i:
+            out.append(url.group(0))
+            i = url.end()
+            continue
+        c = text[i]
+        if c == "\\":
+            if i + 1 < n and text[i + 1] in _ASCII_PUNCT:
+                out.append(text[i : i + 2])  # already an escape: idempotent
+                i += 2
+                continue
+            out.append("\\\\")
+        elif c == "&":
+            out.append("&" if text.startswith(_KEPT_ENTITIES, i) else "\\&")
+        elif c == "|" and table:
+            out.append(c)
+        elif c in _INLINE_SPECIAL:
+            out.append("\\" + c)
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
 
 
 def legal_display_markdown(markdown: str) -> str:
@@ -228,23 +276,42 @@ def legal_display_markdown(markdown: str) -> str:
 
     Reference implementation of ``frontend/src/lib/utils/legal-display.ts``
     (both are checked against tests/fixtures/legal/display_escape_cases.json).
-    A Legal source stores its clause markers as plain text ("9. ...", "- ...");
-    at render time the leading marker of a line is escaped so that Markdown
-    shows it literally instead of building a list (and renumbering it).
-    Fenced code is left alone; applying it twice changes nothing.
+    A Legal source stores the PRINTED text (Phase 12D5, F-17 / R2-02): clause
+    markers ("9. ...", "- ..."), "*", "_", "`", "$", "[", "]", "~", "<", "&",
+    "|" and "\\" exactly as on paper. At render time every such character of a
+    text line is escaped so that Markdown shows it literally instead of building
+    a list, emphasis, code, a link, a formula or HTML. Table rows keep their
+    "|" cell separators, headings their "#" prefix, the serializer's own
+    "<!-- image -->" placeholders and fenced code are left alone. Applying it
+    twice changes nothing.
     """
     out, in_fence = [], False
     for line in markdown.split("\n"):
         if _FENCE.match(line):
             in_fence = not in_fence
-        elif not in_fence:
-            m = _LIST_MARKER_ORDERED.match(line)
-            if m:
-                line = f"{m.group(1)}{m.group(2)}\\{m.group(3)}{line[m.end() :]}"
+        elif not in_fence and line.strip() and not _SERIALIZER_COMMENT.match(line):
+            if line.lstrip().startswith("|"):
+                line = _escape_inline(line, table=True)
+            elif _HEADING.match(line):
+                m = _HEADING.match(line)
+                assert m is not None
+                line = m.group(1) + _escape_inline(m.group(2))
             else:
-                m = _LIST_MARKER_BULLET.match(line)
+                m = _LIST_MARKER_ORDERED.match(line)
+                b = _LIST_MARKER_BULLET.match(line)
+                t = _THEMATIC_DASHES.match(line)
                 if m:
-                    line = f"{m.group(1)}\\{line[len(m.group(1)) :]}"
+                    line = f"{m.group(1)}{m.group(2)}\\{m.group(3)}" + _escape_inline(
+                        line[m.end() :]
+                    )
+                elif b:
+                    line = f"{b.group(1)}\\{b.group(2)}" + _escape_inline(
+                        line[b.end() :]
+                    )
+                elif t:
+                    line = f"{t.group(1)}\\{line[len(t.group(1)) :]}"
+                else:
+                    line = _escape_inline(line)
         out.append(line)
     return "\n".join(out)
 

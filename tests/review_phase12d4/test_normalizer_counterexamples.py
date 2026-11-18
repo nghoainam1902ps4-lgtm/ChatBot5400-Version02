@@ -7,6 +7,10 @@ is NOT the cause: the loss or the merged sentence is produced by
 ``open_notebook/ocr/legal_normalizer.py``.
 
 Each ``xfail(strict=True)`` test states the EXPECTED behaviour.
+
+Phase 12D5: every case of this file is fixed by legal_normalizer 1.2.0; the
+xfail markers are removed and the ``test_control_*`` tests that asserted the
+defect are inverted into ``test_regression_*`` tests (same scenario).
 """
 
 from __future__ import annotations
@@ -102,24 +106,19 @@ CONTENT_NUMBERS = {
 }
 
 
+# was: test_control_f02_standard_keeps_these_numbers_and_legal_gives_no_warning
+# (PHASE12D4 evidence: it asserted that Legal deleted every number silently).
+# Phase 12D5 regression test: Standard keeps them (unchanged) and so does Legal.
 @pytest.mark.parametrize("case", sorted(CONTENT_NUMBERS))
-def test_control_f02_standard_keeps_these_numbers_and_legal_gives_no_warning(case):
+def test_regression_f02_standard_and_legal_keep_these_numbers(case):
     pages, numbers = CONTENT_NUMBERS[case]()
     standard, legal, result = run(pages)
     assert all(n in standard for n in numbers)
-    assert not any(n in legal for n in numbers)  # all of them are gone
-    assert result.counts.get("page_number_to_furniture") == len(numbers)
-    assert not [
-        w for w in result.warnings if str(w.get("code", "")).startswith("page_number")
-    ]
+    assert all(n in legal for n in numbers)
+    assert not result.counts.get("page_number_to_furniture")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-02 PARTIALLY FIXED (data loss remains): a bare number in the top/bottom band that follows the page "
-    "index on >= 3 pages and is not flush with the paragraph margin is removed as a page number, "
-    "although it is a clause number, a voucher number or a reporting period",
-)
+# Phase 12D5: F-02 fixed (strict page-number evidence, legal_normalizer 1.2.0); xfail removed.
 @pytest.mark.parametrize("case", sorted(CONTENT_NUMBERS))
 def test_f02_content_numbers_that_track_the_page_index_are_kept(case):
     pages, numbers = CONTENT_NUMBERS[case]()
@@ -205,24 +204,26 @@ FALSE_JOINS = {
 }  # fmt: skip
 
 
+# was: test_control_f03_standard_keeps_the_two_lines_apart (PHASE12D4 evidence: it
+# asserted that the normalizer joined the two lines, counts.join_across_pages == 1).
+# Phase 12D5 regression test: Standard keeps them apart (unchanged) and so does Legal.
 @pytest.mark.parametrize("case", sorted(FALSE_JOINS))
-def test_control_f03_standard_keeps_the_two_lines_apart(case):
-    """The merge is made by the normalizer (counts.join_across_pages == 1), not by Docling."""
+def test_regression_f03_standard_and_legal_keep_the_two_lines_apart(case):
     pages, first, second = FALSE_JOINS[case]()
     standard, legal, result = run(pages)
     assert not any(first in line and second in line for line in standard)
     assert any(first in line for line in standard) and any(
         second in line for line in standard
     )
-    assert any(first in line and second in line for line in legal)
-    assert result.counts.get("join_across_pages") == 1
+    assert not any(first in line and second in line for line in legal)
+    assert any(first in line for line in legal) and any(
+        second in line for line in legal
+    )
+    assert not result.counts.get("join_across_pages")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-03 PARTIALLY FIXED (wrong sentences remain): the normalizer still joins a footnote, a new point whose "
-    "marker OCR damaged, a date / unit line or a running title to the previous page's text",
-)
+# Phase 12D5: F-03 fixed (one candidate on each side of the break, damaged markers,
+# date / unit / web lines, lost-marker points; legal_normalizer 1.2.0); xfail removed.
 @pytest.mark.parametrize("case", sorted(FALSE_JOINS))
 def test_f03_no_sentence_is_created_across_the_page_break(case):
     pages, first, second = FALSE_JOINS[case]()
@@ -253,11 +254,8 @@ PICTURES = {
 }  # fmt: skip
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-06 PARTIALLY FIXED: a caption or a single OCR word counts as 'the text of "
-    "the picture', so a page-sized scanned table / chart loses its placeholder with no warning",
-)
+# Phase 12D5: F-06 fixed (only pictures under 4 % lose the placeholder; captions are
+# not "text of the picture"); xfail removed.
 @pytest.mark.parametrize("case", sorted(PICTURES))
 def test_f06_large_picture_keeps_a_trace(case):
     standard, legal, result = run(PICTURES[case])

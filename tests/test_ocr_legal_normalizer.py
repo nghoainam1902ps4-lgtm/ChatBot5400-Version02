@@ -15,6 +15,7 @@ from __future__ import annotations
 import random
 import socket
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -38,104 +39,9 @@ def _with(*keys: str) -> list[str]:
     return names
 
 
-# Phase 12D5A: RED on the UNCHANGED 8d0c438 normalizer (v1.1.0) with the identity
-# oracle and the 12D5 fixtures (evidence: docs/review/phase12d5/red_8d0c438_normalizer_tests.txt).
-# The Phase 12D5B fixes must turn each pair green: strict xfail makes a fixed pair fail
-# until its entry is removed below.
-RED_8D0C438: dict[str, set[str]] = {
-    "test_critical_fields_exact_count": {
-        "d5_f02_reporting_periods_alone_bottom_centre",
-        "d5_f02_reporting_periods_beside_label",
-        "d5_f02_voucher_numbers_alone_top_right",
-        "d5_f02_voucher_numbers_beside_label",
-        "d5_r201_hyphen_lowercase",
-        "d5_r211_letterhead_document_number",
-    },
-    "test_idempotent_and_deterministic": {
-        "d5_f02_page_number_and_clause_number_alias",
-    },
-    "test_lines_that_must_stay": {
-        "d5_f02_clause_numbers_first_line_indent",
-        "d5_f02_clause_numbers_hanging_indent",
-    },
-    "test_no_false_deletion_merge_or_insertion": {
-        "d5_f02_clause_numbers_first_line_indent",
-        "d5_f02_clause_numbers_hanging_indent",
-        "d5_f02_reporting_periods_alone_bottom_centre",
-        "d5_f02_reporting_periods_beside_label",
-        "d5_f02_voucher_numbers_alone_top_right",
-        "d5_f02_voucher_numbers_beside_label",
-        "d5_f03_date_line",
-        "d5_f03_footnote_no_marker",
-        "d5_f03_footnote_number_dot",
-        "d5_f03_footnote_paren_star",
-        "d5_f03_footnote_superscript",
-        "d5_f03_hollow_bullet_as_o",
-        "d5_f03_point_a_comma",
-        "d5_f03_point_a_dash",
-        "d5_f03_point_c_space_paren",
-        "d5_f03_point_marker_lost",
-        "d5_f03_top_line_page_of_pages",
-        "d5_f03_top_line_running_title",
-        "d5_f03_top_line_web_address",
-        "d5_f03_trong_do_line",
-        "d5_f03_unit_line",
-        "d5_f06_large_picture_one_stray_word",
-        "d5_f06_large_picture_with_caption",
-        "d5_r201_clause_then_next_article",
-        "d5_r201_footnote_then_continuation",
-        "d5_r201_hyphen_document_number",
-        "d5_r201_hyphen_lowercase",
-        "d5_r201_side_note_same_page",
-        "d5_r201_two_documents_signer_then_title",
-        "d5_r202_markdown_significant_characters",
-        "d5_r211_letterhead_document_number",
-        "d5_var_f11_footer_labels",
-        "d5_var_f26_signer_name_last",
-        "d5_var_f31_lead_ascii_tail",
-        "d5_var_f35_sentence_case_headers",
-        "d5_var_f38_two_columns_ascii_tail",
-        "d5_var_f39_footer_labels",
-        "f15_watermark_and_large_picture",
-        "f16_text_inside_picture",
-        "f40_caption_and_picture_text",
-    },
-    "test_no_forbidden_join": {
-        "d5_f03_date_line",
-        "d5_f03_footnote_no_marker",
-        "d5_f03_footnote_number_dot",
-        "d5_f03_footnote_paren_star",
-        "d5_f03_footnote_superscript",
-        "d5_f03_hollow_bullet_as_o",
-        "d5_f03_point_a_comma",
-        "d5_f03_point_a_dash",
-        "d5_f03_point_c_space_paren",
-        "d5_f03_point_marker_lost",
-        "d5_f03_top_line_page_of_pages",
-        "d5_f03_top_line_running_title",
-        "d5_f03_top_line_web_address",
-        "d5_f03_trong_do_line",
-        "d5_f03_unit_line",
-        "d5_r201_clause_then_next_article",
-        "d5_r201_footnote_then_continuation",
-        "d5_r201_hyphen_document_number",
-        "d5_r201_side_note_same_page",
-        "d5_r201_two_documents_signer_then_title",
-        "d5_var_f11_footer_labels",
-        "d5_var_f26_signer_name_last",
-        "d5_var_f31_lead_ascii_tail",
-        "d5_var_f38_two_columns_ascii_tail",
-        "d5_var_f39_footer_labels",
-    },
-}
-
-
-def _params(test: str, names: list[str]) -> list:
-    red = RED_8D0C438.get(test, set())
-    mark = pytest.mark.xfail(
-        strict=True, reason="RED on 8d0c438 (Phase 12D5A evidence)"
-    )
-    return [pytest.param(n, marks=mark) if n in red else n for n in names]
+# Phase 12D5: the (test, fixture) pairs that were RED on the unchanged 8d0c438
+# normalizer are listed in docs/review/phase12d5/red_8d0c438_normalizer_tests.txt;
+# they are all green with normalizer 1.2.0 (no xfail left in this module).
 
 
 @pytest.fixture(scope="module")
@@ -145,7 +51,10 @@ def built():
     for fx in FX.FIXTURES:
         doc = H.build_document(fx)
         standard = doc.export_to_markdown()
-        out[fx["name"]] = (fx, doc, standard, N.normalize_document(doc))
+        # as in production (open_notebook/ocr/docling_extract.py): with the
+        # element texts Docling had before its own merge (R2-01 evidence)
+        res = N.normalize_document(doc, evidence=H.evidence(doc))
+        out[fx["name"]] = (fx, doc, standard, res)
     return out
 
 
@@ -251,9 +160,7 @@ def _measure(fx, doc, standard, res):
     return legal, std
 
 
-@pytest.mark.parametrize(
-    "name", _params("test_no_false_deletion_merge_or_insertion", NAMES)
-)
+@pytest.mark.parametrize("name", NAMES)
 def test_no_false_deletion_merge_or_insertion(built, name):
     """Identity attribution (Phase 12D5, R2-14): every declared element is found
     by its provenance, so an artifact with the same text never stands in for a
@@ -288,9 +195,7 @@ def test_no_false_deletion_merge_or_insertion(built, name):
         assert legal["false_reordering"] == 0
 
 
-@pytest.mark.parametrize(
-    "name", _params("test_critical_fields_exact_count", _with("protected"))
-)
+@pytest.mark.parametrize("name", _with("protected"))
 def test_critical_fields_exact_count(built, name):
     fx, _, _, res = built[name]
     p = H.preservation(
@@ -306,9 +211,7 @@ def test_markers_displayed_as_in_original(built, name):
     assert total > 0 and hit == total
 
 
-@pytest.mark.parametrize(
-    "name", _params("test_lines_that_must_stay", _with("present_lines"))
-)
+@pytest.mark.parametrize("name", _with("present_lines"))
 def test_lines_that_must_stay(built, name):
     fx, _, _, res = built[name]
     lines = H.legal_lines(res.content)
@@ -333,9 +236,7 @@ def test_joins_made_when_the_evidence_is_sufficient(built, name):
         assert line in lines, line
 
 
-@pytest.mark.parametrize(
-    "name", _params("test_no_forbidden_join", _with("must_not_join", "forbidden"))
-)
+@pytest.mark.parametrize("name", _with("must_not_join", "forbidden"))
 def test_no_forbidden_join(built, name):
     fx, _, _, res = built[name]
     lines = H.legal_lines(res.content)
@@ -365,8 +266,16 @@ def test_tables_identical(built, name):
 
 @pytest.mark.parametrize("name", NAMES)
 def test_reading_order_not_changed(built, name):
-    """Legal mode never reorders: the lines it shares with Standard come in the same order."""
-    _, _, standard, res = built[name]
+    """Legal mode never reorders: the lines it shares with Standard come in the same order.
+
+    Where Legal undid a merge Docling made (R2-01), the Standard export is no
+    reference for the order (its merged line is not in the source); there the
+    order is held against the DECLARED order by the identity oracle instead."""
+    fx, doc, standard, res = built[name]
+    if any(w.get("code") == "upstream_merge_undone" for w in res.warnings):
+        legal, _ = _measure(fx, doc, standard, res)
+        assert legal["false_reordering"] == 0
+        return
     std, leg = H.display_lines(standard), H.legal_lines(res.content)
     shared = [x for x in leg if x in set(std)]
     cursor = 0
@@ -379,13 +288,15 @@ def test_reading_order_not_changed(built, name):
         cursor += 1
 
 
-@pytest.mark.parametrize("name", _params("test_idempotent_and_deterministic", NAMES))
+@pytest.mark.parametrize("name", NAMES)
 def test_idempotent_and_deterministic(built, name):
     _, doc, _, res = built[name]
     again = N.normalize_document(res.document)
     assert again.content == res.content
-    assert not any(o.op in ("join_across_pages",) for o in again.operations)
-    assert N.normalize_document(doc).content == res.content
+    assert not any(
+        o.op in ("join_across_pages", "upstream_merge_undone") for o in again.operations
+    )
+    assert N.normalize_document(doc, evidence=H.evidence(doc)).content == res.content
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -403,6 +314,44 @@ def test_stored_text_is_the_displayed_text(built, name):
         assert not line.lstrip().startswith(("\\-", "\\+", "\\*")), line
         head = line.lstrip()[:12]
         assert "\\." not in head and "\\)" not in head, line
+
+
+def test_upstream_dehyphenation_without_evidence_is_kept_and_reported(built):
+    """R2-01 safe default: without the element texts the removed hyphen cannot be
+    known ('-' or a soft hyphen), so Docling's text is kept and the pages named;
+    with them (production) the two blocks are restored exactly."""
+    fx, doc, _, with_evidence = built["d5_r201_hyphen_lowercase"]
+    blind = N.normalize_document(doc)
+    assert "phingân hàng" in blind.content
+    codes = {w["code"]: w for w in blind.warnings}
+    assert codes["upstream_dehyphenation"]["pages"] == [1, 2]
+    assert H.legal_lines(with_evidence.content)[:2] == [
+        "Áp dụng cho tổ chức tín dụng phi-",
+        "ngân hàng và chi nhánh ngân hàng nước ngoài.",
+    ]
+    assert "upstream_merge_undone" in {w["code"] for w in with_evidence.warnings}
+
+
+def test_evidence_that_does_not_match_the_document_is_not_used(built):
+    """Evidence only confirms a part character for character; a mismatching text
+    (another document, a stale conversion) is ignored."""
+    fx, doc, _, _ = built["d5_r201_hyphen_lowercase"]
+    evidence = {k: v.replace("phi-", "phí-") for k, v in H.evidence(doc).items()}
+    res = N.normalize_document(doc, evidence=evidence)
+    assert "phingân hàng" in res.content and "phí-" not in res.content
+    assert "upstream_dehyphenation" in {w["code"] for w in res.warnings}
+
+
+def test_upstream_space_merge_is_split_back_exactly_without_evidence():
+    """A space join is undone from the char spans alone: every part keeps exactly
+    the text Docling joined (here two independent documents)."""
+    fx = FX.by_name("d5_r201_two_documents_signer_then_title")
+    doc = H.build_document(fx)
+    res = N.normalize_document(doc)
+    lines = H.legal_lines(res.content)
+    assert "Nguyễn Văn An" in lines
+    assert "Phụ lục 01 ban hành kèm theo Quyết định số 12/QĐ-NHM" in lines
+    assert res.counts.get("upstream_merge_undone") == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -965,8 +914,12 @@ def test_html_and_markdown_injection_not_introduced():
     doc.add_text(label=DocItemLabel.TEXT, text="# không phải tiêu đề")
     doc.add_text(label=DocItemLabel.TEXT, text="> không phải trích dẫn")
     res = N.normalize_document(doc)
-    assert "<script>" not in res.content and "&lt;script&gt;" in res.content
+    # Phase 12D5 (F-17): the printed text is stored; only the "<" that would OPEN
+    # raw HTML is neutralised - no consumer ever receives active markup
+    assert "<script>" not in res.content and "&lt;script>" in res.content
+    assert "[x](javascript:alert(1))" in res.content  # printed text, not a link
     lines = H.legal_lines(res.content)
+    assert "<script>alert(1)</script> [x](javascript:alert(1))" in lines
     assert "# không phải tiêu đề" in lines and "> không phải trích dẫn" in lines
 
 
@@ -1074,6 +1027,37 @@ def test_many_joins_scale_linearly():
     full, res_full = _time(_big(300))
     assert res_full.counts["join_across_pages"] == 299
     assert res_full.counts["page_number_to_furniture"] == 300
+    assert full <= 2.6 * half + 0.5, (half, full)
+    assert full < 20
+
+
+def _merged_everywhere(n_pages):
+    """Docling merges the signer line of every page with the title of the next."""
+    E = FX.E
+    pages = [
+        [
+            E("text", "Phụ lục ban hành kèm theo quyết định", y=40, h=14),
+            E("text", f"Đoạn mở đầu trang {p} trình bày nội dung.", y=100, h=28),
+            E("text", f"Người ký số {p} Nguyễn Văn An", x=340, y=700, w=170, h=12),
+            E("page_footer", str(p), x=290, y=800, w=16, h=12),
+        ]
+        for p in range(1, n_pages + 1)
+    ]
+    return H.build_document({"name": "merged", "pages": pages, "ground_truth": ""})
+
+
+def test_undoing_upstream_merges_scales_linearly():
+    """F-10 with Phase 12D5: splitting back a Docling merge on every page break
+    (R2-01) must stay linear - doubling the pages must not triple the time."""
+    small, big = _merged_everywhere(150), _merged_everywhere(300)
+    t0 = time.perf_counter()
+    r_small = N.normalize_document(small, evidence=H.evidence(small))
+    half = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    r_big = N.normalize_document(big, evidence=H.evidence(big))
+    full = time.perf_counter() - t0
+    assert r_small.counts["upstream_merge_undone"] == 149
+    assert r_big.counts["upstream_merge_undone"] == 299
     assert full <= 2.6 * half + 0.5, (half, full)
     assert full < 20
 

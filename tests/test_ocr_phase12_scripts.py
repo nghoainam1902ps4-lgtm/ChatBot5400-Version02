@@ -207,11 +207,6 @@ def test_metrics_renumbering():
     assert M.renumbered_list_items("5\\. a\n\n7\\. b") == (0, 0)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="RED on 8d0c438 (Phase 12D5A evidence): with the identity oracle and the 12D5 "
-    "fixtures Legal v1.1.0 deletes / merges content; removed by the 12D5B fix",
-)
 def test_benchmark_measures_against_the_declared_ground_truth(tmp_path):
     """Phase 12D3 (T-01): the benchmark no longer adds back what the normalizer
     removed. It can fail (Standard does lose displayed content on these

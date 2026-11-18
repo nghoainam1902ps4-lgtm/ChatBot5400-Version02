@@ -146,10 +146,11 @@ def structure(fx: dict[str, Any], repeats: int, before: Any = None) -> dict[str,
         standard = doc.export_to_markdown()
         t_std.append((time.perf_counter() - t0) * 1000)
         t0 = time.perf_counter()
-        res = N.normalize_document(doc)
+        # as in production: with Docling's element texts before its own merge
+        res = N.normalize_document(doc, evidence=H.evidence(doc))
         t_leg.append((time.perf_counter() - t0) * 1000)
     tracemalloc.start()
-    N.normalize_document(doc)
+    N.normalize_document(doc, evidence=H.evidence(doc))
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 

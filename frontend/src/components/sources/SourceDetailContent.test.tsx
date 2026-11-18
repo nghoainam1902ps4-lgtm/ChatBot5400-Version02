@@ -214,6 +214,33 @@ describe('SourceDetailContent', () => {
     expect(clause.style.textIndent).toBe('0')
   })
 
+  // ---- Phase 12D5: R2-02 / F-17 - the page shows the printed characters ----
+  it('Legal source: Markdown-significant characters are displayed as printed', async () => {
+    const printed = [
+      'Lãi suất = 5*3% (tối đa 15*2)',
+      'Mức phí (*) áp dụng theo biểu phí (*) hiện hành',
+      'Mã `TK01` dùng cho tài khoản thanh toán',
+      'Phí 5$ và 10$ cho mỗi giao dịch quốc tế',
+      'Tỷ lệ 1:2 và công thức a_1 + b_2 = c_3',
+      'Mã sản phẩm TK_VND_01 và file bao_cao_2024.xlsx',
+      'Email: ho_tro@agribank.com.vn; website https://agribank.com.vn/a_b?x=1&y=2',
+      'Họ tên: <Tên khách hàng> & <Số CMND>',
+      'Ký hiệu ~50 triệu đồng và ~[chưa xác nhận]~',
+      'Đường dẫn C:\\Bieu\\phi.xlsx trên máy trạm',
+      '9. Khoản có ký hiệu 5*3% và mã TK_01',
+    ]
+    const data = source({ mode: 'legal', status: 'applied', version: '1.2.0' })
+    data.full_text = printed.join('\n\n')
+    const { container } = await renderSource(data)
+    const prose = container.querySelector('.source-prose') as HTMLElement
+    const shown = Array.from(prose.querySelectorAll('p')).map((p) => p.textContent)
+    expect(shown).toEqual(printed)
+    // nothing was turned into emphasis, code, strikethrough, a formula or a list
+    for (const selector of ['em', 'strong', 'code', 'del', '.katex', 'ol', 'ul']) {
+      expect(prose.querySelector(selector), selector).toBeNull()
+    }
+  })
+
   it('Standard source: rendered exactly as before, labelled Standard', async () => {
     const { container } = await renderSource(source(undefined))
     expect(screen.getByTestId('source-normalization')).toHaveAttribute('data-state', 'standard')

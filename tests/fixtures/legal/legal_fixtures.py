@@ -700,7 +700,9 @@ FIXTURES: list[dict[str, Any]] = [
             ]
         ],
         "ground_truth": "Trong mẫu HTML, ghi chú <!-- image --> đánh dấu vị trí ảnh. Không được xóa chuỗi này khỏi tài liệu.",
-        "protected": ["&lt;!-- image --&gt;"],
+        # Phase 12D5 (F-17): the PRINTED text, as the reader sees it (the stored form
+        # neutralises only the "<" that would open an HTML comment)
+        "protected": ["ghi chú <!-- image --> đánh dấu vị trí ảnh"],
         "expect_placeholders": 0,
     },
     {

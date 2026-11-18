@@ -4,45 +4,66 @@ Works on a COPY of the ``DoclingDocument`` Docling produced, using the structure
 Docling already computed (labels, content layers, list markers, provenance
 pages and bounding boxes, reading order) - never the flattened Markdown string.
 
-RULE ZERO (Phase 12D3, after the independent audit): legal content is kept
-unless the evidence that something is a page artifact is strong. Leaving a page
-number in the text is a blemish; deleting a year, a clause number or a unit of
-account is a defect. Whenever the evidence is missing the item stays and a
-warning says so.
+RULE ZERO (Phase 12D3, tightened in Phase 12D5 after the re-review): legal
+content is kept unless the evidence that something is a page artifact is
+strong. Leaving a page number in the text, or a paragraph cut by a page break,
+is a blemish; deleting a year, a clause or voucher number, or creating a
+sentence the document does not contain, is a defect. Whenever the evidence is
+missing the item stays as it is and a warning says so.
 
-What it does:
+What it does (version 1.2.0, Phase 12D5):
 
 1. PAGE NUMBERS labelled TEXT by the layout model go to the furniture layer
    (where Docling itself puts PAGE_HEADER / PAGE_FOOTER) only when ALL hold:
-   strict page-number shape; top / bottom band and outermost on its page;
-   the same "printed number - PDF page" offset on at least 3 pages AND at least
-   60 % of the pages; the same band; a consistent horizontal position (one
-   place, or mirrored on odd / even pages); a value that fits the document;
-   not aligned with the left edge of the paragraphs (a detached clause number
-   starts where the paragraphs start). One- and two-page documents never
-   qualify.
-2. REPEATED LINES labelled TEXT are never removed: "Đơn vị tính: triệu đồng",
-   an issuer line, "Kính gửi", "Nơi nhận", a signature note, a column header of
-   an unrecognised table look exactly like a running header. They are reported
-   (``repeated_line_kept``). Only an item the layout model itself labelled
-   PAGE_HEADER / PAGE_FOOTER and that is still in the body is moved.
+   a strict page-number shape (no leading zero; "n/m" and "trang n/m" only when
+   m is the page count); top / bottom band and outermost on its page; ALONE on
+   its line (no other item at that height - "Số:" + "0001" is a field, not a
+   page number) and not under a label ending with ":"; centred, or at the
+   outer (right) edge, or mirrored on odd / even pages - never on the left
+   side only, where detached clause numbers sit; the same vertical place; the
+   same "printed number - PDF page" offset on at least 3 pages AND at least
+   60 % of the pages; a value that fits the document. One- and two-page
+   documents never qualify. Anything else is kept (``page_number_kept``).
+2. REPEATED LINES labelled TEXT are never removed (``repeated_line_kept``).
+   Items the layout model labelled PAGE_HEADER / PAGE_FOOTER are artifacts only
+   when they repeat on several pages or are page numbers that fit the page
+   index; a header / footer text that appears ONCE (document number, issuer on
+   page 1, a footnote labelled footer) is business content: it is kept in the
+   text (``furniture_text_kept``) - the standard export drops it (R2-11).
 3. PICTURES: the ``<!-- image -->`` placeholder is dropped only for a picture
-   under 4 % of the page with no text (signature, stamp, logo) and for a picture
-   whose OCR text is kept anyway. Every other picture keeps the placeholder and
-   raises a located warning: it may hold a table, a diagram or a chart that
-   nobody extracted. OCR text Docling placed INSIDE a picture is kept
+   under 4 % of the page (signature, stamp, logo). Every other picture keeps it,
+   whatever text was found inside (a caption or a stray word is no evidence the
+   picture was read), with a located warning (``picture_without_text`` /
+   ``picture_text_unverified``). OCR text Docling placed INSIDE a picture is kept
    (``traverse_pictures``); the standard export drops it.
 4. A PARAGRAPH CUT BY A PAGE BREAK is joined to its continuation only when
-   every rule of ``_join_refusal`` passes (see there). The refusal reason of a
-   near miss is reported (``join_not_made``). One space is the only character
-   ever added.
-5. LIST ITEMS are written with their ORIGINAL marker ("9.", "a)", "đ)", "1.1",
+   every rule of ``_pair_refusal`` passes - among them: the next page has ONE
+   candidate first line, the page before ONE unfinished paragraph (a footnote
+   under the cut paragraph is never the left part), and the first line does not
+   open a new unit (clause, point - also as OCR damages it: "c )", "a,", "a-",
+   "o " -, a date line, a unit line, "trong đó:", a web address, "trang n/m").
+   The refusal reason of a near miss is reported (``join_not_made``). One space
+   is the only character ever added.
+5. DOCLING'S OWN MERGE (R2-01): Docling joins a TEXT ending in [a-z,-] with the
+   next TEXT starting with a letter - across pages, across columns, over tables,
+   pictures and footers - and drops the hyphen before a lowercase continuation.
+   The provenance char spans show exactly where the parts were joined. A join
+   the rules of point 4 would refuse is UNDONE: the item is split back into its
+   parts, from their recorded spans, at their own reading position
+   (``upstream_merge_undone``). A removed hyphen cannot be restored from the
+   document (it was "-" or a soft hyphen): the text is kept and
+   ``upstream_dehyphenation`` names the pages. Spans that do not add up are
+   left alone and reported (``upstream_merge_kept``).
+6. LIST ITEMS are written with their ORIGINAL marker ("9.", "a)", "đ)", "1.1",
    "-") as plain text, one paragraph each; an item without a recognised marker
-   is never given a synthesised number. The stored text IS the visible text:
-   no Markdown escape of markers is stored (chunks, embeddings, copy and display
-   see the same characters). The Source page escapes a leading marker at render
-   time so that no list is built and nothing is renumbered
-   (``frontend/src/lib/utils/legal-display.ts``).
+   is never given a synthesised number.
+7. THE STORED TEXT IS THE PRINTED TEXT (F-17): no Markdown escape of markers,
+   underscores, "&" or "<" is stored - chunks, embeddings, copy and display see
+   the same characters. Only two literal forms stay neutralised in storage: a
+   line starting with "#" / ">" (``\\#`` / ``\\>``) and a "<" that would open an
+   HTML tag or comment (``&lt;``), so that no consumer ever receives active
+   markup. The Source page escapes every Markdown-significant character of a
+   Legal source at render time (``frontend/src/lib/utils/legal-display.ts``).
 
 What it never does: call an LLM or the network, touch the database or a file,
 change a character of recognised text (spelling, digits, 0/O, 1/l, units), add
@@ -65,7 +86,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
-NORMALIZER_VERSION = "1.1.0"
+NORMALIZER_VERSION = "1.2.0"
 
 MODE_STANDARD = "standard"
 MODE_LEGAL = "legal"
@@ -102,6 +123,12 @@ PAGE_NUMBER_MAX_OFFSET = 50  # a file that starts at page 51 of a longer documen
 PAGE_NUMBER_MIN_OFFSET = -10
 PAGE_NUMBER_X_TOLERANCE = 0.05  # spread of the horizontal centres (page widths)
 BODY_MARGIN_TOLERANCE = 0.01  # "starts where the paragraphs start" (page widths)
+PAGE_NUMBER_CENTRE = 0.08  # centred: centre within 8 % of the page width of the middle
+PAGE_NUMBER_OUTER_EDGE = (
+    0.70  # right side: the number starts right of 70 % of the width
+)
+PAGE_NUMBER_Y_TOLERANCE = 0.02  # spread of the vertical places (page heights)
+LABEL_GAP_LINES = 1.5  # a label line ("Số:") this close above makes it a field
 
 # Repeated lines (finding F-01): reported, never removed.
 REPEATED_MAX_CHARS = 150
@@ -111,16 +138,21 @@ REPEATED_MIN_PAGES = 3
 PERSIST_MAX_OPERATIONS = 200
 PERSIST_MAX_WARNINGS = 50
 
+# Strict page-number shapes (Phase 12D5, F-02). A leading zero is a document /
+# voucher number; "n/m" and "trang n/m" count only when m is the page count
+# (checked by the caller: _SLASH_TOTAL), so "3/2024" (a reporting period) never is.
 _PAGE_NUMBER_RES = [
     re.compile(p)
     for p in (
-        r"\d{1,4}",
-        r"[-–—]\s*\d{1,4}\s*[-–—]",
-        r"(?i:trang)\s+\d{1,4}(?:\s*(?:/|(?i:trên))\s*\d{1,4})?",
-        r"(?i:page)\s+\d{1,4}(?:\s*(?:/|(?i:of))\s*\d{1,4})?",
-        r"\d{1,4}\s*/\s*\d{1,4}",
+        r"[1-9]\d{0,3}",
+        r"[-–—]\s*[1-9]\d{0,3}\s*[-–—]",
+        r"(?i:trang|page)\s+[1-9]\d{0,3}",
+        r"(?i:trang)\s+[1-9]\d{0,3}\s*(?:/|(?i:trên))\s*[1-9]\d{0,3}",
+        r"(?i:page)\s+[1-9]\d{0,3}\s*(?:/|(?i:of))\s*[1-9]\d{0,3}",
+        r"[1-9]\d{0,3}\s*/\s*[1-9]\d{0,3}",
     )
 ]
+_SLASH_TOTAL = re.compile(r"(?:/|(?i:trên)|(?i:of))\s*(\d{1,4})\s*$")
 _FIRST_INT = re.compile(r"\d{1,4}")
 
 # A line that opens a new legal unit: never the continuation of a paragraph.
@@ -132,17 +164,33 @@ _STRUCTURE_START = re.compile(
     r"|[ivxlcdm]+[.)](?:\s|$)"  # i.  ii)
     r"|\d+(?:\.\d+)*[.)]?(?:\s|$)"  # 1.  1.1  2)  1.2.3
     r"|[-+*•●○▪–](?:\s|$)"  # bullets
+    # Phase 12D5 (F-03): markers as OCR damages them, and lines that are a unit
+    # of their own although they start in lowercase
+    r"|[a-zđ]\s+[.)\]](?:\s|$)"  # c )  c .
+    r"|[a-zđ][,\-–:](?:\s|$)"  # a,  a-  a:
+    r"|[oO0°]\s+\S"  # a hollow bullet read as the letter o / zero / degree
+    r"|ngày\s+\d{1,2}\s+tháng\s+\d{1,2}\s+năm\s+\d{4}"  # date line
+    r"|(?:đvt|đơn vị tính|đơn vị)\s*:"  # unit line
+    r"|trong đó\s*:"
+    r"|(?:www\.|https?://)"  # a web address
+    r"|(?:trang|page)\s+\d{1,4}\s*(?:/|trên|of)\s*\d{1,4}"  # "trang 2/3"
     r")",
     re.IGNORECASE,
 )
 
-# A footnote the layout model labelled TEXT: "1 Thông tư…", "(1) …", "* …".
-_FOOTNOTE_START = re.compile(r"^(?:\d{1,2}\s+\S|\(\d{1,2}\)\s|\[\d{1,2}\]\s|[*†‡])")
+# A footnote the layout model labelled TEXT: "1 Thông tư…", "(1) …", "* …",
+# "(*) …", "¹ …".
+_FOOTNOTE_START = re.compile(
+    r"^(?:\d{1,2}\s+\S|\(\d{1,2}\)\s|\[\d{1,2}\]\s|\(\*+\)|[*†‡]|[¹²³⁴⁵⁶⁷⁸⁹⁰]+)"
+)
 
 # Markdown block syntax a literal text line must not trigger. List markers are
-# NOT escaped in the stored text (see the module docstring, point 5).
+# NOT escaped in the stored text (see the module docstring, point 7).
 _MD_HEADING = re.compile(r"^(\s{0,3})(#{1,6})(?=\s|$)")
 _MD_QUOTE = re.compile(r"^(\s{0,3})(>)")
+# A "<" that opens raw HTML in CommonMark (tag, closing tag, comment,
+# processing instruction, declaration, CDATA): neutralised in storage.
+_HTML_OPEN = re.compile(r"<(?=[A-Za-z][A-Za-z0-9-]*(?:[\s/>]|$)|/[A-Za-z]|!|\?)")
 
 
 class NormalizationLimitError(ValueError):
@@ -477,6 +525,18 @@ def escape_literal_block_syntax(text: str) -> str:
     return "\n".join(out)
 
 
+def neutralize_html(text: str) -> str:
+    """Make a "<" that would OPEN raw HTML inert ("&lt;"); nothing else changes.
+
+    Phase 12D5 (F-17): the stored Legal text is the printed text - "<Tên khách
+    hàng>", "a < b", "A&B", "TK_VND_01" are stored as printed. Only a "<"
+    starting a CommonMark HTML tag, closing tag, comment, declaration or
+    processing instruction ("<script>", "</b>", "<!--", "<?") is written as
+    "&lt;", so that no consumer of the text ever receives active markup.
+    """
+    return _HTML_OPEN.sub("&lt;", text)
+
+
 def _build_serializer(doc: Any, drop_picture_refs: set[str]) -> Any:
     from docling_core.transforms.serializer.base import SerializationResult
     from docling_core.transforms.serializer.common import create_ser_result
@@ -574,7 +634,33 @@ def _build_serializer(doc: Any, drop_picture_refs: set[str]) -> Any:
                 **kwargs,
             )
 
-    return MarkdownDocSerializer(
+    class LegalDocSerializer(MarkdownDocSerializer):
+        """The stored text is the printed text (Phase 12D5, F-17 / R2-02): no
+        "\\_" for underscores, no HTML entities for "&" / "<" / ">", no bold /
+        italic / link markup a native PDF may carry - only a "<" that would open
+        raw HTML is neutralised (``neutralize_html``)."""
+
+        def post_process(  # type: ignore[override]
+            self,
+            text: str,
+            *,
+            escape_html: bool = True,
+            escape_underscores: bool = True,
+            formatting: Any = None,
+            hyperlink: Any = None,
+            **kwargs: Any,
+        ) -> str:
+            res = neutralize_html(text) if escape_html else text
+            return super().post_process(
+                text=res,
+                escape_html=False,
+                escape_underscores=False,
+                formatting=None,
+                hyperlink=None,
+                **kwargs,
+            )
+
+    return LegalDocSerializer(
         doc=doc,
         text_serializer=LegalTextSerializer(),
         list_serializer=LegalListSerializer(),
@@ -644,7 +730,7 @@ def _body_items(doc: Any) -> list[Any]:
 
 
 # --------------------------------------------------------------------------- #
-# 1. Page numbers (finding F-02)
+# 1. Page numbers (findings F-02, Phase 12D5)
 # --------------------------------------------------------------------------- #
 
 
@@ -663,98 +749,178 @@ def _body_left_edges(
     return {page: statistics.median(values) for page, values in per_page.items()}
 
 
-def _x_consistent(members: list[tuple[int, float]]) -> bool:
-    """One horizontal place, or one for odd pages and one for even pages."""
+class _Lines:
+    """Every located item of every page (body AND furniture), for "same line" tests."""
 
-    def tight(values: list[float]) -> bool:
-        return not values or max(values) - min(values) <= PAGE_NUMBER_X_TOLERANCE
+    def __init__(self, doc: Any, geo: _Geometry) -> None:
+        from docling_core.types.doc.document import ContentLayer
 
-    if tight([x for _, x in members]):
+        self.by_page: dict[int, list[tuple[Box, int, str]]] = defaultdict(list)
+        for item, _ in doc.iterate_items(
+            with_groups=False,
+            traverse_pictures=True,
+            included_content_layers={ContentLayer.BODY, ContentLayer.FURNITURE},
+        ):
+            for prov in _provs(item):
+                box = geo.box(prov)
+                if box is not None:
+                    self.by_page[int(prov.page_no)].append(
+                        (box, id(item), str(getattr(item, "text", "") or ""))
+                    )
+
+    def alone(self, item: Any, page: int, box: Box) -> bool:
+        """No other item shares the vertical extent of ``box`` on its page."""
+        height = max(1e-6, box[3] - box[1])
+        for other, owner, _ in self.by_page.get(page, []):
+            if owner == id(item):
+                continue
+            overlap = min(other[3], box[3]) - max(other[1], box[1])
+            if overlap > 0.3 * height:
+                return False
         return True
-    odd = [x for page, x in members if page % 2]
-    even = [x for page, x in members if not page % 2]
-    return bool(odd) and bool(even) and tight(odd) and tight(even)
+
+    def label_above(self, item: Any, page: int, box: Box, width: float) -> bool:
+        """A label ending with ':' right above (or to the left of) ``box``."""
+        height = max(1e-6, box[3] - box[1])
+        for other, owner, text in self.by_page.get(page, []):
+            if owner == id(item) or not text.rstrip().endswith(":"):
+                continue
+            gap = box[1] - other[3]
+            horizontal = min(other[2], box[2]) - max(other[0], box[0])
+            if 0 <= gap <= LABEL_GAP_LINES * height and horizontal > -0.05 * width:
+                return True
+        return False
+
+
+def _page_number_value(text: str, n_pages: int) -> int | None:
+    """The printed number of a STRICT page-number shape, or None."""
+    t = text.strip()
+    if not t or len(t) > PAGE_NUMBER_MAX_CHARS:
+        return None
+    if not any(rx.fullmatch(t) for rx in _PAGE_NUMBER_RES):
+        return None
+    total = _SLASH_TOTAL.search(t)
+    if total is not None and int(total.group(1)) != n_pages:
+        return None  # "3/2024" is a period; "n/m" only when m is the page count
+    found = _FIRST_INT.search(t)
+    return int(found.group(0)) if found else None
+
+
+def _place(box: Box, width: float) -> str | None:
+    centre = (box[0] + box[2]) / 2
+    if abs(centre - width / 2) <= PAGE_NUMBER_CENTRE * width:
+        return "centre"
+    if box[0] >= PAGE_NUMBER_OUTER_EDGE * width:
+        return "right"
+    if box[2] <= (1 - PAGE_NUMBER_OUTER_EDGE) * width:
+        return "left"
+    return None
+
+
+def _places_consistent(members: list[tuple[int, str]]) -> bool:
+    """All centred, all at the right edge, or mirrored on odd / even pages.
+    A number on the LEFT side only is where a detached clause number sits."""
+    places = {place for _, place in members}
+    if places in ({"centre"}, {"right"}):
+        return True
+    odd = {place for page, place in members if page % 2}
+    even = {place for page, place in members if not page % 2}
+    return len(odd) == 1 and len(even) == 1 and odd | even == {"left", "right"}
 
 
 def _find_page_numbers(
-    items: list[Any], doc: Any, geo: _Geometry, T: dict[str, Any], budget: _Budget
+    items: list[Any],
+    doc: Any,
+    geo: _Geometry,
+    T: dict[str, Any],
+    budget: _Budget,
+    lines: _Lines,
 ) -> tuple[list[Any], list[dict[str, Any]]]:
     body_left = _body_left_edges(items, geo, T)
     doc_left = statistics.median(body_left.values()) if body_left else None
-    labelled: list[Any] = []
-    # (offset, band) -> [(item, page, x_centre)]
-    groups: dict[tuple[int, str], list[tuple[Any, int, float]]] = defaultdict(list)
-    kept: list[Any] = []
+    # (offset, band) -> [(item, page, place, top as a page-height fraction)]
+    groups: dict[tuple[int, str], list[tuple[Any, int, str, float]]] = defaultdict(list)
+    kept: list[tuple[Any, str]] = []
     for n, item in enumerate(items):
         if n % 5000 == 0:
             budget.check("page numbers")
-        if not _edge_candidate(item, doc, T):
+        if not _edge_candidate(item, doc, T) or _layout_says_furniture(item, T):
             continue
-        text = (item.text or "").strip()
-        if not text or len(text) > PAGE_NUMBER_MAX_CHARS:
-            continue
-        if not any(rx.fullmatch(text) for rx in _PAGE_NUMBER_RES):
-            continue
+        value = _page_number_value(item.text or "", geo.n_pages)
+        if value is None:
+            continue  # not a strict page-number shape: never a candidate
         prov = _provs(item)[0]
         band = geo.band(prov)
         if band is None or not geo.outermost(item, band):
             continue  # inside the body: never a candidate, not even a suspect
-        if _layout_says_furniture(item, T):
-            labelled.append(item)  # the layout model's own verdict
-            continue
         page = int(prov.page_no)
         box = geo.box(prov)
         assert box is not None  # band() returned a value
-        width = geo.sizes[page][0]
-        found_int = _FIRST_INT.search(text)
-        value = int(found_int.group(0)) if found_int else 0
+        width, height = geo.sizes[page]
         offset = value - page
         left_edge = body_left.get(page, doc_left)
-        at_body_margin = (
-            left_edge is not None
-            and abs(box[0] - left_edge) <= BODY_MARGIN_TOLERANCE * width
-        )
-        if (
-            value < 1
-            or not PAGE_NUMBER_MIN_OFFSET <= offset <= PAGE_NUMBER_MAX_OFFSET
-            or at_body_margin
+        place = _place(box, width)
+        why = None
+        if not PAGE_NUMBER_MIN_OFFSET <= offset <= PAGE_NUMBER_MAX_OFFSET:
+            why = "the value does not follow the page index"
+        elif left_edge is not None and abs(box[0] - left_edge) <= (
+            BODY_MARGIN_TOLERANCE * width
         ):
-            kept.append(item)
+            why = "it starts at the paragraph margin (a detached clause number?)"
+        elif not lines.alone(item, page, box):
+            why = "it shares its line with another item (a field such as 'Số: 0001'?)"
+        elif lines.label_above(item, page, box, width):
+            why = "it stands under a label ending with ':'"
+        elif place is None or place == "left" and page % 2:
+            why = "it is neither centred nor at the outer edge of the page"
+        if why is not None or place is None:
+            kept.append((item, why or "no position"))
             continue
-        groups[(offset, band)].append((item, page, (box[0] + box[2]) / 2 / width))
-    found: list[Any] = list(labelled)
+        groups[(offset, band)].append((item, page, place, box[1] / height))
+    found: list[Any] = []
     for key in sorted(groups):
         members = groups[key]
-        pages = Counter(page for _, page, _ in members)
+        pages = Counter(page for _, page, _, _ in members)
         single = [m for m in members if pages[m[1]] == 1]  # two on one page: not sure
+        tops = [m[3] for m in single]
         enough = (
             len(single) >= PAGE_NUMBER_MIN_PAGES
             and len(single) >= PAGE_NUMBER_MIN_SHARE * geo.n_pages
-            and _x_consistent([(page, x) for _, page, x in single])
+            and _places_consistent([(page, place) for _, page, place, _ in single])
+            and max(tops) - min(tops) <= PAGE_NUMBER_Y_TOLERANCE
         )
         if enough:
-            found.extend(item for item, _, _ in single)
-            kept.extend(m[0] for m in members if pages[m[1]] != 1)
+            found.extend(m[0] for m in single)
+            kept.extend(
+                (m[0], "two candidates on one page")
+                for m in members
+                if pages[m[1]] != 1
+            )
         else:
-            kept.extend(item for item, _, _ in members)
+            kept.extend(
+                (m[0], "the same offset, place and height on too few pages")
+                for m in members
+            )
     warnings: list[dict[str, Any]] = []
     if kept:
         warnings.append(
             {
                 "code": "page_number_kept",
                 "count": len(kept),
-                "pages": sorted({int(_provs(i)[0].page_no) for i in kept})[:50],
+                "pages": sorted({int(_provs(i)[0].page_no) for i, _ in kept})[:50],
                 "reason": "looks like a page number but the evidence is not sufficient "
-                f"(needs the same offset on >= {PAGE_NUMBER_MIN_PAGES} pages and "
-                f">= {int(PAGE_NUMBER_MIN_SHARE * 100)} % of the pages, one position, "
-                "outside the paragraph margin): kept",
+                f"(needs: alone on its line, centred or at the outer edge, the same "
+                f"offset on >= {PAGE_NUMBER_MIN_PAGES} pages and "
+                f">= {int(PAGE_NUMBER_MIN_SHARE * 100)} % of the pages): kept",
+                "why": sorted({why for _, why in kept})[:5],
             }
         )
     return found, warnings
 
 
 # --------------------------------------------------------------------------- #
-# 2. Repeated lines (finding F-01): reported, never removed
+# 2. Repeated lines, and what the layout model called header / footer
+#    (findings F-01, R2-11)
 # --------------------------------------------------------------------------- #
 
 
@@ -762,22 +928,20 @@ def _repeat_key(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
 
-def _find_repeated(
+def _repeated_text_warnings(
     items: list[Any], doc: Any, geo: _Geometry, T: dict[str, Any], exclude: set[int]
-) -> tuple[list[Any], list[dict[str, Any]]]:
-    """(items the LAYOUT MODEL labelled header / footer, warnings for repeated TEXT lines)."""
-    labelled: list[Any] = []
+) -> list[dict[str, Any]]:
+    """Repeated TEXT lines at the page edge: reported, never removed (F-01)."""
     groups: dict[tuple[str, str], list[Any]] = defaultdict(list)
     for item in items:
         if id(item) in exclude or not _edge_candidate(item, doc, T):
             continue
         text = (item.text or "").strip()
-        if not text:
-            continue
-        if _layout_says_furniture(item, T):
-            labelled.append(item)
-            continue
-        if len(text) > REPEATED_MAX_CHARS:
+        if (
+            not text
+            or _layout_says_furniture(item, T)
+            or len(text) > REPEATED_MAX_CHARS
+        ):
             continue
         band = geo.band(_provs(item)[0])
         if band is None:
@@ -800,7 +964,51 @@ def _find_repeated(
                     "addressee, signature note); kept",
                 }
             )
-    return labelled, warnings
+    return warnings
+
+
+def _classify_header_footer(
+    doc: Any, geo: _Geometry, T: dict[str, Any]
+) -> tuple[list[Any], list[Any]]:
+    """(artifacts, business content) among the items the LAYOUT MODEL labelled
+    PAGE_HEADER / PAGE_FOOTER, in the body or in the furniture layer.
+
+    An artifact repeats on two or more pages (a running title) or is a page
+    number that fits the page index. Text that appears once - a document
+    number, the issuer on page 1, a footnote labelled footer - is content.
+    """
+    from docling_core.types.doc.document import ContentLayer
+
+    labelled: list[Any] = []
+    for item, _ in doc.iterate_items(
+        with_groups=False,
+        traverse_pictures=False,
+        included_content_layers={ContentLayer.BODY, ContentLayer.FURNITURE},
+    ):
+        if (
+            type(item) is T["TextItem"]
+            and _layout_says_furniture(item, T)
+            and (item.text or "").strip()
+            and _provs(item)
+        ):
+            labelled.append(item)
+    pages_of: dict[str, set[int]] = defaultdict(set)
+    for item in labelled:
+        pages_of[_repeat_key(item.text or "")].update(
+            int(p.page_no) for p in _provs(item)
+        )
+    artifacts, content = [], []
+    for item in labelled:
+        page = int(_provs(item)[0].page_no)
+        value = _page_number_value(item.text or "", geo.n_pages)
+        is_number = value is not None and (
+            PAGE_NUMBER_MIN_OFFSET <= value - page <= PAGE_NUMBER_MAX_OFFSET
+        )
+        if is_number or len(pages_of[_repeat_key(item.text or "")]) >= 2:
+            artifacts.append(item)
+        else:
+            content.append(item)
+    return artifacts, content
 
 
 # --------------------------------------------------------------------------- #
@@ -808,41 +1016,46 @@ def _find_repeated(
 # --------------------------------------------------------------------------- #
 
 
-def _picture_has_text(pic: Any, doc: Any, T: dict[str, Any]) -> bool:
+def _picture_text_count(pic: Any, doc: Any, T: dict[str, Any]) -> int:
+    """OCR text Docling placed INSIDE the picture; its captions / footnotes are
+    separate items and say nothing about whether the picture itself was read."""
+    attached = {r.cref for r in (pic.captions or [])} | {
+        r.cref for r in (getattr(pic, "footnotes", None) or [])
+    }
+    n = 0
     for child, _ in doc.iterate_items(
         root=pic, with_groups=False, traverse_pictures=True
     ):
-        if child is pic:
+        if child is pic or getattr(child, "self_ref", None) in attached:
             continue
         if isinstance(child, T["TextItem"]) and (child.text or "").strip():
-            return True
-    return False
+            n += 1
+    return n
 
 
 def _classify_pictures(
     items: list[Any], doc: Any, geo: _Geometry, T: dict[str, Any]
-) -> tuple[list[tuple[Any, str]], list[tuple[Any, float | None]]]:
-    """(pictures whose placeholder is dropped + why, pictures kept + area ratio)."""
+) -> tuple[list[tuple[Any, str]], list[tuple[Any, float | None, int]]]:
+    """(pictures whose placeholder is dropped + why, pictures kept + area + texts)."""
     drop: list[tuple[Any, str]] = []
-    keep: list[tuple[Any, float | None]] = []
+    keep: list[tuple[Any, float | None, int]] = []
     for item in items:
         if not isinstance(item, T["PictureItem"]):
             continue
         if _inside(item, doc, (T["TableItem"],)):
             continue  # rich table cell: leave the table exactly as it is
-        if _picture_has_text(item, doc, T):
-            drop.append((item, "OCR text inside the picture is kept"))
-            continue
         ratio = geo.area_ratio(item)
+        texts = _picture_text_count(item, doc, T)
         if ratio is not None and ratio < SILENT_PICTURE_RATIO:
-            drop.append((item, "small picture without text (signature / stamp / logo)"))
+            drop.append((item, "small picture (signature / stamp / logo)"))
         else:
-            keep.append((item, ratio))  # may hold a table, a diagram, a chart
+            keep.append((item, ratio, texts))  # may hold a table, a diagram, a chart
     return drop, keep
 
 
 # --------------------------------------------------------------------------- #
-# 4. Cross-page joins (finding F-03)
+# 4. Joins across a page break (finding F-03), for the normalizer's own joins
+#    and for Docling's merges (finding R2-01)
 # --------------------------------------------------------------------------- #
 
 
@@ -868,23 +1081,74 @@ def _ends_open(text: str) -> tuple[bool, str | None]:
     return False, "terminal"
 
 
+@dataclass
+class _Part:
+    """One located line block: an item, or one provenance part of a merged item."""
+
+    text: str
+    page: int
+    box: Box | None
+    kind: str  # "text" (plain TEXT), "list", "other"
+    marker: str
+    pid: int  # id() of the provenance
+    owner: int  # id() of the item
+    inside: bool  # inside a picture or a table
+
+
+def _part(
+    item: Any, prov: Any, text: str, geo: _Geometry, doc: Any, T: dict[str, Any]
+) -> _Part:
+    if _is_plain_text(item, T):
+        kind = "text"
+    elif isinstance(item, T["ListItem"]):
+        kind = "list"
+    else:
+        kind = "other"
+    return _Part(
+        text=text,
+        page=int(prov.page_no),
+        box=geo.box(prov),
+        kind=kind,
+        marker=(getattr(item, "marker", "") or "").strip(),
+        pid=id(prov),
+        owner=id(item),
+        inside=_inside(item, doc, (T["PictureItem"], T["TableItem"])),
+    )
+
+
 class _JoinContext:
     """Per-document facts the join rules need, computed once."""
 
     def __init__(
-        self, items: list[Any], doc: Any, geo: _Geometry, T: dict[str, Any]
+        self,
+        items: list[Any],
+        doc: Any,
+        geo: _Geometry,
+        T: dict[str, Any],
+        removed: set[int] | None = None,
     ) -> None:
         self.doc, self.geo, self.T = doc, geo, T
         widths: dict[int, list[float]] = defaultdict(list)
         self.texts_on_page: dict[int, set[str]] = defaultdict(set)
+        # every located part of the body, per page: the "is it the only candidate"
+        # rules look at what else is at the end of a page / the top of the next
+        self.parts_by_page: dict[int, list[_Part]] = defaultdict(list)
         for item in items:
+            if removed and id(item) in removed:
+                continue
+            provs = _provs(item)
+            texts = _part_texts(item)
+            for prov, text in zip(provs, texts):
+                part = _part(item, prov, text, geo, doc, T)
+                if part.box is not None and not part.inside:
+                    self.parts_by_page[part.page].append(part)
             if not _is_paragraph(item, T):
                 continue
-            for prov in _provs(item):
+            for prov in provs:
                 box = geo.box(prov)
                 if box is not None:
                     widths[int(prov.page_no)].append(box[2] - box[0])
-            for prov in _provs(item)[:1]:
+            for prov in provs[:1]:
                 self.texts_on_page[int(prov.page_no)].add(_repeat_key(item.text or ""))
         self.column_width = {page: statistics.median(v) for page, v in widths.items()}
         every = [w for v in widths.values() for w in v]
@@ -903,60 +1167,88 @@ class _JoinContext:
                         self.footer_tops[int(prov.page_no)].append(box[1])
 
 
-def _join_refusal(
-    a: Any, b: Any, between: list[Any], ctx: _JoinContext
-) -> tuple[str | None, bool]:
-    """(why A and B are NOT joined - None when they are, whether it was a near miss).
+def _part_texts(item: Any) -> list[str]:
+    """The text of each provenance part of an item (its segments when Docling's
+    char spans add up, else the whole text for the first part)."""
+    provs = _provs(item)
+    text = getattr(item, "text", "") or ""
+    if len(provs) <= 1:
+        return [text] * len(provs)
+    found = _segments(item)
+    if found is None:
+        return [text] + [""] * (len(provs) - 1)
+    spans, _ = found
+    return [text[s:e] for s, e in spans]
 
-    A near miss is a pair that reads like a cut paragraph (A unfinished, B starts
-    in lowercase on the next page) and is still refused: worth a warning.
-    Every rule can only say no; the order goes from cheap text tests to geometry.
+
+def _pair_refusal(a: _Part, b: _Part, ctx: _JoinContext) -> tuple[str | None, bool]:
+    """(why parts A and B may NOT be read as one paragraph - None when they may,
+    whether the refusal is a near miss worth a warning).
+
+    Every rule can only say no; the order goes from cheap text tests to
+    geometry. A near miss reads like a cut paragraph (A unfinished, B starting
+    in lowercase on the next page) and is still refused.
     """
-    T, geo, doc = ctx.T, ctx.geo, ctx.doc
-    if not _is_paragraph(a, T):
+    geo = ctx.geo
+    if a.kind not in ("text", "list"):
         return "the first part is not a paragraph or list item", False
-    b_ok = _is_plain_text(b, T) or (
-        isinstance(b, T["ListItem"])
-        and isinstance(a, T["ListItem"])
-        and not (b.marker or "").strip()
-    )
-    if not b_ok:
+    if not (
+        b.kind == "text" or (b.kind == "list" and a.kind == "list" and not b.marker)
+    ):
         return "the second part is not a plain paragraph", False
-    kinds = (T["PictureItem"], T["TableItem"])
-    if _inside(a, doc, kinds) or _inside(b, doc, kinds):
+    if a.inside or b.inside:
         return "inside a picture or table", False
-    pa, pb = _provs(a), _provs(b)
-    if not pa or not pb:
-        return "no provenance", False
-    last_a, first_b = pa[-1], pb[0]
-    page_a, page_b = int(last_a.page_no), int(first_b.page_no)
-    if page_b != page_a + 1:
+    if b.page != a.page + 1:
         return "not on consecutive pages", False
-    is_open, why = _ends_open(a.text or "")
-    lowercase = _starts_lowercase(b.text or "")
+    is_open, why = _ends_open(a.text)
+    lowercase = _starts_lowercase(b.text)
     if not is_open:
         return (
             f"the first part ends with a {why} character",
             why == "hyphen" and lowercase,
         )
-    if _starts_new_unit(b.text or ""):
-        return "the second part starts a new unit (clause, point, bullet)", False
+    if _starts_new_unit(b.text):
+        return (
+            "the second part starts a new unit (clause, point, date, unit line)",
+            False,
+        )
     if not lowercase:
         return "the second part does not start with a lowercase letter", False
     # From here on the pair reads like a cut paragraph: refusals are near misses.
-    if between:
-        if any(
-            int(p.page_no) not in (page_a, page_b) for x in between for p in _provs(x)
-        ):
-            return "something on another page lies between the two parts", True
-    if _FOOTNOTE_START.match((a.text or "").lstrip()):
+    if a.kind == "list" and b.text.rstrip().endswith(";"):
+        # A point / clause continued by a line that ends like a point itself: the
+        # line may be the NEXT point whose marker OCR lost (and the point above
+        # lost its ";"). Not decidable from the text: kept apart (F-03).
+        return "the next line ends like a point of its own (lost marker?)", True
+    if _FOOTNOTE_START.match(a.text.lstrip()):
         return "the first part looks like a footnote", True
-    box_a, box_b = geo.box(last_a), geo.box(first_b)
-    size_a, size_b = geo.sizes.get(page_a), geo.sizes.get(page_b)
+    box_a, box_b = a.box, b.box
+    size_a, size_b = geo.sizes.get(a.page), geo.sizes.get(b.page)
     if box_a is None or box_b is None or size_a is None or size_b is None:
         return "no bounding box / page size", True
+    # ONE candidate on each side of the break (Phase 12D5, F-03)
+    end_of_a = [p for p in ctx.parts_by_page.get(a.page, []) if p.pid != a.pid]
+    if any(p.box is not None and p.box[1] > box_a[1] + 1 for p in end_of_a):
+        return "something lies below the first part on its page (a footnote?)", True
+    above = [p for p in end_of_a if p.box is not None and p.box[3] <= box_a[1] + 1]
+    if above:
+        nearest = max(above, key=lambda p: p.box[3])  # type: ignore[index]
+        if nearest.kind in ("text", "list") and _ends_open(nearest.text)[0]:
+            return "the page ends with two unfinished paragraphs (a footnote?)", True
+    top_of_b = [p for p in ctx.parts_by_page.get(b.page, []) if p.pid != b.pid]
+    if any(p.box is not None and p.box[3] <= box_b[1] + 1 for p in top_of_b):
+        return "the second part is not the first line of its page", True
+    below = [p for p in top_of_b if p.box is not None and p.box[1] >= box_b[3] - 1]
+    if below:
+        nearest = min(below, key=lambda p: p.box[1])  # type: ignore[index]
+        if (
+            nearest.kind in ("text", "list")
+            and _starts_lowercase(nearest.text)
+            and not _starts_new_unit(nearest.text)
+        ):
+            return "the next page has more than one candidate first line", True
     if box_a[1] >= BAND_BOTTOM * size_a[1] and not any(
-        top >= box_a[3] - 1 for top in ctx.footer_tops.get(page_a, [])
+        top >= box_a[3] - 1 for top in ctx.footer_tops.get(a.page, [])
     ):
         # A single line in the footer zone, and the layout model did not mark a
         # footer below it: it may be the footer itself.
@@ -969,14 +1261,298 @@ def _join_refusal(
     narrower = min(box_a[2] - box_a[0], box_b[2] - box_b[0])
     if narrower <= 0 or overlap < JOIN_MIN_COLUMN_OVERLAP * narrower:
         return "the two parts are in different columns", True
-    column = ctx.column_width.get(page_a) or ctx.doc_column_width
+    column = ctx.column_width.get(a.page) or ctx.doc_column_width
     if column and box_a[2] - box_a[0] < JOIN_MIN_COLUMN_SHARE * column:
         return "the first part is narrower than the body column (not a cut line)", True
     if box_b[0] - box_a[0] > JOIN_MAX_INDENT * size_b[0]:
         return "the second part has a first-line indent (a new paragraph)", True
-    if _repeat_key(a.text or "") in ctx.texts_on_page.get(page_b, set()):
+    if _repeat_key(a.text) in ctx.texts_on_page.get(b.page, set()):
         return "the first part repeats on the next page (running footer)", True
     return None, False
+
+
+# --------------------------------------------------------------------------- #
+# 5. Docling's own merges (finding R2-01)
+# --------------------------------------------------------------------------- #
+
+
+def _segments(item: Any) -> tuple[list[tuple[int, int]], list[str]] | None:
+    """Where each provenance part of a merged item lies in ``item.text``, and how
+    each join was made ("space" / "dehyphen"), from Docling's char spans.
+
+    Docling records part i at ``(len(text so far) + 1, ... + len(part))`` and then
+    appends " " + part, or - before a lowercase continuation - replaces a final
+    "-" / soft hyphen by the part. So the span arithmetic tells which join was
+    made, and where. None when the spans do not add up (nothing is undone then).
+    """
+    provs = _provs(item)
+    text = getattr(item, "text", "") or ""
+    if len(provs) < 2:
+        return None
+    try:
+        spans = [(int(p.charspan[0]), int(p.charspan[1])) for p in provs]
+    except (TypeError, ValueError, IndexError, AttributeError):
+        return None
+    if spans[0][0] != 0 or any(e < s for s, e in spans):
+        return None
+    kinds: list[str] = []
+    for i in range(1, len(spans)):
+        after = spans[i + 1][0] - 1 if i + 1 < len(spans) else len(text)
+        if after == spans[i][1]:
+            kinds.append("space")
+        elif after == spans[i][1] - 2:
+            kinds.append("dehyphen")
+        else:
+            return None
+    out: list[tuple[int, int]] = []
+    start = 0
+    for i, (s, e) in enumerate(spans):
+        end = start + (e - s)
+        if i < len(kinds) and kinds[i] == "dehyphen":
+            end -= 1  # its last character (the hyphen) was removed
+        out.append((start, end))
+        if i < len(kinds):
+            if kinds[i] == "space":
+                if text[end : end + 1] != " ":
+                    return None
+                start = end + 1
+            else:
+                start = end
+    if out[-1][1] != len(text):
+        return None
+    return out, kinds
+
+
+def _evidence_key(page: int, box: Box | None) -> tuple[int, tuple[float, ...]] | None:
+    if box is None:
+        return None
+    return page, tuple(round(float(v), 1) for v in box)
+
+
+def source_evidence(conv_res: Any) -> dict[tuple[int, tuple[float, ...]], str] | None:
+    """The text of every layout element BEFORE Docling's merge, by page and box.
+
+    Docling's standard PDF pipeline keeps ``conv_res.assembled.elements`` after
+    the conversion (only the parsed pages are released); each element's text is
+    built from its OCR / text cells. Used ONLY to confirm a part of a merged
+    item character for character and to restore the hyphen Docling removed;
+    never to add any other text. None when the conversion result has no
+    elements (other pipelines).
+    """
+    elements = getattr(getattr(conv_res, "assembled", None), "elements", None) or []
+    out: dict[tuple[int, tuple[float, ...]], str] = {}
+    for el in elements:
+        text = getattr(el, "text", None)
+        cluster = getattr(el, "cluster", None)
+        bbox = getattr(cluster, "bbox", None)
+        if not isinstance(text, str) or not text or bbox is None:
+            continue
+        try:
+            box = (
+                min(bbox.l, bbox.r),
+                min(bbox.t, bbox.b),
+                max(bbox.l, bbox.r),
+                max(bbox.t, bbox.b),
+            )
+            key = _evidence_key(int(el.page_no), box)
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if key is not None:
+            out[key] = text
+    return out or None
+
+
+def _reading_key(prov: Any, geo: _Geometry) -> tuple[int, float]:
+    box = geo.box(prov)
+    return int(prov.page_no), (box[1] if box else 0.0)
+
+
+def _undo_upstream_merges(
+    work: Any,
+    T: dict[str, Any],
+    evidence: dict[tuple[int, tuple[float, ...]], str] | None,
+    record: Any,
+    warnings: list[dict[str, Any]],
+    budget: _Budget,
+) -> int:
+    """Split back Docling's merges that the join rules refuse (R2-01).
+
+    A space join is undone from the recorded spans: the parts are exactly the
+    texts Docling joined. A removed hyphen is restored only when the source
+    evidence (the element's own text) shows it; otherwise the item is left as
+    Docling made it and ``upstream_dehyphenation`` names the pages. Returns the
+    number of items created.
+    """
+    items = _body_items(work)
+    geo = _Geometry(work, items)
+    ctx = _JoinContext(items, work, geo, T)
+    created = 0
+    for n, item in enumerate(items):
+        if n % 2000 == 0:
+            budget.check("upstream merges")
+        provs = _provs(item)
+        if len(provs) < 2 or not _is_plain_text(item, T):
+            continue
+        found = _segments(item)
+        pages = sorted({int(p.page_no) for p in provs})
+        if found is None:
+            if len(pages) > 1 or len(provs) > 1:
+                warnings.append(
+                    {
+                        "code": "upstream_merge_kept",
+                        "pages": pages[:50],
+                        "reason": "Docling joined several layout blocks into one paragraph and "
+                        "their char spans do not add up: left as Docling made it; verify "
+                        "against the scan",
+                    }
+                )
+            continue
+        spans, kinds = found
+        text = item.text or ""
+        parts = [
+            _part(item, p, text[s:e], geo, work, T) for p, (s, e) in zip(provs, spans)
+        ]
+        cuts: list[int] = []  # boundary i: between part i and part i + 1
+        restore: dict[int, str] = {}  # boundary -> hyphen character to put back
+        for i, kind in enumerate(kinds):
+            if kind == "dehyphen":
+                # The part ended with "-" / a soft hyphen that Docling removed: the
+                # rules never join across a hyphen (it may belong to the text).
+                reason: str | None = "the first part ended with a hyphen"
+            else:
+                reason, _ = _pair_refusal(parts[i], parts[i + 1], ctx)
+            if reason is None:
+                continue  # a join the rules would make themselves
+            if kind == "space":
+                cuts.append(i)
+                continue
+            original = None
+            key = _evidence_key(parts[i].page, parts[i].box)
+            if evidence is not None and key is not None:
+                original = evidence.get(key)
+            seg = text[spans[i][0] : spans[i][1]]
+            if (
+                isinstance(original, str)
+                and original[-1:] in ("-", "­")
+                and original[:-1] == seg
+            ):
+                cuts.append(i)
+                restore[i] = original[-1]
+            else:
+                warnings.append(
+                    {
+                        "code": "upstream_dehyphenation",
+                        "pages": sorted({parts[i].page, parts[i + 1].page}),
+                        "reason": "Docling joined a line ending with a hyphen to the next one "
+                        f"and removed the hyphen ({reason}); the document does not show "
+                        "which character it was, so the text is left as Docling made it: "
+                        "verify against the scan",
+                    }
+                )
+        if not cuts:
+            continue
+        record(
+            "upstream_merge_undone",
+            "Docling joined unrelated blocks; split back at the recorded char spans",
+            [item],
+            text,
+            "",
+        )
+        created += _split_item(work, item, provs, spans, cuts, restore, geo)
+        warnings.append(
+            {
+                "code": "upstream_merge_undone",
+                "pages": pages[:50],
+                "reason": "Docling had joined these blocks into one paragraph; the join rules "
+                "refuse it, so the blocks are shown apart again, each with its own text",
+            }
+        )
+    return created
+
+
+def _split_item(
+    work: Any,
+    item: Any,
+    provs: list[Any],
+    spans: list[tuple[int, int]],
+    cuts: list[int],
+    restore: dict[int, str],
+    geo: _Geometry,
+) -> int:
+    """Cut ``item`` after the parts in ``cuts``; the first group stays in the item,
+    each other group becomes a new TEXT item placed at its own reading position
+    (after the tables / pictures / footers Docling had skipped over)."""
+    from docling_core.types.doc.document import ProvenanceItem
+
+    text = item.text or ""
+    bounds = [-1] + sorted(cuts) + [len(provs) - 1]
+    groups = [(bounds[k] + 1, bounds[k + 1]) for k in range(len(bounds) - 1)]
+
+    def group_text(first: int, last: int) -> str:
+        out = text[spans[first][0] : spans[last][1]]
+        return out + restore.get(last, "")
+
+    def rebased(first: int, last: int) -> list[Any]:
+        # Docling's OWN span arithmetic, shifted to the group (not the final text
+        # positions): a de-hyphenated join kept inside a group is then read back
+        # the same way by the next run (idempotence).
+        base = int(provs[first].charspan[0])
+        return [
+            ProvenanceItem(
+                page_no=provs[i].page_no,
+                bbox=provs[i].bbox,
+                charspan=(
+                    int(provs[i].charspan[0]) - base,
+                    int(provs[i].charspan[1]) - base,
+                ),
+            )
+            for i in range(first, last + 1)
+        ]
+
+    first_first, first_last = groups[0]
+    parent = _parent(item, work)
+    item.text = group_text(first_first, first_last)
+    item.orig = item.text
+    item.prov = rebased(first_first, first_last)
+    created = 0
+    after = item
+    for first, last in groups[1:]:
+        new_provs = rebased(first, last)
+        new = work.add_text(
+            label=item.label,
+            text=group_text(first, last),
+            orig=group_text(first, last),
+            prov=new_provs[0],
+            parent=parent,
+        )
+        for extra in new_provs[1:]:
+            new.prov.append(extra)
+        # reading position: after the item (or the previous new part), past the
+        # siblings Docling skipped that come before this part on the page(s)
+        if parent is not None:
+            children = parent.children
+            # add_text appended the new reference: take it off the end in O(1)
+            # (list.remove would compare pydantic models one by one - F-10)
+            if children and children[-1].cref == new.self_ref:
+                ref = children.pop()
+            else:
+                k = next(k for k, c in enumerate(children) if c.cref == new.self_ref)
+                ref = children.pop(k)
+            index = next(
+                (k for k, c in enumerate(children) if c.cref == after.self_ref),
+                len(children) - 1,
+            )
+            own = _reading_key(new_provs[0], geo)
+            while index + 1 < len(children):
+                nxt = children[index + 1].resolve(work)
+                nxt_provs = _provs(nxt)
+                if not nxt_provs or _reading_key(nxt_provs[0], geo) >= own:
+                    break
+                index += 1
+            children.insert(index + 1, ref)
+        after = new
+        created += 1
+    return created
 
 
 # --------------------------------------------------------------------------- #
@@ -984,8 +1560,17 @@ def _join_refusal(
 # --------------------------------------------------------------------------- #
 
 
-def normalize_document(doc: Any, *, include_text: bool = False) -> NormalizationResult:
-    """Normalize a COPY of ``doc``; ``doc`` itself is never modified."""
+def normalize_document(
+    doc: Any,
+    *,
+    include_text: bool = False,
+    evidence: dict[tuple[int, tuple[float, ...]], str] | None = None,
+) -> NormalizationResult:
+    """Normalize a COPY of ``doc``; ``doc`` itself is never modified.
+
+    ``evidence``: the element texts before Docling's merge (``source_evidence``
+    of the conversion result), used only to restore a hyphen Docling removed.
+    """
     budget = _Budget()
     _check_limits(doc)
     from docling_core.types.doc.document import ContentLayer, ListGroup
@@ -996,9 +1581,7 @@ def normalize_document(doc: Any, *, include_text: bool = False) -> Normalization
     ops: list[Operation] = []
     warnings: list[dict[str, Any]] = []
     counts: Counter[str] = Counter()
-    items = _body_items(work)
-    geo = _Geometry(work, items)
-    budget.check("geometry")
+    sizes_only = _Geometry(work, [])
 
     def record(
         op: str, reason: str, targets: Iterable[Any], before: str = "", after: str = ""
@@ -1011,7 +1594,7 @@ def normalize_document(doc: Any, *, include_text: bool = False) -> Normalization
                 reason=reason,
                 pages=sorted({int(p.page_no) for p in provs}),
                 refs=[str(getattr(i, "self_ref", "")) for i in targets],
-                bboxes=[b for b in (geo.bbox_list(p) for p in provs) if b],
+                bboxes=[b for b in (sizes_only.bbox_list(p) for p in provs) if b],
                 chars_before=len(before),
                 chars_after=len(after),
                 sha256=_sha256(before),
@@ -1021,23 +1604,63 @@ def normalize_document(doc: Any, *, include_text: bool = False) -> Normalization
         )
         counts[op] += 1
 
-    # 1-2. Page artifacts the layout model left in the body.
-    page_numbers, pn_warnings = _find_page_numbers(items, work, geo, T, budget)
-    warnings.extend(pn_warnings)
-    labelled, repeat_warnings = _find_repeated(
-        items, work, geo, T, {id(i) for i in page_numbers}
+    # 0. Docling's own merges the join rules refuse are split back (R2-01).
+    _undo_upstream_merges(work, T, evidence, record, warnings, budget)
+    budget.check("upstream merges")
+
+    # 1. What the layout model labelled header / footer: artifacts leave the
+    #    body, text that appears once is business content and joins it (R2-11).
+    hf_artifacts, hf_content = _classify_header_footer(
+        work, _Geometry(work, _body_items(work)), T
     )
-    warnings.extend(repeat_warnings)
+    brought: list[Any] = []
+    for item in hf_content:
+        if item.content_layer != ContentLayer.BODY:
+            item.content_layer = ContentLayer.BODY
+            record(
+                "furniture_text_kept",
+                "labelled PAGE_HEADER / PAGE_FOOTER by the layout model but it appears "
+                "once: business content, kept in the text",
+                [item],
+                item.text,
+                item.text,
+            )
+            brought.append(item)
+    if brought:
+        warnings.append(
+            {
+                "code": "furniture_text_kept",
+                "count": len(brought),
+                "pages": sorted({int(_provs(i)[0].page_no) for i in brought})[:50],
+                "reason": "text the layout model labelled header / footer appears only once "
+                "(a document number, the issuer, a footnote?): kept in the text; the "
+                "standard export leaves it out",
+            }
+        )
+
+    items = _body_items(work)
+    geo = _Geometry(work, items)
+    budget.check("geometry")
+
+    # 2. Page artifacts the layout model left in the body.
+    page_numbers, pn_warnings = _find_page_numbers(
+        items, work, geo, T, budget, _Lines(work, geo)
+    )
+    warnings.extend(pn_warnings)
+    labelled = [i for i in hf_artifacts if i.content_layer == ContentLayer.BODY]
+    warnings.extend(
+        _repeated_text_warnings(items, work, geo, T, {id(i) for i in page_numbers})
+    )
     artifacts = {id(i) for i in page_numbers} | {id(i) for i in labelled}
     budget.check("artifacts")
 
     # 3. Pictures.
     drop_pictures, kept_pictures = _classify_pictures(items, work, geo, T)
-    silent = {id(p) for p, why in drop_pictures if why.startswith("small")}
+    silent = {id(p) for p, _ in drop_pictures}
     budget.check("pictures")
 
-    # 4. Cross-page joins (skipping only removed artifacts / silently dropped pictures).
-    ctx = _JoinContext(items, work, geo, T)
+    # 4. Cross-page joins (skipping only removed artifacts / dropped pictures).
+    ctx = _JoinContext(items, work, geo, T, removed=artifacts | silent)
     position = {id(i): n for n, i in enumerate(items)}
     real = [i for i in items if id(i) not in artifacts and id(i) not in silent]
     joined: list[Any] = []
@@ -1047,15 +1670,26 @@ def normalize_document(doc: Any, *, include_text: bool = False) -> Normalization
         if len(kept_real) % 2000 == 0:
             budget.check("joins")
         a = kept_real[-1] if kept_real else None
-        if a is None:
+        if a is None or not _provs(a) or not _provs(b):
             kept_real.append(b)
             continue
-        between = [
-            x
-            for x in items[position[id(a)] + 1 : position[id(b)]]
-            if id(x) not in joined_ids
-        ]
-        reason, near_miss = _join_refusal(a, b, between, ctx)
+        reason, near_miss = _pair_refusal(
+            _part(a, _provs(a)[-1], getattr(a, "text", "") or "", geo, work, T),
+            _part(b, _provs(b)[0], getattr(b, "text", "") or "", geo, work, T),
+            ctx,
+        )
+        if reason is None:
+            between = [
+                x
+                for x in items[position[id(a)] + 1 : position[id(b)]]
+                if id(x) not in joined_ids
+            ]
+            pages_ab = {int(_provs(a)[-1].page_no), int(_provs(b)[0].page_no)}
+            if any(int(p.page_no) not in pages_ab for x in between for p in _provs(x)):
+                reason, near_miss = (
+                    "something on another page lies between the two parts",
+                    True,
+                )
         if reason is not None:
             if near_miss:
                 code = (
@@ -1075,7 +1709,15 @@ def normalize_document(doc: Any, *, include_text: bool = False) -> Normalization
             kept_real.append(b)
             continue
         before = f"{a.text}\n\n{b.text}"
-        a.text = f"{(a.text or '').rstrip()} {(b.text or '').lstrip()}"
+        left = (a.text or "").rstrip()
+        base = len(left) + 1
+        first_b = int(_provs(b)[0].charspan[0])
+        for p in _provs(b):  # Docling's span arithmetic: the next run reads it back
+            p.charspan = (
+                base + int(p.charspan[0]) - first_b,
+                base + int(p.charspan[1]) - first_b,
+            )
+        a.text = f"{left} {(b.text or '').lstrip()}"
         a.orig = f"{(a.orig or '').rstrip()} {(b.orig or '').lstrip()}"
         a.prov.extend(b.prov)
         record(
@@ -1089,17 +1731,20 @@ def normalize_document(doc: Any, *, include_text: bool = False) -> Normalization
         joined_ids.add(id(b))
 
     for item in page_numbers:
-        why = (
-            "labelled PAGE_HEADER / PAGE_FOOTER by the layout model"
-            if _layout_says_furniture(item, T)
-            else "page-number shape, page edge, same offset on most pages, one position"
+        record(
+            "page_number_to_furniture",
+            "page-number shape, alone on its line, page edge, same offset / place on "
+            "most pages",
+            [item],
+            item.text,
+            "",
         )
-        record("page_number_to_furniture", why, [item], item.text, "")
         item.content_layer = ContentLayer.FURNITURE
     for item in labelled:
         record(
             "running_header_footer_to_furniture",
-            "labelled PAGE_HEADER / PAGE_FOOTER by the layout model",
+            "labelled PAGE_HEADER / PAGE_FOOTER by the layout model and repeated (or a "
+            "page number)",
             [item],
             item.text,
             "",
@@ -1113,16 +1758,24 @@ def normalize_document(doc: Any, *, include_text: bool = False) -> Normalization
 
     for pic, why in drop_pictures:
         record("image_placeholder_dropped", why, [pic])
-    for pic, ratio in kept_pictures:
+    for pic, ratio, texts in kept_pictures:
         provs = _provs(pic)
         warnings.append(
             {
-                "code": "picture_without_text",
+                "code": "picture_without_text"
+                if not texts
+                else "picture_text_unverified",
                 "pages": sorted({int(p.page_no) for p in provs}),
                 "bbox": geo.bbox_list(provs[0]) if provs else [],
                 "area_ratio": round(ratio, 4) if ratio is not None else None,
-                "reason": "picture with no OCR text: it may contain a table, a diagram or a "
-                "chart that was not extracted; the placeholder is kept",
+                "reason": (
+                    "picture with no OCR text: it may contain a table, a diagram or a "
+                    "chart that was not extracted; the placeholder is kept"
+                    if not texts
+                    else f"{texts} OCR text block(s) were found inside the picture and are "
+                    "kept, but nothing shows the whole picture was read: the placeholder "
+                    "is kept"
+                ),
             }
         )
         counts["image_placeholder_kept"] += 1
@@ -1161,7 +1814,9 @@ def normalize_document(doc: Any, *, include_text: bool = False) -> Normalization
 
 
 def normalize_or_fallback(
-    doc: Any, standard: str | None = None
+    doc: Any,
+    standard: str | None = None,
+    evidence: dict[tuple[int, tuple[float, ...]], str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Legal content + metadata, or the standard export when normalization fails.
 
@@ -1182,7 +1837,7 @@ def normalize_or_fallback(
         }
 
     try:
-        result = normalize_document(doc)
+        result = normalize_document(doc, evidence=evidence)
     except Exception as e:  # noqa: BLE001 - any failure -> the standard export
         logger.warning(
             f"Legal document normalization {NORMALIZER_VERSION} failed "
@@ -1211,6 +1866,8 @@ def normalize_or_fallback(
         f"placeholders_kept={c.get('image_placeholder_kept', 0)} "
         f"page_numbers={c.get('page_number_to_furniture', 0)} "
         f"headers_footers={c.get('running_header_footer_to_furniture', 0)} "
+        f"furniture_text_kept={c.get('furniture_text_kept', 0)} "
+        f"upstream_merges_undone={c.get('upstream_merge_undone', 0)} "
         f"joins={c.get('join_across_pages', 0)} "
         f"warnings={len(result.warnings)} in {result.elapsed_ms:.1f} ms"
     )

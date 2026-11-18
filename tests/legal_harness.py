@@ -23,6 +23,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import tempfile
+import weakref
 from pathlib import Path
 from typing import Any
 
@@ -188,7 +189,23 @@ def build_document(fixture: dict[str, Any]) -> Any:
                     )
                 )
     conv.assembled = AssembledUnit(elements=elements, body=elements, headers=[])
-    return ReadingOrderModel(ReadingOrderOptions())(conv)
+    doc = ReadingOrderModel(ReadingOrderOptions())(conv)
+    from open_notebook.ocr import legal_normalizer
+
+    _EVIDENCE[id(doc)] = (weakref.ref(doc), legal_normalizer.source_evidence(conv))
+    return doc
+
+
+# Docling's assembled elements of each built document (the element texts BEFORE
+# its own merge), as open_notebook/ocr/docling_extract.py passes them in
+# production; kept as the small evidence dict, not the conversion itself.
+_EVIDENCE: dict[int, Any] = {}
+
+
+def evidence(doc: Any) -> Any:
+    """``legal_normalizer.source_evidence`` of the conversion that built ``doc``."""
+    ref, found = _EVIDENCE.get(id(doc), (None, None))
+    return found if ref is not None and ref() is doc else None
 
 
 # Display rendering and metrics live with the diagnostic scripts so that the

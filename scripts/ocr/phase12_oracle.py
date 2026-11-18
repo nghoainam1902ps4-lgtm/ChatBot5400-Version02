@@ -397,27 +397,50 @@ def _identity_verdict(
                 used_line[li] = True
                 if changes_marker:
                     marker_lost.append(lines[li])
-    # When several body entries share a text and fewer lines show it, the lines
-    # go to the OPTIONAL entries first (artifact, furniture, decoration): the
-    # required entries left without a line are the deleted ones (worst case).
-    # Among entries of equal standing the document order is kept.
-    shown_entries = set(entry_line)
+    # When several body entries share a text and fewer lines show it (the
+    # serializer showed only some of them - e.g. identical picture placeholders),
+    # each such line is attributed WITHIN the window of its nearest lines of
+    # other texts: the serializer emits body items in document order, so a line
+    # between the lines of entries i and j comes from an entry between i and j.
+    # Inside a window that still holds several candidates, the OPTIONAL entries
+    # (artifact, furniture, decoration) take the lines first: the required
+    # entries left without a line are the deleted ones (worst case).
     by_key: dict[str, list[int]] = defaultdict(list)
     for ei, e in enumerate(view.entries):
         by_key[e["keys"][0]].append(ei)
-    for _key, eis in by_key.items():
-        hidden = [ei for ei in eis if ei not in shown_entries]
-        if not hidden or len(hidden) == len(eis):
-            continue
-        n_shown = len(eis) - len(hidden)
-        lines_for_key = sorted(entry_line[ei] for ei in eis if ei in entry_line)
-        preferred = sorted(
-            eis, key=lambda ei: (required_first(view.entries[ei]) == 0, ei)
-        )[:n_shown]
-        for ei in eis:
-            entry_line.pop(ei, None)
-        for ei, li in zip(sorted(preferred), lines_for_key):
-            entry_line[ei] = li
+    ambiguous_keys = {
+        key
+        for key, eis in by_key.items()
+        if 0 < sum(1 for ei in eis if ei in entry_line) < len(eis)
+    }
+    if ambiguous_keys:
+        fixed = {
+            li: ei
+            for ei, li in entry_line.items()
+            if view.entries[ei]["keys"][0] not in ambiguous_keys
+        }
+        fixed_lines = sorted(fixed)
+        for key in sorted(ambiguous_keys):
+            eis = by_key[key]
+            lines_for_key = sorted(entry_line[ei] for ei in eis if ei in entry_line)
+            for ei in eis:
+                entry_line.pop(ei, None)
+            taken: set[int] = set()
+            for li in lines_for_key:
+                k = bisect.bisect_left(fixed_lines, li)
+                lo = fixed[fixed_lines[k - 1]] if k > 0 else -1
+                hi = (
+                    fixed[fixed_lines[k]] if k < len(fixed_lines) else len(view.entries)
+                )
+                window = [ei for ei in eis if lo < ei < hi and ei not in taken]
+                pool = window or [ei for ei in eis if ei not in taken]
+                if not pool:
+                    continue
+                pick = sorted(
+                    pool, key=lambda ei: (required_first(view.entries[ei]) == 0, ei)
+                )[0]
+                taken.add(pick)
+                entry_line[pick] = li
     shown_entries = set(entry_line)
 
     # 3. units shown, in display order

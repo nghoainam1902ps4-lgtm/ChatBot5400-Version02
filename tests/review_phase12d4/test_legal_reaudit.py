@@ -103,23 +103,23 @@ UPSTREAM = {
 }  # fmt: skip
 
 
+# was: test_control_upstream_merge_exists_in_standard_and_legal (PHASE12D4 evidence:
+# it asserted that Legal inherited the merge silently). Phase 12D5 regression test:
+# the merge is still Docling's (Standard / v1.2.0 unchanged); Legal splits it back at
+# the recorded char spans and says so.
 @pytest.mark.parametrize("case", sorted(UPSTREAM))
-def test_control_upstream_merge_exists_in_standard_and_legal(case):
-    """Evidence: the merged line is produced by Docling (Standard shows it too),
-    the Legal output is identical, and no warning is reported."""
+def test_regression_upstream_merge_is_undone_in_legal(case):
     pages, (first, second) = UPSTREAM[case]
     standard, legal, result = outputs(pages)
     merged = f"{first} {second}"
     assert any(merged in line for line in standard)  # upstream, also in v1.2.0
-    assert any(merged in line for line in legal)  # inherited by Legal
-    assert result.warnings == []  # ... silently
+    assert not any(merged in line for line in legal)
+    assert first in legal and second in legal  # each part exactly as Docling had it
+    assert "upstream_merge_undone" in {w["code"] for w in result.warnings}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-01: Legal inherits Docling's cross-page / cross-column merge of "
-    "unrelated TEXT items without undoing it or reporting it",
-)
+# Phase 12D5: R2-01 fixed for space joins (char spans) and, with the element texts
+# as evidence, for removed hyphens; xfail removed.
 @pytest.mark.parametrize("case", sorted(UPSTREAM))
 def test_r2_01_upstream_merge_of_unrelated_items_is_undone_or_reported(case):
     """EXPECTED: a sentence that exists nowhere in the source is either split back
@@ -132,11 +132,8 @@ def test_r2_01_upstream_merge_of_unrelated_items_is_undone_or_reported(case):
     assert (not merged) or reported
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-01: upstream de-hyphenation / space insertion changes the text of a "
-    "word or of a document number; Legal keeps the changed text without a warning",
-)
+# Phase 12D5: R2-01 - without evidence the change is reported (upstream_dehyphenation /
+# upstream_merge_undone); xfail removed.
 @pytest.mark.parametrize(
     "first, second, exact",
     [
@@ -269,12 +266,7 @@ def test_control_list_marker_escapes_are_gone_from_the_stored_text():
     ]  # fmt: skip
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D2 F-17 PARTIALLY FIXED: underscores are still stored as '\\_' and "
-    "'<', '>', '&' as HTML entities, so product codes, e-mail addresses and URLs in "
-    "full_text / chunks / embeddings / LLM context differ from the document (same in Standard)",
-)
+# Phase 12D5: F-17 fixed (the Legal serializer stores the printed text); xfail removed.
 def test_f17_stored_legal_text_equals_the_printed_text():
     _, legal = _stored(SENSITIVE)
     assert [x for x in legal.split("\n") if x.strip()] == SENSITIVE
@@ -306,12 +298,8 @@ def test_verified_html_in_ocr_text_is_inert():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-02: '*' and '`' in OCR text are not escaped for display: "
-    "'5*3% (tối đa 15*2)' is rendered as '53% (tối đa 152)' (emphasis), '(*) … (*)' loses "
-    "both asterisks. The stored text is right; the page and anything copied from it are not",
-)
+# Phase 12D5: R2-02 fixed (legal-display escapes every Markdown-significant character
+# at render time); xfail removed.
 @pytest.mark.parametrize(
     "line",
     [
@@ -368,15 +356,15 @@ def test_verified_standard_asset_is_stored_without_the_key_and_reprocessing_repl
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-03 (P4): a non-mapping value in the FLEXIBLE asset.extraction field "
-    "makes the domain model refuse the whole Source; only the API helper tolerates it",
-)
+# Phase 12D5: R2-03 fixed (field_validator on Asset.extraction); xfail removed.
 def test_r2_03_domain_asset_tolerates_a_non_mapping_record():
     from open_notebook.domain.notebook import Asset
 
     assert Asset(file_path="/x.pdf", extraction="legacy-string").file_path == "/x.pdf"
+    assert Asset(file_path="/x.pdf", extraction=["x"]).extraction is None
+    assert "extraction" not in Asset(file_path="/x.pdf", extraction=7).model_dump()
+    kept = Asset(file_path="/x.pdf", extraction={"mode": "legal", "status": "applied"})
+    assert kept.extraction == {"mode": "legal", "status": "applied"}
 
 
 # --------------------------------------------------------------------------- #
@@ -401,23 +389,21 @@ LETTERHEAD = [
 ]
 
 
-def test_control_r2_11_furniture_labelled_content_is_absent_in_both_modes():
+# was: test_control_r2_11_furniture_labelled_content_is_absent_in_both_modes (PHASE12D4
+# evidence: it asserted the content was missing from Legal too, silently). Phase 12D5
+# regression test: Standard (v1.2.0) still leaves it out; Legal keeps it and says so.
+def test_regression_r2_11_furniture_labelled_content_is_kept_in_legal():
     standard, legal, result = outputs(LETTERHEAD)
     for text in (
         "Số: 1234/QĐ-NHM-KHCN",
         "NGÂN HÀNG NÔNG NGHIỆP MẪU",
         "(1) Mức phí chưa bao gồm thuế giá trị gia tăng 10%.",
     ):
-        assert text not in standard and text not in legal
-    assert result.warnings == []
+        assert text not in standard and text in legal
+    assert "furniture_text_kept" in {w["code"] for w in result.warnings}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-11: text that appears ONCE and that the layout model put in the furniture "
-    "layer (document number, issuer on page 1, a footnote labelled as footer) is missing from "
-    "the Legal text and nothing reports it (Standard / v1.2.0 behave the same)",
-)
+# Phase 12D5: R2-11 fixed (header / footer text that appears once is kept); xfail removed.
 def test_r2_11_unique_furniture_text_is_kept_or_reported():
     """EXPECTED: non-repeating furniture text is kept, or at least a warning names
     the page, so that an operator can see the document number never reached RAG."""

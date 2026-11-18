@@ -377,7 +377,12 @@ def convert_file(
         # normalizer; any failure falls back to the standard export below.
         from open_notebook.ocr import legal_normalizer
 
-        output, normalization = legal_normalizer.normalize_or_fallback(doc)
+        # The element texts before Docling's own merge (R2-01): evidence that
+        # lets the normalizer put back a hyphen Docling removed, nothing else.
+        evidence = legal_normalizer.source_evidence(result)
+        output, normalization = legal_normalizer.normalize_or_fallback(
+            doc, evidence=evidence
+        )
     else:
         output = doc.export_to_markdown()
     if ocr.legal_normalization and not normalization:
