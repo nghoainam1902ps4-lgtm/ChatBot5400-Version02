@@ -72,13 +72,29 @@ def load_normalizer(path: str | None) -> Any:
     return module
 
 
-def measure(fx: dict[str, Any], markdown: str, legal: bool) -> dict[str, Any]:
+def measure(
+    fx: dict[str, Any],
+    markdown: str,
+    legal: bool,
+    document: Any = None,
+    traversed: bool | None = None,
+) -> dict[str, Any]:
     """One output against the fixture's DECLARED ground truth (never against
-    another output of the system: docs/review/PHASE12D3_QUALITY_BENCHMARK.md)."""
+    another output of the system: docs/review/PHASE12D3_QUALITY_BENCHMARK.md).
+
+    Phase 12D5 (R2-14): with ``document`` (what ``markdown`` was serialized
+    from) every displayed line is attributed to the declared element that
+    produced it by provenance (scripts/ocr/phase12_oracle.py)."""
     shown = M.legal_display_markdown(markdown) if legal else markdown
     lines = M.display_lines(shown)
     text = " ".join(lines)
-    p = M.preservation(fx, lines, markdown)
+    p = M.preservation(
+        fx,
+        lines,
+        markdown,
+        document=document,
+        pictures_traversed=legal if traversed is None else traversed,
+    )
     hit, total = M.markers_displayed(fx, lines)
     renum, ordered = M.renumbered_list_items(shown)
     return {
@@ -92,6 +108,13 @@ def measure(fx: dict[str, Any], markdown: str, legal: bool) -> dict[str, Any]:
         "false_insertion_tokens": p["false_insertion_tokens"],
         "false_inserted": p["false_insertion_lines"][:4],
         "false_reordering": p["false_reordering"],
+        "altered_units": p["altered_units"],
+        "altered": [a["why"] for a in p["altered"]][:4],
+        "placeholders_required": p["placeholders_required"],
+        "placeholders_lost": p["placeholders_lost"],
+        "furniture_shown": [p["furniture_shown"], p["furniture_declared"]],
+        "marker_changed": p["marker_changed"],
+        "attribution": p["attribution"],
         "critical_fields": [
             sum(1 for c in p["critical_fields"] if c["ok"]),
             len(p["critical_fields"]),
@@ -131,9 +154,9 @@ def structure(fx: dict[str, Any], repeats: int, before: Any = None) -> dict[str,
     tracemalloc.stop()
 
     out: dict[str, Any] = {"name": fx["name"], "pages": len(fx["pages"])}
-    out["standard"] = measure(fx, standard, legal=False)
+    out["standard"] = measure(fx, standard, legal=False, document=doc)
     out["standard"]["ms_median"] = round(statistics.median(t_std), 3)
-    out["legal"] = measure(fx, res.content, legal=True)
+    out["legal"] = measure(fx, res.content, legal=True, document=res.document)
     out["legal"]["ms_median"] = round(statistics.median(t_leg), 3)
     out["legal"]["peak_kib"] = round(peak / 1024, 1)
     out["legal"]["counts"] = res.counts
@@ -144,9 +167,16 @@ def structure(fx: dict[str, Any], repeats: int, before: Any = None) -> dict[str,
         )
     if before is not None:
         # The frozen implementation mutates its input: give it its own document.
-        old = before.normalize_document(H.build_document(fx))
+        old_doc = H.build_document(fx)
+        old = before.normalize_document(old_doc)
         # v1.0.0 stored escaped list markers and rendered the text as it was.
-        out["legal_before"] = measure(fx, old.content, legal=False)
+        out["legal_before"] = measure(
+            fx,
+            old.content,
+            legal=False,
+            document=getattr(old, "document", None) or old_doc,
+            traversed=True,
+        )
         out["legal_before"]["counts"] = old.counts
     return out
 
@@ -208,11 +238,22 @@ SUMS = (
     "false_insertion",
     "false_insertion_tokens",
     "false_reordering",
+    "altered_units",
+    "placeholders_required",
+    "placeholders_lost",
+    "marker_changed",
     "placeholders",
     "numeric_only_lines",
     "table_rows",
 )
-PAIRS = ("critical_fields", "markers", "artifacts_removed", "joins", "renumbered_items")
+PAIRS = (
+    "critical_fields",
+    "markers",
+    "artifacts_removed",
+    "joins",
+    "renumbered_items",
+    "furniture_shown",
+)
 
 
 def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -228,6 +269,17 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
             1 for x in r if x["false_deletion_units"]
         )
         a["documents_with_false_merge"] = sum(1 for x in r if x["false_merge"])
+        a["documents_with_content_loss"] = sum(
+            1
+            for x in r
+            if x["false_deletion_units"]
+            or x["false_merge"]
+            or x["false_insertion"]
+            or x["placeholders_lost"]
+            or x["altered_units"]
+            or x["false_reordering"]
+            or x["marker_changed"]
+        )
         a["tables_ok"] = all(x["tables_ok"] for x in r)
         a["cer_mean"] = round(statistics.mean(x["cer"] for x in r), 4)
         a["wer_mean"] = round(statistics.mean(x["wer"] for x in r), 4)
@@ -289,9 +341,11 @@ def main(argv: list[str] | None = None) -> int:
     from importlib.metadata import version
 
     result = {
-        "schema": "chatbot5400-phase12-benchmark/2",
-        "oracle": "declared ground truth of the fixtures (tests/fixtures/legal); "
-        "the Phase 12 numbers of schema /1 used a circular oracle and are superseded",
+        "schema": "chatbot5400-phase12-benchmark/3",
+        "oracle": "declared ground truth of the fixtures (tests/fixtures/legal), units "
+        "attributed by source identity (page + bounding box -> DocItem, "
+        "scripts/ocr/phase12_oracle.py, Phase 12D5 R2-14); schema /2 matched by text "
+        "only and is superseded",
         "fixtures": len(rows),
         "normalizer_version": load_normalizer(None).NORMALIZER_VERSION,
         "before_normalizer_version": getattr(before, "NORMALIZER_VERSION", None),

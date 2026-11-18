@@ -296,11 +296,8 @@ def test_control_oracle_sees_ordinary_damage():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-14 (oracle): units are matched by TEXT only, so a declared artifact with "
-    "the same text (page number '2') stands in for a deleted required unit (clause number '2')",
-)
+# Phase 12D5: R2-14 fixed (scripts/ocr/phase12_oracle.py, worst-case attribution of
+# aliased lines without a document, identity attribution with one); xfail removed.
 def test_r2_14_oracle_sees_a_required_number_deleted_while_its_twin_artifact_stays():
     damaged = [
         "1", "Điều 4. Quyền của khách hàng.",
@@ -310,11 +307,7 @@ def test_r2_14_oracle_sees_a_required_number_deleted_while_its_twin_artifact_sta
     assert H.preservation(ALIAS, damaged)["false_deletion"] == 2
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PHASE12D4 R2-14 (oracle): a required line moved across artifact / placeholder lines "
-    "only, or a removed artifact re-inserted elsewhere, changes no counter",
-)
+# Phase 12D5: R2-14 fixed (artifacts take part in the order check); xfail removed.
 def test_r2_14_oracle_sees_an_artifact_reinserted_in_the_middle_of_a_page():
     moved = [
         "Điều 4. Quyền của khách hàng.",

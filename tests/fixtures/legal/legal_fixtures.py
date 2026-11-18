@@ -28,8 +28,15 @@ fixture and before any implementation runs:
                     anything else is a false deletion.
   ``gt="join"``     the continuation of the previous required element: MAY be
                     joined to it with one space. Any other merge is a false merge.
-  ``gt="furniture"``labelled PAGE_HEADER / PAGE_FOOTER by the layout model:
-                    Docling itself keeps it out of the body.
+  ``gt="furniture"``labelled PAGE_HEADER / PAGE_FOOTER by the layout model
+                    AND not business content (page number, running title):
+                    may be absent. Business content the layout model labelled
+                    header / footer (a document number, the issuer, a footnote)
+                    is REQUIRED like any other text (Phase 12D5, R2-11).
+  pictures          (Phase 12D5, F-06) the ``<!-- image -->`` placeholder is a
+                    REQUIRED trace by default: the picture may hold content
+                    nobody extracted. ``gt="decoration"`` (signature, stamp,
+                    logo) may lose it. OCR text inside a picture is REQUIRED.
 
 ``expect_removed`` / ``expect_joined`` list what MUST happen where the evidence
 is sufficient (so that conservative rules do not silently disable the feature).
@@ -68,11 +75,13 @@ def footer(n: int | str) -> dict[str, Any]:
 
 
 def signature(y: float = 700) -> dict[str, Any]:
-    return E("picture", x=360, y=y, w=120, h=45)
+    """A signature image: decoration, its placeholder may be dropped (Phase 12D5)."""
+    return E("picture", x=360, y=y, w=120, h=45, gt="decoration")
 
 
 def stamp(y: float = 690) -> dict[str, Any]:
-    return E("picture", x=320, y=y, w=80, h=80)
+    """A seal / stamp image: decoration, its placeholder may be dropped (Phase 12D5)."""
+    return E("picture", x=320, y=y, w=80, h=80, gt="decoration")
 
 
 QD_HEADER = [
@@ -529,6 +538,9 @@ FIXTURES: list[dict[str, Any]] = [
             "THÔNG BÁO Cột trái đoạn một nói về thủ tục mở tài khoản. Cột trái đoạn hai nói về hồ sơ cần chuẩn bị. "
             "Cột phải đoạn một nói về thời gian xử lý. Cột phải đoạn hai nói về phí dịch vụ."
         ),
+        # Phase 12D5: declared exception, see scripts/ocr/phase12_oracle.py
+        "upstream_reordering": "Docling's ReadingOrderModel reads these two synthetic columns "
+        "row by row (the standard export too): verify on real scans, Windows Local W-RC-10",
         "order": [
             "THÔNG BÁO",
             "Cột trái đoạn một",
@@ -620,6 +632,7 @@ FIXTURES: list[dict[str, Any]] = [
                     y=600,
                     w=90,
                     h=90,
+                    gt="decoration",  # the stamp; its OCR text below is REQUIRED
                     children=[E("text", "NGÂN HÀNG MẪU", x=390, y=640, w=70, h=10)],
                 ),
             ]
@@ -1309,6 +1322,834 @@ FIXTURES += [
             ["Hình 1. Sơ đồ tổ chức chi nhánh", 1],
         ],
     },
+]
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12D5 (12D5A, findings R2-14 / T-03): the counter-examples of the Phase
+# 12D4 re-review, the ORIGINAL form of fixtures that Phase 12D3 had reworded so
+# that Docling's own merge never triggered, and position / label / Unicode-tail
+# variants of every threshold. The ground truth below was declared BEFORE the
+# Phase 12D5 normalizer changes and is not adjusted to any implementation: the
+# first benchmark of it ran on the unchanged 8d0c438 code
+# (docs/review/phase12d5/benchmark_8d0c438.json).
+# --------------------------------------------------------------------------- #
+
+FILLER = "của trang này trình bày nội dung nghiệp vụ thông thường."
+
+
+def _fill(y: float, n: int = 1, tag: str = "") -> list[dict[str, Any]]:
+    """``n`` finished body paragraphs (two lines each) from ``y`` down."""
+    return [
+        E("text", f"Đoạn văn số {i}{tag} {FILLER}", y=y + 40 * i, h=28)
+        for i in range(n)
+    ]
+
+
+def _truth(pages: list[list[dict[str, Any]]]) -> str:
+    """The clean text: every required element, in declared order."""
+    out = []
+    for page in pages:
+        for el in page:
+            if el.get("gt") in ("artifact", "furniture", "decoration"):
+                continue
+            if el["label"] == "picture":
+                out += [c["text"] for c in el.get("children", [])]
+            elif el["label"] == "table":
+                out += [" ".join(row) for row in el["rows"]]
+            elif el.get("text"):
+                out.append(el["text"])
+    return " ".join(out)
+
+
+def _d5(
+    name: str, description: str, pages: list[list[dict[str, Any]]], **extra: Any
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "description": description,
+        "pages": pages,
+        "ground_truth": _truth(pages),
+        "d5": True,
+        **extra,
+    }
+
+
+def _pn(
+    n: int, x: float = 290, top: bool = False, label: str = "text"
+) -> dict[str, Any]:
+    """A real page number: TEXT-labelled -> artifact, PAGE_FOOTER/HEADER -> furniture."""
+    gt = "artifact" if label == "text" else "furniture"
+    return E(label, str(n), x=x, y=30 if top else 800, w=16, h=12, gt=gt)
+
+
+_RIGHTS = [
+    "Khách hàng có quyền từ chối các yêu cầu trái với thỏa thuận đã ký kết với ngân hàng.",
+    "Khách hàng có quyền khiếu nại theo quy định của pháp luật và quy định nội bộ.",
+    "Khách hàng có quyền được bảo mật thông tin theo quy định của pháp luật.",
+]
+_RIGHTS_TAIL = "Việc thực hiện quyền này tuân theo hợp đồng và quy định của pháp luật có liên quan."
+
+
+def _clause_numbers(x: float) -> list[list[dict[str, Any]]]:
+    """Clause numbers 2, 3, 4 that OCR split off their paragraph, at the top of pages 2-4."""
+    pages = [[E("text", "Điều 4. Quyền của khách hàng.", y=120, h=28)]]
+    for i, text in enumerate(_RIGHTS):
+        pages.append(
+            [
+                E("text", str(i + 2), x=x, y=62, w=10, h=12),
+                E("text", text, y=62, h=28),
+                E("text", _RIGHTS_TAIL, y=110, h=28),
+            ]
+        )
+    pages.append([E("text", "Điều 5. Nghĩa vụ của khách hàng.", y=100, h=28)])
+    return pages
+
+
+_FOOTNOTE = (
+    "Mức lãi suất nêu trên áp dụng đối với khoản vay có tài sản bảo đảm theo Quyết định số "
+    "123/2024/QĐ-NHM ngày 01/7/2024"
+)
+_CUT = "Mức cho vay tối đa được xác định căn cứ vào nhu cầu vay vốn và khả năng hoàn trả nợ của"
+_CONTINUATION = "khách hàng theo quy định tại Điều 5 Quy chế này."
+_POINT_B = "b) Tổ chức tín dụng phi ngân hàng được Ngân hàng Nhà nước cấp phép thành lập và hoạt động"
+_LEAD = "2. Hồ sơ vay vốn bao gồm các giấy tờ"
+_BODY = (
+    "Khách hàng có trách nhiệm hoàn trả đầy đủ nợ gốc và lãi tiền vay theo đúng thời hạn đã "
+    "thỏa thuận trong hợp đồng tín dụng đã ký"
+)
+
+
+def _footnote_case(mark: str) -> list[list[dict[str, Any]]]:
+    return [
+        _fill(100, 2)
+        + [E("text", _CUT, y=600, h=28), E("text", mark + _FOOTNOTE, y=735, h=24)],
+        [E("text", _CONTINUATION, y=62, h=14)] + _fill(100, 2, "b"),
+    ]
+
+
+def _new_unit_case(label: str, first: str, second: str) -> list[list[dict[str, Any]]]:
+    return [
+        _fill(100, 3) + [E(label, first, y=700, h=28)],
+        [E("text", second, y=62, h=14)] + _fill(100, 2, "b"),
+    ]
+
+
+def _top_line_case(header: str) -> list[list[dict[str, Any]]]:
+    return [
+        _fill(100, 3) + [E("text", _BODY, y=700, h=42)],
+        [
+            E("text", header, y=30, w=250, h=12),
+            E("text", "và các phụ lục kèm theo hợp đồng.", y=62, h=14),
+        ]
+        + _fill(100, 2, "b"),
+        _fill(100, 2, "c"),
+    ]
+
+
+def _cut_paragraph(first_end: str, second: str) -> list[list[dict[str, Any]]]:
+    """A paragraph really cut by the page break: the continuation may be joined."""
+    return [
+        _fill(100, 3)
+        + [
+            E(
+                "text",
+                f"Ngân hàng xem xét hồ sơ và thông báo kết quả cho {first_end}",
+                y=740,
+                h=14,
+            )
+        ],
+        [E("text", second, y=62, h=14, gt="join")] + _fill(100, 2, "b"),
+    ]
+
+
+def _T(
+    label: str,
+    text: str,
+    top: float,
+    left: float = 70.0,
+    right: float = 525.0,
+    height: float = 14.0,
+    **extra: Any,
+) -> dict[str, Any]:
+    return {
+        "label": label,
+        "text": text,
+        "bbox": [left, top, right, top + height],
+        **extra,
+    }
+
+
+def _footer(n: int) -> dict[str, Any]:
+    return _T("page_footer", str(n), 800, 290, 306, 12, gt="furniture")
+
+
+FIXTURES += [
+    # ---- F-02: numbers that are CONTENT and follow the page index --------------
+    _d5(
+        "d5_f02_clause_numbers_first_line_indent",
+        "Số khoản 2, 3, 4 tách rời ở vị trí thụt đầu dòng (x = 98); đoạn văn ở x = 70 (12D4).",
+        _clause_numbers(98),
+        present_lines=["2", "3", "4"],
+    ),
+    _d5(
+        "d5_f02_clause_numbers_hanging_indent",
+        "Biến thể vị trí: số khoản ở lề treo (x = 42, ngoài lề đoạn văn 28 pt).",
+        _clause_numbers(42),
+        present_lines=["2", "3", "4"],
+    ),
+    _d5(
+        "d5_f02_voucher_numbers_beside_label",
+        "Bộ chứng từ một trang: 'Số:' và '0001'…'0004' là hai ô cùng dòng (12D4).",
+        [
+            [
+                E("text", "Số:", x=400, y=40, w=30, h=12),
+                E("text", f"{p:04d}", x=440, y=40, w=40, h=12),
+                E("section_header", "GIẤY NỘP TIỀN", x=230, y=110, w=135, h=18),
+                E(
+                    "text",
+                    f"Người nộp tiền: Khách hàng mẫu {p}. Số tiền: {p}5.000.000 đồng.",
+                    y=160,
+                    h=28,
+                ),
+                E("text", "(Ký, ghi rõ họ tên)", x=330, y=700, w=190, h=12),
+            ]
+            for p in range(1, 5)
+        ],
+        protected=[[f"{p:04d}", 1] for p in range(1, 5)],
+        upstream_reordering="Docling's ReadingOrderModel reads this layout in another order (the standard export too): verify on real scans, Windows Local W-RC-10",
+    ),
+    _d5(
+        "d5_f02_voucher_numbers_alone_top_right",
+        "Biến thể nhãn: số chứng từ '0001'…'0005' đứng một mình ở góc phải trên (số 0 đứng đầu).",
+        [
+            [
+                E("text", f"{p:04d}", x=480, y=30, w=40, h=12),
+                E("section_header", "PHIẾU THU", x=250, y=110, w=95, h=18),
+                E(
+                    "text",
+                    f"Thu của khách hàng mẫu số {p} khoản phí dịch vụ tháng này.",
+                    y=160,
+                    h=28,
+                ),
+            ]
+            for p in range(1, 6)
+        ],
+        protected=[[f"{p:04d}", 1] for p in range(1, 6)],
+        upstream_reordering="Docling's ReadingOrderModel reads this layout in another order (the standard export too): verify on real scans, Windows Local W-RC-10",
+    ),
+    _d5(
+        "d5_f02_reporting_periods_beside_label",
+        "'Kỳ báo cáo:' và '1/2024'…'4/2024' là hai ô cùng dòng (12D4).",
+        [
+            [
+                E("text", "Kỳ báo cáo:", x=360, y=40, w=70, h=12),
+                E("text", f"{p}/2024", x=440, y=40, w=50, h=12),
+                E("section_header", "BÁO CÁO DƯ NỢ", x=230, y=110, w=135, h=18),
+                E("text", f"Dư nợ cuối kỳ là {p}50 tỷ đồng.", y=160, h=28),
+            ]
+            for p in range(1, 5)
+        ],
+        protected=[[f"{p}/2024", 1] for p in range(1, 5)],
+    ),
+    _d5(
+        "d5_f02_reporting_periods_alone_bottom_centre",
+        "Biến thể vị trí: kỳ báo cáo '1/2024'…'5/2024' một mình ở giữa đáy trang (dạng n/yyyy).",
+        [
+            [
+                E("section_header", "BÁO CÁO THÁNG", x=230, y=110, w=135, h=18),
+                E(
+                    "text",
+                    f"Số liệu của tháng {p} năm 2024 được tổng hợp như sau.",
+                    y=160,
+                    h=28,
+                ),
+                E("text", f"{p}/2024", x=280, y=800, w=40, h=12),
+            ]
+            for p in range(1, 6)
+        ],
+        protected=[[f"{p}/2024", 1] for p in range(1, 6)],
+    ),
+    _d5(
+        "d5_f02_numbers_inside_the_body",
+        "Số liệu trong thân trang (giữa trang), tăng theo trang: không bao giờ là số trang.",
+        [
+            [
+                E(
+                    "text",
+                    f"Chỉ tiêu số {p} của báo cáo được tính như sau.",
+                    y=300,
+                    h=14,
+                ),
+                E("text", str(p), x=290, y=330, w=16, h=12),
+                E("text", f"Đoạn giải thích cho chỉ tiêu số {p}.", y=360, h=14),
+            ]
+            for p in range(1, 6)
+        ],
+        present_lines=["1", "2", "3", "4", "5"],
+    ),
+    _d5(
+        "d5_f02_true_page_numbers_bottom_centre",
+        "Đối chứng: số trang thật nhãn TEXT ở giữa đáy 5 trang (được phép bỏ).",
+        [
+            [
+                E(
+                    "text",
+                    f"Nội dung trang {p} của quy định về dịch vụ ngân hàng điện tử.",
+                    y=100,
+                    h=28,
+                ),
+                _pn(p),
+            ]
+            for p in range(1, 6)
+        ],
+    ),
+    _d5(
+        "d5_f02_true_page_numbers_top_right",
+        "Đối chứng: số trang thật nhãn TEXT ở góc phải trên 5 trang (được phép bỏ).",
+        [
+            [
+                _pn(p, x=505, top=True),
+                E(
+                    "text",
+                    f"Nội dung trang {p} của quy định về dịch vụ thẻ.",
+                    y=100,
+                    h=28,
+                ),
+            ]
+            for p in range(1, 6)
+        ],
+    ),
+    _d5(
+        "d5_f02_page_number_and_clause_number_alias",
+        "Số trang '2' (giữa trên) và số khoản '2' (x = 98) cùng chữ trên cùng trang (12D4, oracle R2-14).",
+        [
+            [_pn(1, top=True), E("text", "Điều 4. Quyền của khách hàng.", y=120, h=28)],
+            [
+                _pn(2, top=True),
+                E("text", "2", x=98, y=62, w=10, h=12),
+                E("text", "Khách hàng có quyền từ chối.", y=100, h=14),
+            ],
+            [
+                _pn(3, top=True),
+                E("text", "3", x=98, y=62, w=10, h=12),
+                E("text", "Khách hàng có quyền khiếu nại.", y=100, h=14),
+            ],
+            [
+                _pn(4, top=True),
+                E("text", "4", x=98, y=62, w=10, h=12),
+                E("text", "Khách hàng có quyền được bảo mật thông tin.", y=100, h=14),
+            ],
+        ],
+        upstream_reordering="Docling's ReadingOrderModel reads this layout in another order (the standard export too): verify on real scans, Windows Local W-RC-10",
+    ),
+    # ---- F-03: the normalizer must not create a sentence across the break -------
+    *[
+        _d5(
+            f"d5_f03_footnote_{slug}",
+            f"Footnote nhãn TEXT rộng hết cột, ký hiệu {mark!r}, nằm dưới đoạn bị cắt (12D4).",
+            _footnote_case(mark),
+            must_not_join=[[(mark + _FOOTNOTE)[-20:], _CONTINUATION[:20]]],
+        )
+        for slug, mark in (
+            ("paren_star", "(*) "),
+            ("number_dot", "1. "),
+            ("superscript", "¹ "),
+            ("no_marker", ""),
+        )
+    ],
+    *[
+        _d5(
+            f"d5_f03_{slug}",
+            f"Dòng đầu trang sau mở đơn vị mới ({why}) (12D4).",
+            _new_unit_case(label, first, second),
+            must_not_join=[[first[-20:], second[:15]]],
+        )
+        for slug, label, first, second, why in (
+            (
+                "point_c_space_paren",
+                "list_item",
+                _POINT_B,
+                "c ) khách hàng cá nhân là người cư trú;",
+                "OCR chèn khoảng trắng 'c )'",
+            ),
+            (
+                "point_marker_lost",
+                "list_item",
+                _POINT_B,
+                "khách hàng cá nhân là người cư trú;",
+                "mất marker",
+            ),
+            (
+                "hollow_bullet_as_o",
+                "list_item",
+                _POINT_B,
+                "o khách hàng cá nhân là người cư trú;",
+                "bullet rỗng đọc thành 'o'",
+            ),
+            ("point_a_comma", "text", _LEAD, "a, giấy đề nghị vay vốn;", "marker 'a,'"),
+            ("point_a_dash", "text", _LEAD, "a- giấy đề nghị vay vốn;", "marker 'a-'"),
+            (
+                "date_line",
+                "list_item",
+                "5. Hợp đồng này được lập thành 02 bản có giá trị pháp lý như nhau, mỗi bên giữ 01 bản",
+                "ngày 15 tháng 7 năm 2024",
+                "dòng ngày tháng",
+            ),
+            (
+                "unit_line",
+                "text",
+                "Biểu tổng hợp dư nợ cho vay theo nhóm nợ của toàn hệ thống tại thời điểm 31/12/2024",
+                "đvt: triệu đồng",
+                "dòng đơn vị tính",
+            ),
+            (
+                "trong_do_line",
+                "text",
+                "Tổng dư nợ cho vay của chi nhánh tại thời điểm báo cáo là 1.250 tỷ đồng",
+                "trong đó: dư nợ ngắn hạn 700 tỷ đồng;",
+                "dòng 'trong đó:'",
+            ),
+        )
+    ],
+    *[
+        _d5(
+            f"d5_f03_top_line_{slug}",
+            f"Dòng đầu trang sau là {why}, phần tiếp theo thật nằm ngay dưới (12D4).",
+            _top_line_case(header),
+            must_not_join=[[_BODY[-20:], header[:15]]],
+        )
+        for slug, header, why in (
+            (
+                "running_title",
+                "quy chế cho vay tiêu dùng - lưu hành nội bộ",
+                "tiêu đề chạy viết thường",
+            ),
+            ("web_address", "www.nganhangmau.example.vn", "địa chỉ web"),
+            ("page_of_pages", "trang 2/3", "'trang 2/3'"),
+        )
+    ],
+    *[
+        _d5(
+            f"d5_f03_genuine_cut_{slug}",
+            f"Đối chứng: đoạn văn thật bị ngắt trang, đuôi {why}; phần tiếp theo ĐƯỢC PHÉP nối.",
+            _cut_paragraph(first_end, second),
+        )
+        for slug, first_end, second, why in (
+            (
+                "ascii_tail",
+                "khách hàng theo",
+                "quy định tại Điều 7 của Quy chế này.",
+                "chữ ASCII",
+            ),
+            (
+                "vietnamese_tail",
+                "khách hàng trong thời hạn được",
+                "thỏa thuận tại hợp đồng tín dụng.",
+                "chữ có dấu",
+            ),
+            (
+                "comma_tail",
+                "khách hàng,",
+                "đồng thời lưu hồ sơ theo quy định.",
+                "dấu phẩy",
+            ),
+        )
+    ],
+    # ---- R2-01: Docling's OWN merge across a page / a column ------------------
+    _d5(
+        "d5_r201_two_documents_signer_then_title",
+        "Hai văn bản độc lập: tên người ký cuối văn bản 1 và tiêu đề phụ lục đầu trang sau (12D4).",
+        [
+            [
+                _T("section_header", "QUYẾT ĐỊNH", 80),
+                _T(
+                    "text",
+                    "Điều 1. Ban hành kèm theo Quyết định này Quy định về phí dịch vụ.",
+                    120,
+                ),
+                _T("text", "TỔNG GIÁM ĐỐC", 600, 330, 525),
+                _T("text", "Nguyễn Văn An", 700, 340, 515),
+                _footer(1),
+            ],
+            [
+                _T("text", "Phụ lục 01 ban hành kèm theo Quyết định số 12/QĐ-NHM", 80),
+                _T("text", "Mức phí chuyển tiền là 11.000 đồng mỗi giao dịch.", 120),
+                _footer(2),
+            ],
+        ],
+        must_not_join=[["Nguyễn Văn An", "Phụ lục 01"]],
+    ),
+    _d5(
+        "d5_r201_clause_then_next_article",
+        "Khoản cuối trang (nhãn TEXT) và 'Điều 5.' đầu trang sau (12D4).",
+        [
+            [
+                _T("text", "Điều 4. Phạm vi áp dụng", 80),
+                _T("text", "Quy định này áp dụng đối với toàn bộ khách hàng", 700),
+                _footer(1),
+            ],
+            [
+                _T("text", "Điều 5. Hiệu lực thi hành", 80),
+                _T("text", "Quy định có hiệu lực từ ngày 01/01/2025.", 120),
+                _footer(2),
+            ],
+        ],
+        must_not_join=[["toàn bộ khách hàng", "Điều 5."]],
+    ),
+    _d5(
+        "d5_r201_footnote_then_continuation",
+        "Footnote nhãn TEXT và phần tiếp theo của đoạn ở trang sau (12D4).",
+        [
+            [
+                _T(
+                    "text",
+                    "Khách hàng được miễn phí khi duy trì số dư tối thiểu theo quy định của",
+                    660,
+                ),
+                _T(
+                    "text",
+                    "Theo Thông tư số 39/2016/TT-NHNN của Ngân hàng Nhà nước về cho vay",
+                    770,
+                    70,
+                    525,
+                    12,
+                ),
+                _footer(1),
+            ],
+            [_T("text", "ngân hàng trong từng thời kỳ.", 80), _footer(2)],
+        ],
+        must_not_join=[["về cho vay", "ngân hàng trong"]],
+    ),
+    _d5(
+        "d5_r201_side_note_same_page",
+        "Ghi chú bên phải một dòng thân văn bản, cùng trang (12D4).",
+        [
+            [
+                _T(
+                    "text",
+                    "Lãi suất cho vay ngắn hạn tối đa theo thông báo từng",
+                    300,
+                    70,
+                    300,
+                ),
+                _T("text", "Ghi chú: áp dụng từ quý I", 300, 320, 525),
+                _T("text", "thời kỳ của Tổng Giám đốc.", 330, 70, 300),
+            ]
+        ],
+        must_not_join=[["thông báo từng", "Ghi chú"]],
+    ),
+    _d5(
+        "d5_r201_hyphen_lowercase",
+        "Gạch nối cuối trang, phần sau viết thường: Docling bỏ gạch nối ('phingân hàng') (12D4).",
+        [
+            [_T("text", "Áp dụng cho tổ chức tín dụng phi-", 700), _footer(1)],
+            [
+                _T("text", "ngân hàng và chi nhánh ngân hàng nước ngoài.", 80),
+                _footer(2),
+            ],
+        ],
+        protected=[["phi-", 1]],
+    ),
+    _d5(
+        "d5_r201_hyphen_document_number",
+        "Số hiệu văn bản bị ngắt sau 'TT-': Docling chèn khoảng trắng ('TT- NHNN') (12D4).",
+        [
+            [_T("text", "Căn cứ Thông tư số 39/2016/TT-", 700), _footer(1)],
+            [_T("text", "NHNN ngày 30/12/2016 của Thống đốc;", 80), _footer(2)],
+        ],
+        must_not_join=[["39/2016/TT-", "NHNN ngày"]],
+    ),
+    _d5(
+        "d5_orig_f19_text_labels",
+        "Nguyên bản f19 trước 12D3 (khôi phục): phần đầu nhãn TEXT, số trang nhãn TEXT.",
+        [
+            [
+                E("text", "Áp dụng cho tổ chức tín dụng phi-", y=740),
+                E("text", "1", x=290, y=800, w=16, h=12, gt="artifact"),
+            ],
+            [
+                E("text", "ngân hàng và chi nhánh ngân hàng nước ngoài.", y=60),
+                E("text", "2", x=290, y=800, w=16, h=12, gt="artifact"),
+            ],
+        ],
+        protected=[["phi-", 1]],
+    ),
+    _d5(
+        "d5_var_f38_two_columns_ascii_tail",
+        "Biến thể f38: cột trái trang một kết thúc bằng chữ ASCII ('theo') thay vì 'và'.",
+        [
+            [
+                E(
+                    "text",
+                    "Cột trái trang một nói về điều kiện vay vốn của khách hàng theo",
+                    x=70,
+                    y=100,
+                    w=210,
+                    h=640,
+                ),
+                E(
+                    "text",
+                    "Cột phải trang một nói về thời hạn và lãi suất áp dụng.",
+                    x=315,
+                    y=100,
+                    w=210,
+                    h=660,
+                ),
+            ],
+            [
+                E(
+                    "text",
+                    "cột trái trang hai tiếp tục một nội dung khác hẳn.",
+                    x=70,
+                    y=100,
+                    w=210,
+                    h=300,
+                ),
+                E(
+                    "text",
+                    "Cột phải trang hai kết thúc văn bản.",
+                    x=315,
+                    y=100,
+                    w=210,
+                    h=300,
+                ),
+            ],
+        ],
+        must_not_join=[["khách hàng theo", "Cột phải trang một"]],
+    ),
+    _d5(
+        "d5_var_f31_lead_ascii_tail",
+        "Biến thể f31: câu dẫn kết thúc 'bao gồm' (chữ ASCII), điểm a) nhãn TEXT ở trang sau.",
+        [
+            [
+                E("text", "Điều 6. Hồ sơ vay vốn.", y=120, h=28),
+                E("text", "2. Hồ sơ vay vốn của khách hàng bao gồm", y=700),
+            ],
+            [
+                E("text", "a) giấy đề nghị vay vốn;", y=100),
+                E("text", "b) phương án sử dụng vốn.", y=130),
+            ],
+        ],
+        must_not_join=[["bao gồm", "a) giấy"]],
+    ),
+    _d5(
+        "d5_var_f39_footer_labels",
+        "Biến thể f39: số trang nhãn PAGE_FOOTER; bảng nằm giữa câu dẫn và phần sau.",
+        [
+            [
+                E("text", "Biểu phí áp dụng cho các dịch vụ sau đây gồm", y=700, h=28),
+                _pn(1, label="page_footer"),
+            ],
+            [
+                E(
+                    "table",
+                    y=60,
+                    h=60,
+                    rows=[["Dịch vụ", "Mức phí"], ["Chuyển tiền", "2.200"]],
+                ),
+                E("text", "phí trên đã bao gồm thuế giá trị gia tăng.", y=140),
+                _pn(2, label="page_footer"),
+            ],
+            [
+                E("text", "Điều 9. Tổ chức thực hiện.", y=60, h=28),
+                _pn(3, label="page_footer"),
+            ],
+        ],
+        protected=[["2.200", 1]],
+        must_not_join=[["sau đây gồm", "phí trên đã bao gồm"]],
+    ),
+    _d5(
+        "d5_var_f11_footer_labels",
+        "Biến thể f11: số trang nhãn PAGE_FOOTER, trang trắng ở giữa.",
+        [
+            [
+                E("text", "Phần này được để trống có chủ ý và tiếp tục", y=740),
+                _pn(1, label="page_footer"),
+            ],
+            [],
+            [
+                E("text", "nội dung của phụ lục kèm theo.", y=60),
+                _pn(3, label="page_footer"),
+            ],
+        ],
+        must_not_join=[["tiếp tục", "nội dung của phụ lục"]],
+    ),
+    _d5(
+        "d5_var_f26_signer_name_last",
+        "Biến thể f26: bộ thông báo một trang, dòng cuối là tên người ký (chữ thường cuối).",
+        [
+            [
+                E("text", "NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH", y=50, w=300),
+                E("section_header", f"THÔNG BÁO SỐ {n}", x=230, y=110, w=135, h=18),
+                E(
+                    "text",
+                    f"Thông báo lãi suất cho vay áp dụng từ tháng {n - 9} là {n - 3},5%/năm.",
+                    y=160,
+                    h=28,
+                ),
+                E("text", "Nguyễn Văn An", x=340, y=770, w=170, h=12),
+            ]
+            for n in (10, 11, 12)
+        ],
+        protected=[
+            ["Nguyễn Văn An", 3],
+            ["NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH", 3],
+        ],
+        must_not_join=[["Nguyễn Văn An", "NGÂN HÀNG"]],
+    ),
+    _d5(
+        "d5_var_f35_sentence_case_headers",
+        "Biến thể f35: tiêu đề cột viết thường ('Chỉ tiêu', 'Số tiền') lặp trên 3 trang.",
+        [
+            [
+                E("text", "Stt", x=70, y=60, w=30, h=12),
+                E("text", "Chỉ tiêu", x=120, y=60, w=60, h=12),
+                E("text", "Số tiền", x=420, y=60, w=60, h=12),
+                E("text", f"Dư nợ nhóm {p}", x=120, y=400, w=120, h=12),
+                E("text", f"10{p}", x=420, y=400, w=30, h=12),
+            ]
+            for p in range(1, 4)
+        ],
+        protected=[["Chỉ tiêu", 3], ["Số tiền", 3], ["101", 1], ["103", 1]],
+    ),
+    # ---- R2-11: business content the layout model put in the furniture layer ---
+    _d5(
+        "d5_r211_letterhead_document_number",
+        "Tên đơn vị và số hiệu văn bản nhãn PAGE_HEADER, footnote nhãn PAGE_FOOTER, chỉ ở trang 1 (12D4).",
+        [
+            [
+                _T("page_header", "NGÂN HÀNG NÔNG NGHIỆP MẪU", 30, 70, 300),
+                _T("page_header", "Số: 1234/QĐ-NHM-KHCN", 50, 70, 300),
+                _T("section_header", "QUYẾT ĐỊNH", 120),
+                _T("text", "Điều 1. Ban hành Quy định về phí dịch vụ.", 160),
+                _T(
+                    "page_footer",
+                    "(1) Mức phí chưa bao gồm thuế giá trị gia tăng 10%.",
+                    790,
+                    70,
+                    525,
+                ),
+            ],
+            [_T("text", "Điều 2. Quyết định có hiệu lực từ ngày ký.", 80)],
+        ],
+        protected=[["Số: 1234/QĐ-NHM-KHCN", 1]],
+    ),
+    _d5(
+        "d5_r211_running_header_and_footer_numbers",
+        "Đối chứng: tiêu đề chạy nhãn PAGE_HEADER lặp 3 trang + số trang nhãn PAGE_FOOTER (không phải nội dung).",
+        [
+            [
+                _T(
+                    "page_header",
+                    "Quy chế cho vay - lưu hành nội bộ",
+                    30,
+                    70,
+                    300,
+                    gt="furniture",
+                ),
+                _T("text", f"Nội dung trang {p} của quy chế cho vay tiêu dùng.", 100),
+                _footer(p),
+            ]
+            for p in range(1, 4)
+        ],
+    ),
+    # ---- F-06: pictures must keep a trace ----------------------------------------
+    _d5(
+        "d5_f06_large_picture_with_caption",
+        "Ảnh 36% trang có chú thích: chú thích không phải 'chữ của ảnh' (12D4).",
+        [
+            [
+                E(
+                    "text",
+                    "Biểu lãi suất áp dụng từ ngày 01/7/2024 như sau:",
+                    y=60,
+                    h=14,
+                ),
+                E("caption", "Hình 1. Biểu lãi suất huy động", y=90, h=14),
+                E("picture", x=70, y=110, w=455, h=400),
+                E("text", "Các mức lãi suất khác giữ nguyên.", y=540, h=14),
+            ]
+        ],
+    ),
+    _d5(
+        "d5_f06_large_picture_one_stray_word",
+        "Ảnh 36% trang chỉ có MỘT từ OCR lạc bên trong (12D4).",
+        [
+            [
+                E(
+                    "text",
+                    "Biểu lãi suất áp dụng từ ngày 01/7/2024 như sau:",
+                    y=60,
+                    h=14,
+                ),
+                E(
+                    "picture",
+                    x=70,
+                    y=110,
+                    w=455,
+                    h=400,
+                    children=[E("text", "Kỳ hạn", x=80, y=120, w=40, h=10)],
+                ),
+                E("text", "Các mức lãi suất khác giữ nguyên.", y=540, h=14),
+            ]
+        ],
+    ),
+    _d5(
+        "d5_f06_small_logo_without_text",
+        "Đối chứng: logo nhỏ (2% trang) không có chữ, khai báo decoration.",
+        [
+            [
+                E("picture", x=70, y=30, w=60, h=60, gt="decoration"),
+                E(
+                    "text",
+                    "Thông báo về việc điều chỉnh biểu phí dịch vụ.",
+                    y=120,
+                    h=14,
+                ),
+            ]
+        ],
+    ),
+    # ---- R2-02 / F-17: characters that must survive storage, display and copy ---
+    _d5(
+        "d5_r202_markdown_significant_characters",
+        "Dấu *, _, `, $, [ ], ~, <, &, \\ và công thức / tỷ lệ / URL / mã nghiệp vụ trong chữ OCR (12D4).",
+        [
+            [
+                E("text", line, y=80 + 30 * i)
+                for i, line in enumerate(
+                    [
+                        "Lãi suất = 5*3% (tối đa 15*2)",
+                        "Mức phí (*) áp dụng theo biểu phí (*) hiện hành",
+                        "Mã `TK01` dùng cho tài khoản thanh toán",
+                        "Phí 5$ và 10$ cho mỗi giao dịch quốc tế",
+                        "Tỷ lệ 1:2 và công thức a_1 + b_2 = c_3",
+                        "Mã sản phẩm TK_VND_01 và file bao_cao_2024.xlsx",
+                        "Email: ho_tro@agribank.com.vn; website https://agribank.com.vn/a_b?x=1&y=2",
+                        "Họ tên: <Tên khách hàng> & <Số CMND>",
+                        "Ký hiệu ~50 triệu đồng và [chưa xác nhận]",
+                        "Đường dẫn C:\\Bieu\\phi.xlsx trên máy trạm",
+                    ]
+                )
+            ]
+        ],
+        protected=[
+            ["5*3%", 1],
+            ["15*2", 1],
+            ["(*)", 2],
+            ["`TK01`", 1],
+            ["5$", 1],
+            ["10$", 1],
+            ["a_1", 1],
+            ["TK_VND_01", 1],
+            ["ho_tro@agribank.com.vn", 1],
+            ["x=1&y=2", 1],
+            ["<Tên khách hàng>", 1],
+            ["~50", 1],
+            ["[chưa xác nhận]", 1],
+            ["C:\\Bieu\\phi.xlsx", 1],
+        ],
+    ),
 ]
 
 

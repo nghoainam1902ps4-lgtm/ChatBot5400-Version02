@@ -38,6 +38,106 @@ def _with(*keys: str) -> list[str]:
     return names
 
 
+# Phase 12D5A: RED on the UNCHANGED 8d0c438 normalizer (v1.1.0) with the identity
+# oracle and the 12D5 fixtures (evidence: docs/review/phase12d5/red_8d0c438_normalizer_tests.txt).
+# The Phase 12D5B fixes must turn each pair green: strict xfail makes a fixed pair fail
+# until its entry is removed below.
+RED_8D0C438: dict[str, set[str]] = {
+    "test_critical_fields_exact_count": {
+        "d5_f02_reporting_periods_alone_bottom_centre",
+        "d5_f02_reporting_periods_beside_label",
+        "d5_f02_voucher_numbers_alone_top_right",
+        "d5_f02_voucher_numbers_beside_label",
+        "d5_r201_hyphen_lowercase",
+        "d5_r211_letterhead_document_number",
+    },
+    "test_idempotent_and_deterministic": {
+        "d5_f02_page_number_and_clause_number_alias",
+    },
+    "test_lines_that_must_stay": {
+        "d5_f02_clause_numbers_first_line_indent",
+        "d5_f02_clause_numbers_hanging_indent",
+    },
+    "test_no_false_deletion_merge_or_insertion": {
+        "d5_f02_clause_numbers_first_line_indent",
+        "d5_f02_clause_numbers_hanging_indent",
+        "d5_f02_reporting_periods_alone_bottom_centre",
+        "d5_f02_reporting_periods_beside_label",
+        "d5_f02_voucher_numbers_alone_top_right",
+        "d5_f02_voucher_numbers_beside_label",
+        "d5_f03_date_line",
+        "d5_f03_footnote_no_marker",
+        "d5_f03_footnote_number_dot",
+        "d5_f03_footnote_paren_star",
+        "d5_f03_footnote_superscript",
+        "d5_f03_hollow_bullet_as_o",
+        "d5_f03_point_a_comma",
+        "d5_f03_point_a_dash",
+        "d5_f03_point_c_space_paren",
+        "d5_f03_point_marker_lost",
+        "d5_f03_top_line_page_of_pages",
+        "d5_f03_top_line_running_title",
+        "d5_f03_top_line_web_address",
+        "d5_f03_trong_do_line",
+        "d5_f03_unit_line",
+        "d5_f06_large_picture_one_stray_word",
+        "d5_f06_large_picture_with_caption",
+        "d5_r201_clause_then_next_article",
+        "d5_r201_footnote_then_continuation",
+        "d5_r201_hyphen_document_number",
+        "d5_r201_hyphen_lowercase",
+        "d5_r201_side_note_same_page",
+        "d5_r201_two_documents_signer_then_title",
+        "d5_r202_markdown_significant_characters",
+        "d5_r211_letterhead_document_number",
+        "d5_var_f11_footer_labels",
+        "d5_var_f26_signer_name_last",
+        "d5_var_f31_lead_ascii_tail",
+        "d5_var_f35_sentence_case_headers",
+        "d5_var_f38_two_columns_ascii_tail",
+        "d5_var_f39_footer_labels",
+        "f15_watermark_and_large_picture",
+        "f16_text_inside_picture",
+        "f40_caption_and_picture_text",
+    },
+    "test_no_forbidden_join": {
+        "d5_f03_date_line",
+        "d5_f03_footnote_no_marker",
+        "d5_f03_footnote_number_dot",
+        "d5_f03_footnote_paren_star",
+        "d5_f03_footnote_superscript",
+        "d5_f03_hollow_bullet_as_o",
+        "d5_f03_point_a_comma",
+        "d5_f03_point_a_dash",
+        "d5_f03_point_c_space_paren",
+        "d5_f03_point_marker_lost",
+        "d5_f03_top_line_page_of_pages",
+        "d5_f03_top_line_running_title",
+        "d5_f03_top_line_web_address",
+        "d5_f03_trong_do_line",
+        "d5_f03_unit_line",
+        "d5_r201_clause_then_next_article",
+        "d5_r201_footnote_then_continuation",
+        "d5_r201_hyphen_document_number",
+        "d5_r201_side_note_same_page",
+        "d5_r201_two_documents_signer_then_title",
+        "d5_var_f11_footer_labels",
+        "d5_var_f26_signer_name_last",
+        "d5_var_f31_lead_ascii_tail",
+        "d5_var_f38_two_columns_ascii_tail",
+        "d5_var_f39_footer_labels",
+    },
+}
+
+
+def _params(test: str, names: list[str]) -> list:
+    red = RED_8D0C438.get(test, set())
+    mark = pytest.mark.xfail(
+        strict=True, reason="RED on 8d0c438 (Phase 12D5A evidence)"
+    )
+    return [pytest.param(n, marks=mark) if n in red else n for n in names]
+
+
 @pytest.fixture(scope="module")
 def built():
     """name -> (fixture, document, standard markdown, legal result)."""
@@ -55,7 +155,8 @@ def built():
 
 
 def _truth_lines(fx):
-    return [u["text"] for u in H.expected_units(fx) if u["gt"] != "artifact"]
+    """Everything the fixture declares, in declared order (optional units too)."""
+    return [u["text"] for u in H.expected_units(fx)]
 
 
 def test_oracle_accepts_the_declared_truth():
@@ -66,7 +167,8 @@ def test_oracle_accepts_the_declared_truth():
             p["false_merge"],
             p["false_insertion"],
             p["false_reordering"],
-        ) == (0, 0, 0, 0), fx["name"]
+            p["placeholders_lost"],
+        ) == (0, 0, 0, 0, 0), fx["name"]
 
 
 def test_oracle_sees_a_repeated_line_deleted_once():
@@ -96,14 +198,22 @@ def test_oracle_sees_deletion_merge_insertion_and_reordering():
 
 
 def test_oracle_does_not_use_the_normalizer_report():
-    """The declared truth is a function of the fixture alone."""
+    """The verdict is a function of the declared truth and of the OUTPUT only:
+    nothing the normalizer reports about itself is read (T-01)."""
+    import ast
     import inspect
 
-    import phase12_metrics as M
+    import phase12_oracle as O
 
-    source = inspect.getsource(M.preservation) + inspect.getsource(M.expected_units)
-    for forbidden in ("operations", "text_before", "to_furniture", "legal_normalizer"):
-        assert forbidden not in source
+    tree = ast.parse(inspect.getsource(O))
+    names = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+    names |= {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    imports = {
+        a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names
+    } | {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+    for forbidden in ("operations", "warnings", "counts", "text_before", "persistable"):
+        assert forbidden not in names, forbidden
+    assert not any("legal_normalizer" in i for i in imports)
 
 
 def test_declared_truth_matches_the_ground_truth_string():
@@ -113,7 +223,7 @@ def test_declared_truth_matches_the_ground_truth_string():
         units = " ".join(
             u["text"].replace(" | ", " ")
             for u in H.expected_units(fx)
-            if u["gt"] != "artifact"
+            if u["gt"] in ("keep", "join") and u["kind"] != "picture"
         )
         if " ".join(units.split()) != " ".join(fx["ground_truth"].split()):
             differs.add(fx["name"])
@@ -127,25 +237,65 @@ def test_declared_truth_matches_the_ground_truth_string():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("name", NAMES)
+def _measure(fx, doc, standard, res):
+    legal = H.preservation(
+        fx, H.legal_lines(res.content), res.content, document=res.document
+    )
+    std = H.preservation(
+        fx,
+        H.display_lines(standard),
+        standard,
+        document=doc,
+        pictures_traversed=False,
+    )
+    return legal, std
+
+
+@pytest.mark.parametrize(
+    "name", _params("test_no_false_deletion_merge_or_insertion", NAMES)
+)
 def test_no_false_deletion_merge_or_insertion(built, name):
-    fx, _, standard, res = built[name]
-    legal = H.preservation(fx, H.legal_lines(res.content), res.content)
-    std = H.preservation(fx, H.display_lines(standard), standard)
-    assert legal["false_deletion_tokens"] == 0, legal["false_deletion_units"]
+    """Identity attribution (Phase 12D5, R2-14): every declared element is found
+    by its provenance, so an artifact with the same text never stands in for a
+    deleted required unit."""
+    fx, doc, standard, res = built[name]
+    legal, std = _measure(fx, doc, standard, res)
+    assert legal["attribution"] == "identity"
+    assert legal["not_located"] == [], legal["not_located"]
     assert legal["false_deletion"] == 0, legal["false_deletion_units"]
+    assert legal["false_deletion_tokens"] == 0, legal["false_deletion_units"]
     assert legal["false_merge"] == 0, legal["false_merge_lines"]
     assert legal["false_insertion"] == 0, legal["false_insertion_lines"]
     assert legal["false_insertion_tokens"] == 0
-    # Reading order is Docling's: never worse than the standard export.
-    assert legal["false_reordering"] <= std["false_reordering"]
+    assert legal["placeholders_lost"] == 0, legal["placeholders_lost_ids"]
     assert legal["tables_ok"]
+    # A changed character inside an item is allowed only when Docling made the
+    # change upstream, it cannot be undone from the evidence, and the Legal
+    # result says so with a located warning (R2-01).
+    reported = {
+        p
+        for w in res.warnings
+        if w.get("code") in ("upstream_dehyphenation", "upstream_merge_kept")
+        for p in w.get("pages") or []
+    }
+    for a in legal["altered"]:
+        assert set(a["pages"]) <= reported, a
+    # Reading order: Docling's. Zero unless the fixture documents that Docling
+    # itself reorders that layout, and then never worse than the standard export.
+    if fx.get("upstream_reordering"):
+        assert legal["false_reordering"] <= std["false_reordering"]
+    else:
+        assert legal["false_reordering"] == 0
 
 
-@pytest.mark.parametrize("name", _with("protected"))
+@pytest.mark.parametrize(
+    "name", _params("test_critical_fields_exact_count", _with("protected"))
+)
 def test_critical_fields_exact_count(built, name):
     fx, _, _, res = built[name]
-    p = H.preservation(fx, H.legal_lines(res.content), res.content)
+    p = H.preservation(
+        fx, H.legal_lines(res.content), res.content, document=res.document
+    )
     assert p["critical_ok"], [c for c in p["critical_fields"] if not c["ok"]]
 
 
@@ -156,7 +306,9 @@ def test_markers_displayed_as_in_original(built, name):
     assert total > 0 and hit == total
 
 
-@pytest.mark.parametrize("name", _with("present_lines"))
+@pytest.mark.parametrize(
+    "name", _params("test_lines_that_must_stay", _with("present_lines"))
+)
 def test_lines_that_must_stay(built, name):
     fx, _, _, res = built[name]
     lines = H.legal_lines(res.content)
@@ -181,7 +333,9 @@ def test_joins_made_when_the_evidence_is_sufficient(built, name):
         assert line in lines, line
 
 
-@pytest.mark.parametrize("name", _with("must_not_join", "forbidden"))
+@pytest.mark.parametrize(
+    "name", _params("test_no_forbidden_join", _with("must_not_join", "forbidden"))
+)
 def test_no_forbidden_join(built, name):
     fx, _, _, res = built[name]
     lines = H.legal_lines(res.content)
@@ -225,7 +379,7 @@ def test_reading_order_not_changed(built, name):
         cursor += 1
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", _params("test_idempotent_and_deterministic", NAMES))
 def test_idempotent_and_deterministic(built, name):
     _, doc, _, res = built[name]
     again = N.normalize_document(res.document)

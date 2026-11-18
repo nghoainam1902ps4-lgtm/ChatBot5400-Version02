@@ -1,0 +1,45 @@
+{
+  "pytest_exit": 0,
+  "detection": {
+    "deleted required line": {
+      "found": 478,
+      "total": 478
+    },
+    "digit changed (number / marker / table cell)": {
+      "found": 294,
+      "total": 294
+    },
+    "inserted line": {
+      "found": 621,
+      "total": 621
+    },
+    "one occurrence of repeated content deleted": {
+      "found": 58,
+      "total": 58
+    },
+    "picture placeholder lost": {
+      "found": 6,
+      "total": 6
+    },
+    "required item moved out of the body (identity)": {
+      "found": 471,
+      "total": 471
+    },
+    "swap with an artifact / furniture line": {
+      "found": 94,
+      "total": 94
+    },
+    "two adjacent lines swapped": {
+      "found": 468,
+      "total": 468
+    },
+    "wrong join made in the document": {
+      "found": 439,
+      "total": 439
+    },
+    "wrong join shown as one line": {
+      "found": 439,
+      "total": 439
+    }
+  }
+}

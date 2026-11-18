@@ -207,22 +207,29 @@ def test_metrics_renumbering():
     assert M.renumbered_list_items("5\\. a\n\n7\\. b") == (0, 0)
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="RED on 8d0c438 (Phase 12D5A evidence): with the identity oracle and the 12D5 "
+    "fixtures Legal v1.1.0 deletes / merges content; removed by the 12D5B fix",
+)
 def test_benchmark_measures_against_the_declared_ground_truth(tmp_path):
     """Phase 12D3 (T-01): the benchmark no longer adds back what the normalizer
     removed. It can fail (Standard does lose displayed content on these
-    fixtures) and it measures a frozen copy of another version the same way."""
+    fixtures) and it measures a frozen copy of another version the same way.
+    Phase 12D5 (R2-14): units are attributed by source identity (schema /3)."""
     import phase12_benchmark as B
 
     out = tmp_path / "benchmark.json"
     frozen = ROOT / "open_notebook" / "ocr" / "legal_normalizer.py"
     assert B.main(["--out", str(out), "--repeats", "1", "--before", str(frozen)]) == 0
     data = json.loads(out.read_text(encoding="utf-8"))
-    assert data["schema"] == "chatbot5400-phase12-benchmark/2"
+    assert data["schema"] == "chatbot5400-phase12-benchmark/3"
     assert data["fixtures"] == len(H.load_fixtures().FIXTURES) >= 45
     assert data["normalizer_version"] == data["before_normalizer_version"]
     legal = data["aggregate"]["legal"]
     assert legal["false_deletion_units"] == 0 and legal["false_deletion_tokens"] == 0
     assert legal["false_merge"] == 0 and legal["false_insertion"] == 0
+    assert legal["placeholders_lost"] == 0 and legal["marker_changed"] == 0
     assert legal["critical_fields"][0] == legal["critical_fields"][1] > 0
     assert legal["markers"][0] == legal["markers"][1] > 0
     assert legal["tables_ok"] and legal["tables_identical"]

@@ -249,173 +249,30 @@ def legal_display_markdown(markdown: str) -> str:
     return "\n".join(out)
 
 
-def expected_units(fixture: dict[str, Any]) -> list[dict[str, Any]]:
-    """The declared truth of a fixture, in reading order (never from an output).
+# The oracle itself (Phase 12D5, findings R2-14 / T-01 / T-03): identity-based,
+# see scripts/ocr/phase12_oracle.py. Re-exported here so that the tests, the
+# benchmark and the local reports keep measuring the same way.
+import sys as _sys  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
 
-    One unit per element: ``{"text", "gt", "page"}`` with gt in keep / artifact /
-    join. Table rows are "a | b | c" (how a rendered table row reads); the OCR
-    text inside a picture is required content; furniture is not expected.
-    """
-    units: list[dict[str, Any]] = []
-    for page_no, page in enumerate(fixture["pages"], start=1):
-        for el in page:
-            gt = el.get("gt", "keep")
-            if gt == "furniture":
-                continue
-            if el["label"] == "picture":
-                for child in el.get("children", []):
-                    units.append({"text": child["text"], "gt": "keep", "page": page_no})
-            elif el["label"] == "table":
-                for row in el["rows"]:
-                    units.append(
-                        {"text": " | ".join(row), "gt": "keep", "page": page_no}
-                    )
-            elif el.get("text"):
-                units.append({"text": el["text"], "gt": gt, "page": page_no})
-    return units
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from phase12_oracle import expected_units, preservation  # noqa: E402
 
-
-def _partitions(texts: list[str]) -> list[list[str]]:
-    """Every way to render [keep, join, join...]: most joined first."""
-    n = len(texts)
-    out = []
-    for mask in range(1 << (n - 1)):  # bit i set = break between i and i+1
-        groups, cur = [], [texts[0]]
-        for i in range(n - 1):
-            if mask >> i & 1:
-                groups.append(" ".join(cur))
-                cur = [texts[i + 1]]
-            else:
-                cur.append(texts[i + 1])
-        groups.append(" ".join(cur))
-        out.append(groups)
-    return sorted(out, key=len)
-
-
-def _lis_length(seq: list[int]) -> int:
-    import bisect
-
-    tails: list[int] = []
-    for x in seq:
-        i = bisect.bisect_left(tails, x)
-        if i == len(tails):
-            tails.append(x)
-        else:
-            tails[i] = x
-    return len(tails)
-
-
-def preservation(
-    fixture: dict[str, Any], lines: list[str], markdown: str = ""
-) -> dict[str, Any]:
-    """Compare what the reader sees (``lines``) with the fixture's declared truth.
-
-    Nothing the normalizer reports is used. Counted separately:
-      false_deletion      required units not shown as often as declared
-      false_merge         a line made of two units that may not be joined
-      false_insertion     lines that are neither declared content nor a declared artifact
-      false_reordering    required units shown out of the declared order
-    plus token counts of the same (multisets, so a repeated line removed twice
-    counts twice), allowed outcomes (artifacts left / removed, joins made / not
-    made) and exact-count checks of the critical fields.
-    """
-    from collections import Counter
-
-    units = expected_units(fixture)
-    content_lines = [(i, ln) for i, ln in enumerate(lines) if ln != PLACEHOLDER]
-    free: dict[str, list[int]] = {}
-    for i, ln in content_lines:
-        free.setdefault(ln, []).append(i)
-
-    def take(text: str) -> int | None:
-        idx = free.get(text)
-        return idx.pop(0) if idx else None
-
-    runs: list[list[dict[str, Any]]] = []
-    for u in units:
-        if u["gt"] == "join" and runs and runs[-1][0]["gt"] == "keep":
-            runs[-1].append(u)
-        elif u["gt"] in ("keep", "join"):
-            runs.append([u])
-    missing: list[str] = []
-    order: list[int] = []
-    joins_made = joins_missed = 0
-    for run in runs:
-        texts = [u["text"] for u in run]
-        done = False
-        for forms in _partitions(texts):
-            need = Counter(forms)
-            if all(len(free.get(f, [])) >= c for f, c in need.items()):
-                order.extend(i for i in (take(f) for f in forms) if i is not None)
-                joins_made += len(texts) - len(forms)
-                joins_missed += len(forms) - 1
-                done = True
-                break
-        if not done:
-            for t in texts:
-                position = take(t)
-                if position is None:
-                    missing.append(t)
-                else:
-                    order.append(position)
-    artifacts = Counter(u["text"] for u in units if u["gt"] == "artifact")
-    artifacts_left = 0
-    false_merges: list[str] = []
-    false_insertions: list[str] = []
-    unit_texts = {u["text"] for u in units if len(u["text"]) >= 3}
-    for text, idxs in free.items():
-        for _ in idxs:
-            if artifacts[text] > 0:
-                artifacts[text] -= 1
-                artifacts_left += 1
-            elif sum(1 for t in unit_texts if t != text and t in text) >= 2:
-                false_merges.append(text)
-            else:
-                false_insertions.append(text)
-    required_tokens: Counter[str] = Counter()
-    for u in units:
-        if u["gt"] != "artifact":
-            required_tokens.update(u["text"].replace(" | ", " ").split())
-    artifact_tokens: Counter[str] = Counter()
-    for u in units:
-        if u["gt"] == "artifact":
-            artifact_tokens.update(u["text"].split())
-    shown: Counter[str] = Counter()
-    for _, ln in content_lines:
-        shown.update(ln.replace(" | ", " ").split())
-    deleted_tokens = sum((required_tokens - shown).values())
-    inserted_tokens = sum(((shown - required_tokens) - artifact_tokens).values())
-    text = " ".join(ln for _, ln in content_lines)
-    critical = []
-    for entry in fixture.get("protected", []):
-        value, count = (
-            (entry, 1) if isinstance(entry, str) else (entry[0], int(entry[1]))
-        )
-        found = max(text.count(value), markdown.count(value))
-        critical.append(
-            {"value": value, "expected": count, "found": found, "ok": found >= count}
-        )
-    table_units = [u["text"] for u in units if " | " in u["text"]]
-    table_ok = all(t in lines for t in table_units)
-    return {
-        "required_units": len([u for u in units if u["gt"] != "artifact"]),
-        "false_deletion": len(missing),
-        "false_deletion_units": missing,
-        "false_deletion_tokens": deleted_tokens,
-        "false_merge": len(false_merges),
-        "false_merge_lines": false_merges,
-        "false_insertion": len(false_insertions),
-        "false_insertion_lines": false_insertions,
-        "false_insertion_tokens": inserted_tokens,
-        "false_reordering": len(order) - _lis_length(order),
-        "artifacts_declared": sum(1 for u in units if u["gt"] == "artifact"),
-        "artifacts_left": artifacts_left,
-        "joins_allowed": sum(1 for u in units if u["gt"] == "join"),
-        "joins_made": joins_made,
-        "joins_missed": joins_missed,
-        "critical_fields": critical,
-        "critical_ok": all(c["ok"] for c in critical),
-        "table_rows": len(table_units),
-        "tables_ok": table_ok,
-        "placeholders": sum(1 for ln in lines if ln == PLACEHOLDER),
-    }
+__all__ = [
+    "cer",
+    "display_lines",
+    "display_text",
+    "expected_units",
+    "legal_display_markdown",
+    "levenshtein",
+    "lost_words",
+    "markers_displayed",
+    "numeric_only_lines",
+    "order_accuracy",
+    "page_boundary_report",
+    "placeholder_count",
+    "preservation",
+    "renumbered_list_items",
+    "wer",
+    "word_recall",
+]
