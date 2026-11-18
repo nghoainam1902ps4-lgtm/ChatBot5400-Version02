@@ -370,15 +370,41 @@ def test_furniture_content_is_measured():
 
 def test_upstream_merge_and_dehyphenation_are_seen():
     """R2-01: Docling's own merge is a false merge for the oracle; its removed
-    hyphen is reported as an altered unit."""
+    hyphen is reported as an altered unit. The document is built by UPSTREAM
+    Docling (Phase 12D9 patches the hyphen removal, D8-03)."""
+    from open_notebook.ocr import docling_patches
+
     fx = FX.by_name("d5_r201_hyphen_lowercase")
-    doc = H.build_document(fx)
-    std = doc.export_to_markdown()
+    with docling_patches.upstream_text_preservation():
+        doc = H.build_document(fx)
+        std = doc.export_to_markdown()
     p = H.preservation(
         fx, H.display_lines(std), std, document=doc, pictures_traversed=False
     )
     assert p["false_merge"] == 1 and p["altered_units"] == 1
     assert "hyphen" in p["altered"][0]["why"]
+
+
+def test_d8_03_patched_merge_is_a_merge_but_no_character_is_altered():
+    """Phase 12D9 Docling keeps the hyphen when it joins the two pages: still a
+    false merge for the oracle, but no unit lost a character."""
+    fx = FX.by_name("d5_r201_hyphen_lowercase")
+    doc = H.build_document(fx)
+    std = doc.export_to_markdown()
+    assert "phi-ngân hàng" in std
+    p = H.preservation(
+        fx, H.display_lines(std), std, document=doc, pictures_traversed=False
+    )
+    assert p["false_merge"] == 1 and p["altered_units"] == 0
+
+
+def test_a_lost_hyphen_is_still_an_altered_unit():
+    """The oracle still sees a removed hyphen (mutation of the patched output)."""
+    fx = FX.by_name("d5_r201_hyphen_lowercase")
+    doc = H.build_document(fx)
+    std = doc.export_to_markdown().replace("phi-ngân", "phingân")
+    p = H.preservation(fx, H.display_lines(std), std)
+    assert p["altered_units"] + p["false_deletion"] >= 1
 
 
 def test_text_mode_never_lets_an_artifact_stand_in_for_a_required_unit():

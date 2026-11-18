@@ -470,24 +470,27 @@ HYPHEN_CASES = [
 @pytest.mark.parametrize("lines, _must", HYPHEN_CASES)
 def test_control_docling_page_assembly_drops_the_hyphen_of_identifiers(lines, _must):
     """What Docling 2.129.0 does today (v1.2.0 and the candidate alike, every
-    OCR engine and PDF text layers): recorded so a change is noticed."""
+    OCR engine and PDF text layers): recorded so a change is noticed.
+    Phase 12D9: the application patches this (D8-03); the control runs the
+    UPSTREAM functions so that it still documents upstream behaviour."""
     from docling.models.stages.page_assemble.page_assemble_model import (
         PageAssembleModel,
         PageAssembleOptions,
     )
 
-    text = PageAssembleModel(options=PageAssembleOptions()).sanitize_text(list(lines))
+    with P.upstream_text_preservation():
+        text = PageAssembleModel(options=PageAssembleOptions()).sanitize_text(
+            list(lines)
+        )
     assert text == lines[0][:-1] + lines[1]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-03: Docling's PageAssembleModel.sanitize_text removes a hyphen "
-    "that ends a line / OCR word before an alphanumeric word: document numbers "
-    "and year ranges change (05/2024/TT-BNNPTNT -> TTBNNPTNT, 2021-2025 -> "
-    "20212025). Upstream behaviour, unchanged since v1.2.0, not covered by the "
-    "E0-07 patch.",
-)
+# was: xfail(strict) D8-03 - fixed in Phase 12D9 (docling_patches, D8-03 patch)
+# Phase 12D9 owner decision (12D9A): without the cells' own boxes two cells are
+# never assumed to be one word - the hyphen AND the cell boundary are kept; the
+# parts close up only across a line break the boxes show, which is what Docling's
+# page assembly passes for cells on two lines (``same_line=[False]``).
+# was: text = ....sanitize_text(list(lines)); assert must in text
 @pytest.mark.parametrize("lines, must", HYPHEN_CASES)
 def test_d8_03_identifiers_keep_their_hyphen_through_page_assembly(lines, must):
     from docling.models.stages.page_assemble.page_assemble_model import (
@@ -495,8 +498,11 @@ def test_d8_03_identifiers_keep_their_hyphen_through_page_assembly(lines, must):
         PageAssembleOptions,
     )
 
-    text = PageAssembleModel(options=PageAssembleOptions()).sanitize_text(list(lines))
+    assert P.apply_text_preservation()  # what every conversion does (12D9)
+    model = PageAssembleModel(options=PageAssembleOptions())
+    text = model.sanitize_text(list(lines), same_line=[False])  # a line break
     assert must in text
+    assert model.sanitize_text(list(lines)) == f"{lines[0]} {lines[1]}"  # no boxes
 
 
 def _ocr_then_assemble(tmp_path: Path, monkeypatch, paragraphs: list[list[str]]):
@@ -590,7 +596,8 @@ def test_control_real_ocr_cells_are_raw_but_element_text_loses_hyphens(
     """End to end with the real binary: the cells equal the raw TSV of their own
     invocation (E0-07 holds), and the element text that becomes the Source
     content has lost the hyphens."""
-    raw, cells, texts = _ocr_then_assemble(tmp_path, monkeypatch, REAL_PARAGRAPHS)
+    with P.upstream_text_preservation():  # Phase 12D9: documents UPSTREAM
+        raw, cells, texts = _ocr_then_assemble(tmp_path, monkeypatch, REAL_PARAGRAPHS)
     assert cells == raw  # the patch: cell text = raw TSV text, in order
     for token in ("05/2024/TT-", "BNNPTNT", "2021-", "2025", "0001-", "VT-", "1-"):
         assert token in raw, (token, raw)
@@ -602,14 +609,11 @@ def test_control_real_ocr_cells_are_raw_but_element_text_loses_hyphens(
 
 
 @needs_tesseract
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-03: every hyphen Tesseract wrote in the TSV must still be in the "
-    "element text (document numbers, year ranges, 'VT- KHTC', '1- Điều 5').",
-)
+# was: xfail(strict) D8-03 - fixed in Phase 12D9 (docling_patches, D8-03 patch)
 def test_d8_03_real_ocr_element_text_keeps_every_hyphen_of_the_raw_tsv(
     tmp_path, monkeypatch
 ):
+    assert P.apply_text_preservation()  # what every conversion does (12D9)
     raw, _cells, texts = _ocr_then_assemble(tmp_path, monkeypatch, REAL_PARAGRAPHS)
     joined = "\n".join(texts)
     assert joined.count("-") == sum(w.count("-") for w in raw)

@@ -182,12 +182,21 @@ def test_control_baseline_92_fixtures(cases):
 
 
 def test_control_committed_benchmark_reproduces_on_head(cases):
-    """docs/review/phase12d7/benchmark_legal_1_3_0.json, every row and the
-    aggregate, without the timing / memory fields."""
+    """docs/review/phase12d9/benchmark_legal_1_3_1.json, every row and the
+    aggregate, without the timing / memory fields.
+
+    Phase 12D9: the audit pinned the 12D7 benchmark of normalizer 1.3.0
+    (``docs/review/phase12d7/benchmark_legal_1_3_0.json``, kept unchanged as
+    evidence). D8-01 / D8-02 / D8-03 changed the code (owner decision of
+    12D9), so the benchmark was produced again for 1.3.1 and committed; the
+    only differences to 1.3.0 outside timing are in Standard
+    (``altered_units`` 1 -> 0, ``critical_fields`` 84 -> 85 of 89: the hyphen
+    of ``d5_r201_hyphen_lowercase`` is now kept)."""
     import phase12_benchmark as B
 
+    # was: docs/review/phase12d7/benchmark_legal_1_3_0.json
     committed = json.loads(
-        (ROOT / "docs/review/phase12d7/benchmark_legal_1_3_0.json").read_text("utf-8")
+        (ROOT / "docs/review/phase12d9/benchmark_legal_1_3_1.json").read_text("utf-8")
     )
     timing = {"ms_median", "peak_kib", "ms_total", "peak_kib_max"}
 
@@ -197,7 +206,8 @@ def test_control_committed_benchmark_reproduces_on_head(cases):
         return [strip(v) for v in x] if isinstance(x, list) else x
 
     assert committed["fixtures"] == 92
-    assert committed["normalizer_version"] == N.NORMALIZER_VERSION == "1.3.0"
+    # was: == "1.3.0" (12D7 benchmark)
+    assert committed["normalizer_version"] == N.NORMALIZER_VERSION == "1.3.1"
     rows = []
     for c in cases:
         row = {"name": c.name, "pages": len(c.fx["pages"])}

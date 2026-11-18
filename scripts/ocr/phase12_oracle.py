@@ -165,9 +165,11 @@ def _lis_length(seq: list[int]) -> int:
     return len(tails)
 
 
-def _joined_forms(texts: list[str]) -> set[str]:
+def _joined_forms(texts: list[str], dehyphenate: bool = True) -> set[str]:
     """How Docling or the normalizer may render consecutive parts in ONE item:
-    one space between them, or Docling's de-hyphenation (trailing '-' / soft
+    one space between them; the parts closed up with the hyphen KEPT (the
+    Phase 12D9 Docling patch, D8-03: "phi-" + "ngân" -> "phi-ngân"); or, with
+    ``dehyphenate``, upstream Docling's de-hyphenation (trailing '-' / soft
     hyphen removed before a lowercase continuation). Returned normalized."""
     forms = {texts[0]}
     for t in texts[1:]:
@@ -175,7 +177,9 @@ def _joined_forms(texts: list[str]) -> set[str]:
         for f in forms:
             nxt.add(f.rstrip() + " " + t.lstrip())
             stripped = t.lstrip()
-            if f.endswith(_HYPHENS) and stripped[:1].islower():
+            if f.endswith("-") and stripped[:1].islower():
+                nxt.add(f + stripped)  # hyphen kept: no character lost
+            if dehyphenate and f.endswith(_HYPHENS) and stripped[:1].islower():
                 nxt.add(f[:-1] + stripped)
         forms = nxt
     return {_norm(f) for f in forms}
@@ -491,7 +495,9 @@ def _identity_verdict(
                     "why": "text changed inside the item",
                 }
             )
-        elif len(ordered) >= 2 and full != _space_joined([u["text"] for u in ordered]):
+        elif len(ordered) >= 2 and full not in _joined_forms(
+            [u["text"] for u in ordered], dehyphenate=False
+        ):
             altered.append(
                 {
                     "units": [u["id"] for u in ordered],
@@ -557,6 +563,11 @@ def _parts(line: str, texts: set[str]) -> int:
                 out = max(out, 1)
             elif line[j] == " ":
                 rest = best(j + 1)
+                if rest > 0:
+                    out = max(out, 1 + rest)
+            elif t.endswith("-") and line[j].islower():
+                # the Phase 12D9 Docling join: hyphen kept, the parts close up
+                rest = best(j)
                 if rest > 0:
                     out = max(out, 1 + rest)
         # Docling's de-hyphenation: "...phi" + "ngân" written as "phingân"

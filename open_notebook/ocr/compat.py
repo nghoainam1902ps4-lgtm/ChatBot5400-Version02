@@ -51,6 +51,12 @@ DOCLING_FINGERPRINTS: dict[str, str] = {
     "docling.models.stages.ocr.auto_ocr_model:OcrAutoModel.__init__": "1e905edb7f52504381e3e5737ac511fc48190927d79bf1e0c7e9d4cc994cf990",
     "docling.models.stages.ocr.tesseract_ocr_cli_model:TesseractOcrCliModel._run_tesseract": "e0623aa9536128c833896869f39e27e52c10f66aa0ac51cb76418e3d61de233c",
     "docling.models.stages.ocr.tesseract_ocr_cli_model:TesseractOcrCliModel._set_languages": "0490147bdbe9dac9ecfc7b11af8030c0e4cddbf94e8e80814ec041929f0cef84",
+    # Phase 12D9 (D8-03 / D8-02): the upstream functions docling_patches patches
+    "docling.models.stages.page_assemble.page_assemble_model:PageAssembleModel.sanitize_text": "7c6242f7b90cdfe9bb7f6023018280c9bc122bb29e1b3b76f5715564fa41b03e",
+    "docling.models.stages.page_assemble.page_assemble_model:PageAssembleModel.__call__": "b20525771b0b21e7f9d0421f42e4ce0f43b6fef8ef02fd57006321e741cec37e",
+    "docling.models.stages.reading_order.readingorder_model:ReadingOrderModel._merge_elements": "297d40a4942c3d4f84d8fc03b213162b202566b5c80264fa5677e6ca2bc892da",
+    "docling_core.transforms.serializer.markdown:MarkdownTableSerializer.serialize": "5eb2124b2206369ed288153bb521fee5318b478b610aa258b7255b66ffb181db",
+    "docling_core.transforms.serializer.markdown:MarkdownPictureSerializer.serialize": "ec9a00398d819e4a437523ffdc66a5034a496e928b67a29ac24f4e831609564b",
 }
 
 OVERRIDE_ENV = "OCR_ALLOW_UNVERIFIED_DEPENDENCIES"

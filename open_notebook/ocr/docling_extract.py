@@ -294,6 +294,12 @@ def build_converter(
     from open_notebook.ocr.hub_http import bound_hub_timeouts
 
     bound_hub_timeouts()  # no 15-minute hang on a dead keep-alive link (D-24)
+    # D8-03 / D8-02 (Phase 12D9): Docling keeps every hyphen the document has
+    # and the footnotes of tables / pictures, for every engine and text layers.
+    # Guarded: refuses (ValueError) on a Docling it was not written for.
+    from open_notebook.ocr import docling_patches
+
+    docling_patches.apply_text_preservation(required=True)
     from docling.document_converter import (
         DocumentConverter,
         ImageFormatOption,

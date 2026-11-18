@@ -11,7 +11,7 @@ is a blemish; deleting a year, a clause or voucher number, or creating a
 sentence the document does not contain, is a defect. Whenever the evidence is
 missing the item stays as it is and a warning says so.
 
-What it does (version 1.3.0, Phase 12D7):
+What it does (version 1.3.1, Phase 12D9; 1.3.0: Phase 12D7):
 
 1. PAGE NUMBERS labelled TEXT by the layout model go to the furniture layer
    (where Docling itself puts PAGE_HEADER / PAGE_FOOTER) only when ALL hold:
@@ -43,12 +43,19 @@ What it does (version 1.3.0, Phase 12D7):
    two paragraphs in the verified reading order. No sentence is ever created.
 5. DOCLING'S OWN MERGE (R2-01): Docling joins a TEXT ending in [a-z,-] with the
    next TEXT starting with a letter - across pages, across columns, over tables,
-   pictures and footers - and drops the hyphen before a lowercase continuation.
-   The provenance char spans show exactly where the parts were joined (direct
-   evidence). A join ACROSS A PAGE BREAK is always undone when the spans add up
+   pictures and footers. Upstream Docling drops the hyphen before a lowercase
+   continuation; the Phase 12D9 patch (D8-03) keeps it and records where the
+   continuation starts. The provenance char spans show exactly where the parts
+   were joined (direct evidence). A join ACROSS A PAGE BREAK is always undone when the spans add up
    (point 4); a join WITHIN a page (columns) is undone when the join rules of
    ``_pair_refusal`` refuse it. The item is split back into its parts, from their
-   recorded spans, at their own reading position (``upstream_merge_undone``).
+   recorded spans, at their own reading position (``upstream_merge_undone``):
+   right after the previous part, past only the items Docling's merge skips
+   (header, footer, table, picture, caption, footnote) that came before it in
+   Docling's OWN reading order of the page - never past a text, list item or
+   heading (Phase 12D9, D8-01: the box of a joined part is in the first part's
+   page coordinates). When that position cannot be told, the join is kept and
+   reported (``upstream_merge_kept``).
    A removed hyphen is put back only when the pipeline's own pre-merge element
    text shows it; otherwise the text is kept and ``upstream_dehyphenation``
    names the pages. Spans that do not add up are left alone and reported
@@ -85,7 +92,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
-NORMALIZER_VERSION = "1.3.0"
+NORMALIZER_VERSION = "1.3.1"
 
 MODE_STANDARD = "standard"
 MODE_LEGAL = "legal"
@@ -329,10 +336,15 @@ class _Geometry:
                 self.sizes[int(page_no)] = (float(width), float(height))
         self.n_pages = len(getattr(doc, "pages", None) or {})
         self._boxes: dict[int, Box | None] = {}  # id(prov) -> box
+        # id(prov) -> the page height Docling converted that box with (D8-01):
+        # ReadingOrderModel._merge_elements records every joined part with the
+        # height of the FIRST part's page (``page_height`` of the head element)
+        self._height_of: dict[int, float] = {}
         # page -> the two lowest bottoms / highest tops, owned by two different items
         self._min_bottom: dict[int, list[tuple[float, int]]] = defaultdict(list)
         self._max_top: dict[int, list[tuple[float, int]]] = defaultdict(list)
         for item in items:
+            self.register_merged(item)
             for prov in _provs(item):
                 box = self.box(prov)
                 if box is None:
@@ -359,6 +371,19 @@ class _Geometry:
                 break
         store[:] = kept
 
+    def register_merged(self, item: Any) -> None:
+        """The parts after the first of a multi-provenance item carry boxes in the
+        coordinates of the first part's page (upstream convention, D8-01)."""
+        provs = _provs(item)
+        if len(provs) < 2:
+            return
+        first = self.sizes.get(int(getattr(provs[0], "page_no", -1)))
+        if first is None:
+            return
+        for prov in provs[1:]:
+            if id(prov) not in self._boxes:
+                self._height_of[id(prov)] = first[1]
+
     def box(self, prov: Any) -> Box | None:
         key = id(prov)
         if key not in self._boxes:
@@ -370,8 +395,9 @@ class _Geometry:
         size = self.sizes.get(int(getattr(prov, "page_no", -1)))
         if bbox is None or size is None:
             return None
+        height = self._height_of.get(id(prov), size[1])
         try:
-            tl = bbox.to_top_left_origin(page_height=size[1])
+            tl = bbox.to_top_left_origin(page_height=height)
         except Exception:
             return None
         t, b = min(tl.t, tl.b), max(tl.t, tl.b)
@@ -1277,12 +1303,16 @@ def _pair_refusal(a: _Part, b: _Part, ctx: _JoinContext) -> tuple[str | None, bo
 
 def _segments(item: Any) -> tuple[list[tuple[int, int]], list[str]] | None:
     """Where each provenance part of a merged item lies in ``item.text``, and how
-    each join was made ("space" / "dehyphen"), from Docling's char spans.
+    each join was made ("space" / "dehyphen" / "concat"), from Docling's char
+    spans.
 
-    Docling records part i at ``(len(text so far) + 1, ... + len(part))`` and then
-    appends " " + part, or - before a lowercase continuation - replaces a final
-    "-" / soft hyphen by the part. So the span arithmetic tells which join was
-    made, and where. None when the spans do not add up (nothing is undone then).
+    Upstream Docling records part i at ``(len(text so far) + 1, ... + len(part))``
+    and then appends " " + part, or - before a lowercase continuation - replaces
+    a final "-" / soft hyphen by the part ("dehyphen"). The Phase 12D9 patch
+    (D8-03) keeps a hard "-" and records the continuation where it really
+    starts, ``(len(text so far), ...)`` ("concat"). The span arithmetic tells
+    which join was made, and where. None when the spans do not add up (nothing
+    is undone then).
     """
     provs = _provs(item)
     text = getattr(item, "text", "") or ""
@@ -1294,29 +1324,40 @@ def _segments(item: Any) -> tuple[list[tuple[int, int]], list[str]] | None:
         return None
     if spans[0][0] != 0 or any(e < s for s, e in spans):
         return None
+    out: list[tuple[int, int]] = [(0, spans[0][1])]
     kinds: list[str] = []
+    pos = spans[0][1]  # length of the text built so far (= Docling's len(text))
     for i in range(1, len(spans)):
-        after = spans[i + 1][0] - 1 if i + 1 < len(spans) else len(text)
-        if after == spans[i][1]:
-            kinds.append("space")
-        elif after == spans[i][1] - 2:
-            kinds.append("dehyphen")
+        s, e = spans[i]
+        size = e - s
+        nxt = spans[i + 1][0] if i + 1 < len(spans) else None
+
+        def fits(end: int) -> bool:
+            # the next part is recorded right after this end ("concat") or one
+            # further ("space" / "dehyphen"); the last part ends the text
+            return end == len(text) if nxt is None else nxt in (end, end + 1)
+
+        if s == pos:
+            # only what the patch writes: a hard "-" before a lowercase continuation
+            cont = text[pos : pos + size].lstrip()
+            if not (pos >= 1 and text[pos - 1] == "-" and cont and cont[0].islower()):
+                return None
+            kind, start = "concat", pos
+        elif s == pos + 1:
+            if fits(pos + 1 + size) and text[pos : pos + 1] == " ":
+                kind, start = "space", pos + 1
+            elif fits(pos - 1 + size):
+                kind, start = "dehyphen", pos - 1
+            else:
+                return None
         else:
             return None
-    out: list[tuple[int, int]] = []
-    start = 0
-    for i, (s, e) in enumerate(spans):
-        end = start + (e - s)
-        if i < len(kinds) and kinds[i] == "dehyphen":
-            end -= 1  # its last character (the hyphen) was removed
-        out.append((start, end))
-        if i < len(kinds):
-            if kinds[i] == "space":
-                if text[end : end + 1] != " ":
-                    return None
-                start = end + 1
-            else:
-                start = end
+        if kind == "dehyphen":
+            last_start, last_end = out[-1]
+            out[-1] = (last_start, last_end - 1)  # its last character was removed
+        out.append((start, start + size))
+        kinds.append(kind)
+        pos = start + size
     if out[-1][1] != len(text):
         return None
     return out, kinds
@@ -1361,9 +1402,137 @@ def source_evidence(conv_res: Any) -> dict[tuple[int, tuple[float, ...]], str] |
     return out or None
 
 
-def _reading_key(prov: Any, geo: _Geometry) -> tuple[int, float]:
-    box = geo.box(prov)
-    return int(prov.page_no), (box[1] if box else 0.0)
+# The labels Docling's merge skips between the two parts it joins
+# (``ReadingOrderPredictor.predict_merges``, docling 2.129.0): a split-off part
+# goes back after such items only, never after a text, list item or heading.
+_MERGE_SKIPS = frozenset(
+    {"page_header", "page_footer", "table", "picture", "caption", "footnote"}
+)
+
+
+class _DoclingOrder:
+    """Docling's OWN reading order of a page - its ``ReadingOrderPredictor`` run
+    on the boxes of every item of that page - as the evidence of where a part
+    split off a merge goes back (D8-01): column-aware, unlike a comparison of
+    vertical positions."""
+
+    def __init__(self, work: Any, geo: _Geometry) -> None:
+        self.work, self.geo = work, geo
+        self._pages: dict[int, dict[int, int] | None] = {}
+
+    def _page(self, page_no: int) -> dict[int, int] | None:
+        if page_no not in self._pages:
+            self._pages[page_no] = self._predict(page_no)
+        return self._pages[page_no]
+
+    def _predict(self, page_no: int) -> dict[int, int] | None:
+        size = self.geo.sizes.get(page_no)
+        if size is None:
+            return None
+        try:
+            from docling.models.postprocessing.reading_order_rb import (
+                PageElement,
+                ReadingOrderPredictor,
+            )
+            from docling_core.types.doc import ContentLayer, CoordOrigin, Size
+            from docling_core.types.doc.labels import DocItemLabel
+
+            furniture = (DocItemLabel.PAGE_HEADER, DocItemLabel.PAGE_FOOTER)
+            elements: list[Any] = []
+            owners: list[int] = []
+            for item, _level in self.work.iterate_items(
+                with_groups=False,
+                traverse_pictures=True,
+                included_content_layers=set(ContentLayer),
+            ):
+                if getattr(item, "label", None) in furniture:
+                    continue  # ordered apart from the body by Docling
+                self.geo.register_merged(item)
+                for prov in _provs(item):
+                    if int(prov.page_no) != page_no:
+                        continue
+                    box = self.geo.box(prov)
+                    if box is None:
+                        return None
+                    left, top, right, bottom = box
+                    elements.append(
+                        PageElement(
+                            cid=len(elements),
+                            text=getattr(item, "text", "") or "",
+                            page_no=page_no,
+                            page_size=Size(width=size[0], height=size[1]),
+                            label=item.label,
+                            l=left,
+                            r=right,
+                            t=size[1] - top,
+                            b=size[1] - bottom,
+                            coord_origin=CoordOrigin.BOTTOMLEFT,
+                        )
+                    )
+                    owners.append(id(prov))
+            ordered = ReadingOrderPredictor().predict_reading_order(elements)
+        except Exception:  # noqa: BLE001 - no evidence: the caller keeps the merge
+            return None
+        return {owners[e.cid]: k for k, e in enumerate(ordered)}
+
+    def precedes(self, item: Any, prov: Any) -> bool | None:
+        """Whether ``item`` came before the part ``prov`` in Docling's reading
+        order; None when that cannot be told."""
+        provs = _provs(item)
+        if not provs:
+            return None
+        first = provs[0]
+        p_item, p_part = int(first.page_no), int(prov.page_no)
+        if p_item != p_part:
+            return p_item < p_part  # Docling orders page by page
+        # Docling puts a page's headers before its body and its footers after it
+        # (ReadingOrderPredictor.predict_reading_order)
+        label = _label_name(item)
+        if label == "page_header":
+            return True
+        if label == "page_footer":
+            return False
+        order = self._page(p_part)
+        if order is None:
+            return None
+        a, b = order.get(id(first)), order.get(id(prov))
+        if a is None or b is None:
+            return None
+        return a < b
+
+
+def _label_name(item: Any) -> str:
+    label = getattr(item, "label", None)
+    return str(getattr(label, "value", label))
+
+
+def _skipped_run(work: Any, item: Any) -> list[Any]:
+    """The siblings right after ``item`` that Docling's merge may have skipped."""
+    parent = _parent(item, work)
+    if parent is None:
+        return []
+    children = parent.children
+    index = next((k for k, c in enumerate(children) if c.cref == item.self_ref), None)
+    if index is None:
+        return []
+    run = []
+    for ref in children[index + 1 :]:
+        sibling = ref.resolve(work)
+        if _label_name(sibling) not in _MERGE_SKIPS:
+            break
+        run.append(sibling)
+    return run
+
+
+def _placeable(run: list[Any], prov: Any, order: _DoclingOrder) -> bool:
+    """Whether the reading position of the part ``prov`` among ``run`` is known."""
+    for sibling in run:
+        before = order.precedes(sibling, prov)
+        if before is None:
+            return False
+        if not before:
+            return True
+    return True
 
 
 def _undo_upstream_merges(
@@ -1388,6 +1557,7 @@ def _undo_upstream_merges(
     items = _body_items(work)
     geo = _Geometry(work, items)
     ctx = _JoinContext(items, work, geo, T)
+    order = _DoclingOrder(work, geo)
     created = 0
     for n, item in enumerate(items):
         if n % 2000 == 0:
@@ -1417,9 +1587,10 @@ def _undo_upstream_merges(
         cuts: list[int] = []  # boundary i: between part i and part i + 1
         restore: dict[int, str] = {}  # boundary -> hyphen character to put back
         for i, kind in enumerate(kinds):
-            if kind == "dehyphen":
-                # The part ended with "-" / a soft hyphen that Docling removed: the
-                # rules never join across a hyphen (it may belong to the text).
+            if kind in ("dehyphen", "concat"):
+                # The part ended with "-" / a soft hyphen (removed by upstream
+                # Docling, kept by the 12D9 patch): the rules never join across a
+                # hyphen (it may belong to the text).
                 reason: str | None = "the first part ended with a hyphen"
             elif parts[i].page != parts[i + 1].page:
                 # E1-09 (Phase 12D7): no paragraph spans a page break in Legal mode.
@@ -1428,8 +1599,8 @@ def _undo_upstream_merges(
                 reason, _ = _pair_refusal(parts[i], parts[i + 1], ctx)
             if reason is None:
                 continue  # a join the rules would make themselves
-            if kind == "space":
-                cuts.append(i)
+            if kind in ("space", "concat"):
+                cuts.append(i)  # the parts are exactly the texts Docling joined
                 continue
             original = None
             key = _evidence_key(parts[i].page, parts[i].box)
@@ -1454,6 +1625,25 @@ def _undo_upstream_merges(
                         "verify against the scan",
                     }
                 )
+        if cuts:
+            # D8-01: the part goes back where Docling's own order had it; when
+            # that cannot be told, the join stays (text kept) and is reported
+            run = _skipped_run(work, item)
+            unplaced = [i for i in cuts if not _placeable(run, provs[i + 1], order)]
+            if unplaced:
+                cuts = [i for i in cuts if i not in unplaced]
+                for i in unplaced:
+                    restore.pop(i, None)
+                warnings.append(
+                    {
+                        "code": "upstream_merge_kept",
+                        "pages": pages[:50],
+                        "reason": "Docling joined these blocks into one paragraph and the "
+                        "reading position of the next block cannot be verified from "
+                        "Docling's own order: left as Docling made it (no text lost); "
+                        "verify against the scan",
+                    }
+                )
         if not cuts:
             continue
         record(
@@ -1464,7 +1654,7 @@ def _undo_upstream_merges(
             text,
             "",
         )
-        created += _split_item(work, item, provs, spans, cuts, restore, geo)
+        created += _split_item(work, item, provs, spans, cuts, restore, geo, order)
         warnings.append(
             {
                 "code": "upstream_merge_undone",
@@ -1485,10 +1675,15 @@ def _split_item(
     cuts: list[int],
     restore: dict[int, str],
     geo: _Geometry,
+    order: _DoclingOrder,
 ) -> int:
     """Cut ``item`` after the parts in ``cuts``; the first group stays in the item,
-    each other group becomes a new TEXT item placed at its own reading position
-    (after the tables / pictures / footers Docling had skipped over)."""
+    each other group becomes a new TEXT item placed at its own reading position:
+    right after the previous group, past only the siblings Docling's merge
+    skipped (header, footer, table, picture, caption, footnote) that came
+    before it in Docling's own reading order (D8-01) - never past a text, list
+    item or heading."""
+    from docling_core.types.doc import BoundingBox, CoordOrigin
     from docling_core.types.doc.document import ProvenanceItem
 
     text = item.text or ""
@@ -1499,6 +1694,18 @@ def _split_item(
         out = text[spans[first][0] : spans[last][1]]
         return out + restore.get(last, "")
 
+    def bbox_for(i: int, first: int) -> Any:
+        # Docling's convention for the group (D8-01): its first part in its own
+        # page's coordinates, the next ones in the first part's page coordinates
+        box = geo.box(provs[i])
+        anchor = geo.sizes.get(int(provs[first].page_no))
+        if box is None or anchor is None:
+            return provs[i].bbox
+        left, top, right, bottom = box
+        return BoundingBox(
+            l=left, t=top, r=right, b=bottom, coord_origin=CoordOrigin.TOPLEFT
+        ).to_bottom_left_origin(page_height=anchor[1])
+
     def rebased(first: int, last: int) -> list[Any]:
         # Docling's OWN span arithmetic, shifted to the group (not the final text
         # positions): a de-hyphenated join kept inside a group is then read back
@@ -1507,7 +1714,7 @@ def _split_item(
         return [
             ProvenanceItem(
                 page_no=provs[i].page_no,
-                bbox=provs[i].bbox,
+                bbox=bbox_for(i, first),
                 charspan=(
                     int(provs[i].charspan[0]) - base,
                     int(provs[i].charspan[1]) - base,
@@ -1534,8 +1741,6 @@ def _split_item(
         )
         for extra in new_provs[1:]:
             new.prov.append(extra)
-        # reading position: after the item (or the previous new part), past the
-        # siblings Docling skipped that come before this part on the page(s)
         if parent is not None:
             children = parent.children
             # add_text appended the new reference: take it off the end in O(1)
@@ -1549,11 +1754,11 @@ def _split_item(
                 (k for k, c in enumerate(children) if c.cref == after.self_ref),
                 len(children) - 1,
             )
-            own = _reading_key(new_provs[0], geo)
             while index + 1 < len(children):
                 nxt = children[index + 1].resolve(work)
-                nxt_provs = _provs(nxt)
-                if not nxt_provs or _reading_key(nxt_provs[0], geo) >= own:
+                if _label_name(nxt) not in _MERGE_SKIPS:
+                    break  # never past a text, list item or heading
+                if order.precedes(nxt, provs[first]) is not True:
                     break
                 index += 1
             children.insert(index + 1, ref)
@@ -1578,6 +1783,12 @@ def normalize_document(
     ``evidence``: the element texts before Docling's merge (``source_evidence``
     of the conversion result), used only to restore a hyphen Docling removed.
     """
+    # D8-02 / D8-03 (Phase 12D9): the Markdown export writes the footnotes of
+    # tables / pictures (and Docling keeps hyphens). Guarded; a docling-core it
+    # was not written for raises here and normalize_or_fallback keeps Standard.
+    from open_notebook.ocr import docling_patches
+
+    docling_patches.apply_text_preservation(required=True)
     budget = _Budget()
     _check_limits(doc)
     from docling_core.types.doc.document import ContentLayer, ListGroup

@@ -115,3 +115,18 @@ def pytest_report_header(config):
 def database_plan(pytestconfig):
     """The database decision of this test run (tests/db_isolation.py)."""
     return pytestconfig._database_plan
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _docling_text_preservation():
+    """Production applies the Phase 12D9 Docling text patches (D8-03 hyphens,
+    D8-02 attached footnotes) before every conversion; the suite runs with
+    them whatever the test order. A test that documents UPSTREAM behaviour
+    uses ``docling_patches.upstream_text_preservation()``."""
+    try:
+        from open_notebook.ocr import docling_patches
+    except Exception:  # noqa: BLE001 - a test run without the OCR package
+        yield
+        return
+    docling_patches.apply_text_preservation(required=False)
+    yield

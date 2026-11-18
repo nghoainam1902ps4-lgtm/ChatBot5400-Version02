@@ -321,11 +321,23 @@ def test_stored_text_is_the_displayed_text(built, name):
         assert "\\." not in head and "\\)" not in head, line
 
 
-def test_upstream_dehyphenation_without_evidence_is_kept_and_reported(built):
+def _built_by_upstream_docling(name):
+    """The fixture as UPSTREAM Docling 2.129.0 builds it: its ``_merge_elements``
+    removes the hyphen (Phase 12D9 patches that, D8-03); Legal must still read
+    such a document safely (a soft hyphen is still removed upstream-style)."""
+    from open_notebook.ocr import docling_patches
+
+    with docling_patches.upstream_text_preservation():
+        doc = H.build_document(FX.by_name(name))
+    return doc, H.evidence(doc)
+
+
+def test_upstream_dehyphenation_without_evidence_is_kept_and_reported():
     """R2-01 safe default: without the element texts the removed hyphen cannot be
     known ('-' or a soft hyphen), so Docling's text is kept and the pages named;
     with them (production) the two blocks are restored exactly."""
-    fx, doc, _, with_evidence = built["d5_r201_hyphen_lowercase"]
+    doc, evidence = _built_by_upstream_docling("d5_r201_hyphen_lowercase")
+    with_evidence = N.normalize_document(doc, evidence=evidence)
     blind = N.normalize_document(doc)
     assert "phingân hàng" in blind.content
     codes = {w["code"]: w for w in blind.warnings}
@@ -337,14 +349,34 @@ def test_upstream_dehyphenation_without_evidence_is_kept_and_reported(built):
     assert "upstream_merge_undone" in {w["code"] for w in with_evidence.warnings}
 
 
-def test_evidence_that_does_not_match_the_document_is_not_used(built):
+def test_evidence_that_does_not_match_the_document_is_not_used():
     """Evidence only confirms a part character for character; a mismatching text
     (another document, a stale conversion) is ignored."""
-    fx, doc, _, _ = built["d5_r201_hyphen_lowercase"]
-    evidence = {k: v.replace("phi-", "phí-") for k, v in H.evidence(doc).items()}
+    doc, real = _built_by_upstream_docling("d5_r201_hyphen_lowercase")
+    evidence = {k: v.replace("phi-", "phí-") for k, v in real.items()}
     res = N.normalize_document(doc, evidence=evidence)
     assert "phingân hàng" in res.content and "phí-" not in res.content
     assert "upstream_dehyphenation" in {w["code"] for w in res.warnings}
+
+
+def test_d8_03_patched_docling_keeps_the_hyphen_and_legal_splits_without_evidence(
+    built,
+):
+    """Phase 12D9 (D8-03): Docling keeps the hyphen when it joins the blocks of
+    two pages and records where the continuation starts; Standard keeps every
+    character, Legal shows the two blocks apart - no evidence needed, nothing
+    restored by guess."""
+    fx, doc, standard, _ = built["d5_r201_hyphen_lowercase"]
+    assert "phi-ngân hàng" in standard and "phingân" not in standard
+    res = N.normalize_document(doc)
+    assert H.legal_lines(res.content)[:2] == [
+        "Áp dụng cho tổ chức tín dụng phi-",
+        "ngân hàng và chi nhánh ngân hàng nước ngoài.",
+    ]
+    codes = {w["code"] for w in res.warnings}
+    assert "upstream_merge_undone" in codes and "upstream_dehyphenation" not in codes
+    again = N.normalize_document(res.document)
+    assert again.content == res.content  # idempotent
 
 
 def test_upstream_space_merge_is_split_back_exactly_without_evidence():

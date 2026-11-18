@@ -193,12 +193,8 @@ def test_control_docling_records_the_merged_part_with_the_first_pages_height():
     assert round(top_left.t) == 70 + (842 - 820)  # 22 pt lower than it is
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-01: _split_item places the split-off part by (page, top) of a bbox "
-    "Docling recorded with the FIRST page's height; when page 2 is taller the "
-    "part lands after the paragraphs that follow it (reading order changed).",
-)
+# was: xfail(strict) D8-01 - fixed in Phase 12D9 (legal_normalizer: Docling's
+# box convention for joined parts, placement by Docling's own reading order)
 @pytest.mark.parametrize(
     "first_page, sizes",
     [
@@ -211,12 +207,7 @@ def test_d8_01_mixed_page_heights_keep_the_reading_order(first_page, sizes):
     assert lines == EXPECTED_ORDER
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-01: the same re-insertion walks past a TEXT sibling that is higher "
-    "on the page (first paragraph of the right column): left-column continuation "
-    "and right-column heading are swapped.",
-)
+# was: xfail(strict) D8-01 - fixed in Phase 12D9 (never placed past a text)
 def test_d8_01_two_columns_keep_the_reading_order():
     left = T("của pháp luật hiện hành về bảo vệ thực vật và kiểm dịch.", 60, 72, 290, 400)
     right = [
@@ -228,13 +219,15 @@ def test_d8_01_two_columns_keep_the_reading_order():
     assert lines == [HEAD, left["text"], right[0]["text"], right[1]["text"]]
 
 
-def test_control_d8_01_today_the_continuation_lands_after_the_next_article():
-    """What Legal 1.3.0 stores today for the 820 pt -> 842 pt scan."""
+# was: test_control_d8_01_today_the_continuation_lands_after_the_next_article
+# (Legal 1.3.0 stored the continuation after "Điều 6" for the 820 -> 842 pt scan)
+def test_d8_01_the_continuation_goes_back_right_after_its_head():
+    """Inverted in Phase 12D9: same scan, the continuation is right after its
+    head, nothing lost, one warning that names the split."""
     _doc, res, lines = legal([[T(HEAD, 70, 740, 525, 770)], PAGE2], [(595, 820), A4])
-    assert lines.index(CONT) > lines.index("Điều 6. Hiệu lực thi hành")
-    assert sorted(lines) == sorted(EXPECTED_ORDER)  # nothing lost, order changed
-    # and the only warning says the parts are "shown apart again" - not that
-    # their position is unverified
+    assert lines.index(CONT) == lines.index(HEAD) + 1
+    assert lines.index(CONT) < lines.index("Điều 6. Hiệu lực thi hành")
+    assert lines == EXPECTED_ORDER  # nothing lost, order kept
     assert [w["code"] for w in res.warnings] == ["upstream_merge_undone"]
 
 
@@ -266,12 +259,16 @@ def _with_note(floating: dict[str, Any], note_top: float):
 def test_control_docling_attaches_the_note_and_the_standard_export_drops_it(
     floating, top
 ):
-    """Upstream (docling-core 2.96.0 Markdown serializer), same in v1.2.0."""
-    doc, _ = build(_with_note(floating, top))
-    holders = [*doc.tables, *doc.pictures]
-    assert [len(h.footnotes) for h in holders] == [1]
-    assert any(t.text == NOTE for t in doc.texts)  # the text IS in the document
-    assert NOTE not in doc.export_to_markdown()
+    """Upstream (docling-core 2.96.0 Markdown serializer), same in v1.2.0.
+    Phase 12D9 patches the serializer (D8-02); the control runs UPSTREAM."""
+    from open_notebook.ocr import docling_patches
+
+    with docling_patches.upstream_text_preservation():
+        doc, _ = build(_with_note(floating, top))
+        holders = [*doc.tables, *doc.pictures]
+        assert [len(h.footnotes) for h in holders] == [1]
+        assert any(t.text == NOTE for t in doc.texts)  # the text IS in the document
+        assert NOTE not in doc.export_to_markdown()
 
 
 def test_control_a_footnote_that_is_not_attached_is_kept():
@@ -281,13 +278,7 @@ def test_control_a_footnote_that_is_not_attached_is_kept():
     assert NOTE in lines
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D8-02: a FOOTNOTE item Docling attached to a table / picture is not "
-    "serialized by the Markdown serializer; Legal keeps other text the standard "
-    "export drops (furniture, text inside pictures) but not this - the note "
-    "text is in neither content, with no warning.",
-)
+# was: xfail(strict) D8-02 - fixed in Phase 12D9 (docling_patches, D8-02 patch)
 @pytest.mark.parametrize("floating, top", [(TABLE, 410), (PICTURE, 610)])
 def test_d8_02_legal_keeps_a_footnote_attached_to_a_table_or_picture(floating, top):
     _doc, res, lines = legal(_with_note(floating, top))
@@ -327,12 +318,17 @@ def test_verified_two_independent_documents_are_not_one_paragraph():
 def test_control_residual_a_removed_hyphen_without_evidence_stays_joined():
     """R-D8-A (residual, reported by a warning): Docling dropped the hyphen and
     joined across the page; with no pre-merge element text the two pages stay
-    ONE paragraph in Legal mode - 'no cross-page join' holds only with evidence."""
+    ONE paragraph in Legal mode - 'no cross-page join' holds only with evidence.
+    Phase 12D9: Docling no longer removes a hard hyphen (D8-03), so this happens
+    only with an UPSTREAM-built document; the control builds one."""
+    from open_notebook.ocr import docling_patches
+
     pages = [
         [T("Cơ quan kiểm dịch thực vật xuyên-", 70, 760, 525, 790)],
         [T("biên giới thực hiện kiểm tra.", 70, 70, 400, 82)],
     ]
-    doc, evidence = build(pages)
+    with docling_patches.upstream_text_preservation():
+        doc, evidence = build(pages)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         without = LN.normalize_document(doc, evidence=None)
@@ -470,4 +466,5 @@ def test_verified_a_failing_normalizer_keeps_the_standard_export_and_says_so(
     assert content == doc.export_to_markdown()
     assert meta["legal_normalization_status"] == "failed"
     assert meta["legal_normalization_record"]["status"] == "failed"
-    assert meta["legal_normalization_record"]["version"] == "1.3.0"
+    # was: == "1.3.0" (Phase 12D9 bumped the normalizer to 1.3.1 for D8-01 / D8-03)
+    assert meta["legal_normalization_record"]["version"] == "1.3.1"
