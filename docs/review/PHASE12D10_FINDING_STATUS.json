@@ -1,0 +1,148 @@
+{
+  "schema": "chatbot5400-finding-status/12D10",
+  "phase": "12D10",
+  "repository": "nghoainam1902ps4-lgtm/ChatBot5400-Version02",
+  "pr": 50,
+  "pr_draft_verified": true,
+  "baseline": "f2fdf2714a7c0b5b196132f71cfc091928befc06",
+  "previous_candidate": "4587eb77e25935db2d4375fe55be64f22341d1bb",
+  "review_target": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+  "review_branch": "review/phase12d10-codex-targeted",
+  "reviewer": {
+    "agent": "Codex",
+    "model": "gpt-6.2-sol",
+    "model_evidence": "turn_context.model of this Codex session"
+  },
+  "environment": {
+    "windows_build": 26100,
+    "windows_powershell": "5.1.26100.9818",
+    "powershell_7": "7.7.0",
+    "windows_python": "3.12.14",
+    "wsl_distribution": "Ubuntu 26.04.1 LTS",
+    "wsl_kernel": "6.18.58.1-microsoft-standard-WSL2",
+    "wsl_python": "3.12.16",
+    "docling": "2.129.0",
+    "docling_core": "2.96.0",
+    "content_core": "2.0.7",
+    "pandas": "3.0.0",
+    "tesseract_wsl": "5.5.0",
+    "data": "synthetic fixtures only"
+  },
+  "verdict": {
+    "targeted_independent_review": "PARTIAL",
+    "upstream_patches": "FAIL",
+    "D8-03": "FAIL",
+    "D8-01": "PASS",
+    "D8-02": "FAIL",
+    "E2-04": "FAIL",
+    "standard_expected_diff": "FAIL",
+    "offline_manual_fallback": "FAIL",
+    "new_release_blockers": 9,
+    "ready_for_final_windows_acceptance": "NO",
+    "ready_for_release": "NO",
+    "automatic_updater": "EXPERIMENTAL",
+    "production": "UNCHANGED"
+  },
+  "findings": [
+    {
+      "id": "D10-01",
+      "severity": "P1",
+      "status": "OPEN",
+      "release_blocker": true,
+      "related": ["D-39", "D-41", "D-42"],
+      "evidence": "Remote native PDF continues through content-core after a text patch source hash mismatch.",
+      "tests": ["test_remote_native_pdf_fails_closed_if_patch_is_incompatible"]
+    },
+    {
+      "id": "D10-02",
+      "severity": "P1",
+      "status": "OPEN",
+      "release_blocker": true,
+      "related": ["E2-04", "D-45"],
+      "evidence": "Native graph output succeeds with PARTIAL_SUCCESS and with SUCCESS carrying errors. The already running embedding command deletes old chunks before generating replacements.",
+      "tests": ["test_native_content_core_refuses_incomplete_docling_result", "test_old_embedding_survives_failed_ocr_and_failed_inflight_embedding"]
+    },
+    {
+      "id": "D10-03",
+      "severity": "P1",
+      "status": "OPEN",
+      "release_blocker": true,
+      "related": ["D8-03", "D-41"],
+      "evidence": "Cells in separate columns with different heights fuse into a single synthetic reference.",
+      "tests": ["test_assembly_does_not_fuse_hyphenated_cell_across_a_column_gutter"]
+    },
+    {
+      "id": "D10-04",
+      "severity": "P2",
+      "status": "OPEN",
+      "release_blocker": true,
+      "related": ["D8-02", "D-42"],
+      "evidence": "Attached Legal footnote renders a literal leading hash as a Markdown heading.",
+      "tests": ["test_attached_legal_note_preserves_literal_block_syntax"]
+    },
+    {
+      "id": "D10-05",
+      "severity": "P1",
+      "status": "OPEN",
+      "release_blocker": true,
+      "related": ["D8-STD-01", "D8-STD-04", "D-44"],
+      "evidence": "Gate returns zero for LF versus CRLF and for a manifest success with both outputs missing.",
+      "tests": ["test_gate_rejects_lf_to_crlf_change", "test_gate_rejects_a_success_missing_on_both_sides"]
+    },
+    {
+      "id": "D10-06",
+      "severity": "P1",
+      "status": "OPEN",
+      "release_blocker": true,
+      "related": ["D8-STD-02", "D8-STD-03", "D-44"],
+      "evidence": "Gate returns zero despite different model hashes, or accepts an orientation sidecar with only text and no invocation evidence.",
+      "tests": ["test_gate_rejects_different_models_even_with_equal_output", "test_gate_does_not_accept_orientation_without_invocation_evidence"]
+    },
+    {
+      "id": "D10-07",
+      "severity": "P1",
+      "status": "OPEN",
+      "release_blocker": true,
+      "related": ["D8-03", "G-H1"],
+      "evidence": "Two TSV occurrences and one output occurrence count as 2/2.",
+      "tests": ["test_hyphen_count_requires_two_distinct_occurrences"]
+    },
+    {
+      "id": "D10-08",
+      "severity": "P2",
+      "status": "OPEN",
+      "release_blocker": true,
+      "related": ["D8-OFF-03", "D8-OFF-04", "D-46"],
+      "evidence": "Recovery cannot restore the sidecar after both checksum publish operations fail. The matching temporary hash is ignored.",
+      "tests": ["test_failed_hash_publish_leaves_enough_to_recover"]
+    },
+    {
+      "id": "D10-09",
+      "severity": "P1",
+      "status": "OPEN",
+      "release_blocker": true,
+      "related": ["D8-OFF-08", "D-46", "G-09"],
+      "evidence": "The no-writes guard returns zero when an existing embedding vector changes with the same record ID.",
+      "tests": ["test_offline_no_writes_detects_in_place_vector_change"]
+    }
+  ],
+  "review_controls": {
+    "path": "tests/test_phase12d10_review_controls.py",
+    "wsl_passed": 3,
+    "wsl_expected_failures": 13,
+    "old_audit_strict_xfail_ids_retained_unmarked": 71,
+    "old_audit_collection": 275,
+    "candidate_audit_collection": 275
+  },
+  "test_runs": {
+    "wsl_full_initial_environment": {"passed": 3370, "failed": 13, "skipped": 160, "xfailed": 10},
+    "wsl_full_failures_matching_reported_baseline": 10,
+    "wsl_environment_corrected_retests": {"passed": 3, "failed": 0},
+    "wsl_targeted_with_tesseract": {"passed": 1403, "failed": 0, "skipped": 9, "xfailed": 12},
+    "audit_12d8_union_of_successful_runs": {"passed": 275, "xfailed": 0}
+  },
+  "recognition_limitations": {
+    "E2-01": "NEEDS LOCAL EVIDENCE",
+    "E2-02": "NEEDS LOCAL EVIDENCE"
+  }
+}
