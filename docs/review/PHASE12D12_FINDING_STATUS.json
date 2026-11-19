@@ -1,0 +1,365 @@
+{
+  "schema": "chatbot5400-finding-status/12D12",
+  "phase": "12D12",
+  "repository": "nghoainam1902ps4-lgtm/ChatBot5400-Version02",
+  "pr": 50,
+  "pr_state": "open, draft",
+  "version": "1.2.0",
+  "review_target": "18eeecbfd2cc42549e57cdb866a405083b41a657",
+  "remediation_base": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+  "independent_audit_commit": "abbcc37c89f5c72f14bcd3aadd52c70817f36120",
+  "baseline": "f2fdf2714a7c0b5b196132f71cfc091928befc06",
+  "review_branch": "claude/jolly-knuth-rivla0",
+  "reviewer": {
+    "agent": "Claude Code, independent session",
+    "model": "reported in the session handover; not recorded in the repository"
+  },
+  "environment": {
+    "os": "Ubuntu 24.04 container, Linux 6.18",
+    "python": "CPython 3.12.3",
+    "pinned": "Docling 2.129.0, docling-core 2.96.0, content-core 2.0.7, pandas 3.0.0, RapidOCR 3.9.2, SurrealDB SDK 1.0.8",
+    "tesseract": "5.3.4 (eng, vie, osd)",
+    "database": [
+      "embedded SDK engine (surrealkv://)",
+      "standalone SurrealDB server 2.3.10, RocksDB",
+      "standalone SurrealDB server 2.3.10, SurrealKV"
+    ],
+    "not_available": [
+      "Docker daemon",
+      "Windows / PowerShell",
+      "full OCR pipeline with real layout models",
+      "production data"
+    ],
+    "fixtures": "synthetic only"
+  },
+  "r01_red_green": {
+    "audit_test_sha256": "86f0101a93f427a526703ef988961a1cdf47bfd2e558cf239f6d0bd2eecd7074",
+    "red_2cc824f_runxfail": {
+      "failed": 13,
+      "passed": 3
+    },
+    "green_18eeecb_runxfail": {
+      "failed": 0,
+      "passed": 16
+    },
+    "green_18eeecb_strict_markers": {
+      "failed_xpass_strict": 13,
+      "passed": 3
+    },
+    "feature_copy_differs_only_by_removed_xfail_markers": true,
+    "assertions_inputs_fixtures_changed": false,
+    "status": "PASS"
+  },
+  "findings": [
+    {
+      "id": "D10-01",
+      "severity": "P1",
+      "status_12d11": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "status_12d12": "VERIFIED_FIXED",
+      "summary": "Native PDF from a URL can no longer run after a patch refusal.",
+      "evidence": [
+        "open_notebook/ocr/docling_extract.py::install_native_pdf_integrity",
+        "open_notebook/ocr/docling_extract.py::_extract_native_pdf",
+        "original 12D10 control",
+        "tests/test_phase12d11_pdf_integrity.py"
+      ],
+      "local_gates": [
+        "D11-W01"
+      ]
+    },
+    {
+      "id": "D10-02",
+      "severity": "P1",
+      "status_12d11": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "status_12d12": "VERIFIED_FIXED",
+      "summary": "Conversion verdict is checked before serialization on both paths; vectors are generated first and replaced in one revision-fenced transaction.",
+      "evidence": [
+        "open_notebook/ocr/docling_extract.py::reject_incomplete",
+        "commands/embedding_commands.py::embed_source_command",
+        "open_notebook/database/repository.py::repo_transaction",
+        "128 D10/D11 tests passed on standalone SurrealDB 2.3.10 (RocksDB)",
+        "tests/test_phase12d12_review_controls.py::test_server_same_revision_jobs_publish_exactly_one_chunk_set"
+      ],
+      "residual": [
+        "D12-01",
+        "embedded-engine evidence does not cover concurrency",
+        "native non-PDF image scans are not verdict-checked (baseline behaviour)"
+      ],
+      "local_gates": [
+        "D11-W02",
+        "D11-W03",
+        "D12-L2",
+        "D12-L5"
+      ]
+    },
+    {
+      "id": "D10-03",
+      "severity": "P1",
+      "status_12d11": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "status_12d12": "VERIFIED_FIXED",
+      "summary": "A hyphen closes only on same-margin line-break evidence; ambiguous geometry keeps the separator and every hyphen.",
+      "evidence": [
+        "open_notebook/ocr/docling_patches.py::same_line_flags",
+        "tests/test_phase12d12_review_controls.py::test_hyphen_closes_only_on_line_break_evidence (12 cases)"
+      ],
+      "residual": [
+        "extra space for identifiers wrapped in centred headings or after an indented first line (safe direction)"
+      ],
+      "local_gates": [
+        "D11-W04"
+      ]
+    },
+    {
+      "id": "D10-04",
+      "severity": "P2",
+      "status_12d11": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "status_12d12": "VERIFIED_FIXED",
+      "summary": "Attached notes pass through the active text serializer; literal # and > are escaped in Legal, written once.",
+      "evidence": [
+        "open_notebook/ocr/docling_patches.py::attached_footnotes",
+        "open_notebook/ocr/legal_normalizer.py::LegalTextSerializer",
+        "tests/test_phase12d12_review_controls.py::test_attached_legal_note_is_literal_and_written_once"
+      ],
+      "residual": [
+        "D12-02"
+      ],
+      "local_gates": [
+        "D11-W04"
+      ]
+    },
+    {
+      "id": "D10-05",
+      "severity": "P1",
+      "status_12d11": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "status_12d12": "VERIFIED_FIXED",
+      "summary": "Release mode compares bytes and validates both manifest inventories.",
+      "evidence": [
+        "scripts/ocr/phase12_standard_diff.py::_manifest_documents",
+        "original 12D10 controls",
+        "38 additional controls returned non-zero"
+      ],
+      "residual": [
+        "diagnostic (non --release) mode still normalizes and can return 0 for an unlabelled export"
+      ],
+      "local_gates": [
+        "D11-W05"
+      ]
+    },
+    {
+      "id": "D10-06",
+      "severity": "P1",
+      "status_12d11": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "status_12d12": "PARTIAL",
+      "summary": "Model identity and free-standing orientation evidence are closed. Candidate span text is still not bound to the TSV rows it cites.",
+      "evidence": [
+        "scripts/ocr/phase12_standard_diff.py::verify_bound_output",
+        "tests/test_phase12d12_review_controls.py::test_bound_gate_refuses_candidate_text_its_own_rows_do_not_support",
+        "tests/test_phase12d12_review_controls.py::test_release_gate_refuses_a_candidate_join_defect_real_ocr"
+      ],
+      "residual": [
+        "D12-03"
+      ],
+      "local_gates": [
+        "D11-W05"
+      ]
+    },
+    {
+      "id": "D10-07",
+      "severity": "P1",
+      "status_12d11": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "status_12d12": "VERIFIED_FIXED",
+      "summary": "Each hyphenated OCR row needs its own ordered, single-use output span; no aggregate count is used.",
+      "evidence": [
+        "scripts/ocr/phase12_standard_diff.py::verify_bound_output",
+        "tests/test_phase12d11_bound_gate.py",
+        "8 additional occurrence controls returned 2"
+      ],
+      "residual": [
+        "non-hyphen rows and elements are reusable; evidence is unsigned"
+      ],
+      "local_gates": [
+        "D11-W05"
+      ]
+    },
+    {
+      "id": "D10-08",
+      "severity": "P2",
+      "status_12d11": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "status_12d12": "VERIFIED_FIXED",
+      "summary": "Prepared hashes are kept until a verified pair exists; no fresh checksum is ever blessed.",
+      "evidence": [
+        "scripts/offline/offline_package.py::cmd_build",
+        "scripts/offline/offline_package.py::_recover_interrupted_publish",
+        "original 12D10 controls",
+        "13 additional fault-injection controls passed"
+      ],
+      "residual": [
+        "archive visible without .sha256 until the next build after a persistent write error",
+        "old hash restored beside the new archive when interrupted right after the rename",
+        "refused recovery deletes non-matching material"
+      ],
+      "local_gates": [
+        "D11-W06"
+      ]
+    },
+    {
+      "id": "D10-09",
+      "severity": "P1",
+      "status_12d11": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "status_12d12": "VERIFIED_FIXED",
+      "summary": "Eight business tables are content-hashed; F0 8/8 and N0 pass on the embedded engine and on the standalone server.",
+      "evidence": [
+        "scripts/offline/offline_package.py::FINGERPRINT_PROBE",
+        "tests/test_phase12d11_offline_fingerprint.py on SurrealDB 2.3.10",
+        "1203-row paged probe on the server"
+      ],
+      "residual": [
+        "14 of 22 tables are outside the fingerprint and have no preservation method in the repository"
+      ],
+      "local_gates": [
+        "D11-W07",
+        "D12-L3"
+      ]
+    }
+  ],
+  "new_findings": [
+    {
+      "id": "D12-03",
+      "severity": "P1",
+      "class": "CODE_RELEASE_BLOCKER",
+      "scope": "release acceptance gate only (scripts/ocr/phase12_standard_diff.py); no runtime code",
+      "relation": "residual of D10-06",
+      "code_path": "verify_bound_output: baseline text is rebuilt from TSV rows, candidate text is taken from the candidate's own element record; cell text and the joined span are never compared with the rows; the cell walk breaks instead of refusing",
+      "reproduction": "candidate text join changes or drops a token inside an OCR text span whose baseline still rebuilds from its rows",
+      "consequence": "exit 0, class 'expected TSV fix', G-H1 'verified' for 'Điều 5' -> 'Điều 6' and a dropped 'không' that the candidate's own TSV rows contradict",
+      "counterexample": [
+        "tests/test_phase12d12_review_controls.py::test_bound_gate_refuses_candidate_text_its_own_rows_do_not_support[3 cases]",
+        "tests/test_phase12d12_review_controls.py::test_release_gate_refuses_a_candidate_join_defect_real_ocr"
+      ],
+      "minimal_fix": "accept a changed span only when every bound cell text equals its TSV row, the walk consumes the whole span, each difference is a row whose upstream form differs or a hyphen closure, and attached notes point at a recorded source element; otherwise NOT VERIFIED",
+      "blocks": [
+        "D11-W05",
+        "G-04"
+      ]
+    },
+    {
+      "id": "D12-01",
+      "severity": "P3",
+      "class": "DEFERRED_NON_BLOCKING",
+      "relation": "side effect of the D10-02 embedding fence",
+      "summary": "Any write to the Source record between the embed job's load and commit ends the job as a non-retried 'Source changed before publication'; unchanged text is left without vectors until a manual re-embed.",
+      "counterexample": [
+        "tests/test_phase12d12_review_controls.py::test_metadata_only_edit_does_not_drop_an_inflight_embedding"
+      ],
+      "minimal_fix": "stop permanently only when the Source is deleted or its text changed; a revision-only miss must be retryable"
+    },
+    {
+      "id": "D12-02",
+      "severity": "P3",
+      "class": "DEFERRED_NON_BLOCKING",
+      "relation": "side effect of the D10-04 fix; Legal mode only (default off)",
+      "summary": "Every Legal footnote is now backslash-escaped for _ [ ] * ~ ` and clause markers, unlike the same body text and unlike 2cc824f (F-17: stored text is the printed text).",
+      "counterexample": [
+        "tests/test_phase12d12_review_controls.py::test_legal_footnote_is_stored_as_printed_like_body_text"
+      ],
+      "minimal_fix": "footnotes pass through escape_literal_block_syntax only, like body paragraphs"
+    }
+  ],
+  "rb1": {
+    "code_integration": "PARTIAL",
+    "local_acceptance": "PENDING",
+    "r08_a_package_trust": "PARTIAL",
+    "r08_b_preflight": "PARTIAL (fake Docker evidence only)",
+    "r08_c_startup_ordering": "VERIFIED outside a container against the real v1.2.0 entrypoint text",
+    "r08_d_rollback_persistence": "PARTIAL",
+    "r08_e_candidate": "NOT_VERIFIED_ENVIRONMENT - by code the candidate keeps the same writable-layer dictionary dependency (D-32); selector returns nothing for the candidate",
+    "rb_g1_to_g10": "reported PASS in the Windows lab (not re-run here)",
+    "rb_g11_ubuntu_vm_reboot": "PENDING",
+    "official_package_local_rehearsal": "PENDING",
+    "hardening_notes": [
+      "select-compose.sh answers exit 0 with empty output for a corrupt baseline-image file or a truncated script",
+      "stage_assets re-reads files after the probes and re-pins 4 of 7; startup.sh, runtime_gate.py and select-compose.sh are not re-hashed",
+      "after staging the trust root is the directory itself; the startup gate checks the dictionary against the adjacent manifest",
+      "stage location outside the checkout and the work folder is not enforced; service name is not compared with the container's Compose label",
+      "shipped manifest and helper still describe themselves as test artifacts"
+    ]
+  },
+  "local_gates_added": {
+    "D12-L1": "candidate RapidOCR offline after every recreate, restart and guest reboot",
+    "D12-L2": "embedding fence on the actual SurrealDB server version and storage engine",
+    "D12-L3": "22-table preservation method recorded and applied to the 14 tables outside the fingerprint",
+    "D12-L4": "RB-1 negative checks on the official signed package (selector, directory trust, staged bytes)",
+    "D12-L5": "sync 300 s timeout rehearsals including a failing Source deletion; D12-01 observation"
+  },
+  "known_limitations": [
+    "image scans through content-core's native path are not verdict-checked",
+    "the two upstream patch groups are not installed as one transaction (fail-closed)",
+    "stderr PIPE capture can exceed the 4096-byte classification limit",
+    "the release diff gate returns NOT VERIFIED for hyphenated tokens in headings, list items, footers, tables and cross-page merges; exit 0 on real legal PDFs is unlikely",
+    "diff evidence carries hashes, not signatures",
+    "fingerprint covers eight tables",
+    "automatic updater stays EXPERIMENTAL"
+  ],
+  "regression": {
+    "full_backend_on_18eeecb": {
+      "passed": 3522,
+      "failed": 10,
+      "skipped": 68,
+      "xfailed": 0,
+      "xpassed": 0,
+      "seconds": 1059
+    },
+    "baseline_failures_match_by_name_and_cause": true,
+    "baseline_failures": [
+      "tests/test_domain.py::TestContentSettings::test_content_settings_defaults",
+      "tests/test_models_api.py::TestModelsProviderAvailability::test_blank_anthropic_compatible_env_vars_are_unavailable",
+      "tests/test_models_api.py::TestModelsProviderAvailability::test_generic_env_var_enables_all_modes",
+      "tests/test_models_api.py::TestModelsProviderAvailability::test_individual_mode_embedding_only",
+      "tests/test_models_api.py::TestModelsProviderAvailability::test_individual_mode_llm_only",
+      "tests/test_models_api.py::TestModelsProviderAvailability::test_individual_mode_stt_only",
+      "tests/test_models_api.py::TestModelsProviderAvailability::test_individual_mode_tts_only",
+      "tests/test_models_api.py::TestModelsProviderAvailability::test_mixed_config_generic_and_mode_specific",
+      "tests/test_models_api.py::TestModelsProviderAvailability::test_mode_specific_env_vars_llm_embedding",
+      "tests/test_models_api.py::TestModelsProviderAvailability::test_no_env_vars_set"
+    ],
+    "standalone_server_d10_d11_suites": {
+      "passed": 128,
+      "failed": 0
+    },
+    "review_controls": {
+      "with_server": {
+        "passed": 18,
+        "xfailed": 6
+      },
+      "without_server": {
+        "passed": 16,
+        "skipped": 2,
+        "xfailed": 6
+      }
+    },
+    "frontend": "not re-run; unchanged in 2cc824f..18eeecb",
+    "not_run": [
+      "real Docker rehearsals",
+      "full OCR pipeline (OCR_FULL_PIPELINE)",
+      "Windows / PowerShell"
+    ]
+  },
+  "verdict": {
+    "final": "CONDITIONAL PASS",
+    "d10_verified_fixed": 8,
+    "d10_partial": 1,
+    "d10_not_fixed": 0,
+    "new_code_release_blockers": 1,
+    "rb1_code_integration": "PARTIAL",
+    "rb1_local_acceptance": "PENDING",
+    "full_final_regression": "PASS",
+    "ready_for_windows_acceptance": "CONDITIONAL",
+    "ready_for_ubuntu_vm_acceptance": "CONDITIONAL",
+    "ready_for_release": "NO",
+    "ready_for_production": "NO",
+    "production": "UNCHANGED",
+    "automatic_updater": "EXPERIMENTAL",
+    "E2-01": "NEEDS LOCAL EVIDENCE",
+    "E2-02": "NEEDS LOCAL EVIDENCE"
+  }
+}
