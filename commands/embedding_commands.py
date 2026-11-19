@@ -1,3 +1,4 @@
+import math
 import time
 from typing import (
     Any,
@@ -14,7 +15,11 @@ from loguru import logger
 from surreal_commands import CommandInput, CommandOutput, command, submit_command
 
 from open_notebook.ai.models import model_manager
-from open_notebook.database.repository import ensure_record_id, repo_insert, repo_query
+from open_notebook.database.repository import (
+    ensure_record_id,
+    repo_query,
+    repo_transaction,
+)
 from open_notebook.domain.notebook import Note, Source, SourceInsight
 from open_notebook.exceptions import ConfigurationError, ContextLengthExceededError
 from open_notebook.utils.chunking import ContentType, chunk_text, detect_content_type
@@ -316,11 +321,8 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
 
     Flow:
     1. Load Source by ID
-    2. DELETE existing source_embedding records for this source
-    3. Detect content type from file path or content
-    4. Chunk text using appropriate splitter
-    5. Generate embeddings for all chunks in batches
-    6. Bulk INSERT source_embedding records
+    2. Chunk the document and generate every vector outside the transaction
+    3. Guard the source revision and replace all chunks in one transaction
 
     Retry Strategy:
     - Retries up to 5 times for transient failures (network, timeout, etc.)
@@ -339,20 +341,14 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
         if not source.full_text or not source.full_text.strip():
             raise ValueError(f"Source '{input_data.source_id}' has no text to embed")
 
-        # 2. DELETE existing embeddings (idempotency)
-        logger.debug(f"Deleting existing embeddings for source {input_data.source_id}")
-        await repo_query(
-            "DELETE source_embedding WHERE source = $source_id",
-            {"source_id": ensure_record_id(input_data.source_id)},
-        )
-
-        # 3. Detect content type from file path if available
+        text = source.full_text
+        revision = getattr(source, "updated", None)
         file_path = source.asset.file_path if source.asset else None
-        content_type = detect_content_type(source.full_text, file_path)
+        content_type = detect_content_type(text, file_path)
         logger.debug(f"Detected content type: {content_type.value}")
 
         # 4. Chunk text using appropriate splitter
-        chunks = chunk_text(source.full_text, content_type=content_type)
+        chunks = chunk_text(text, content_type=content_type)
         total_chunks = len(chunks)
 
         # Log chunk statistics for debugging
@@ -379,19 +375,52 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
                 f"for {len(chunks)} chunks"
             )
 
-        # 6. Bulk INSERT source_embedding records
+        dimensions = (
+            len(embeddings[0]) if isinstance(embeddings[0], (list, tuple)) else 0
+        )
+        if not dimensions or any(
+            not isinstance(vector, (list, tuple))
+            or len(vector) != dimensions
+            or any(
+                type(value) not in (int, float) or not math.isfinite(value)
+                for value in vector
+            )
+            for vector in embeddings
+        ):
+            raise ValueError("Invalid embedding vector dimensions or values")
+
         records = [
             {
                 "source": ensure_record_id(input_data.source_id),
                 "order": idx,
                 "content": chunk,
-                "embedding": embedding,
+                "embedding": [float(value) for value in embedding],
             }
             for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings))
         ]
 
         logger.debug(f"Inserting {len(records)} source_embedding records")
-        await repo_insert("source_embedding", records)
+        await repo_transaction(
+            """
+            BEGIN TRANSACTION;
+            LET $current = (SELECT * FROM ONLY $source_id);
+            IF $current = NONE OR $current.full_text != $text
+                OR time::floor($current.updated, 1us) != $revision {
+                THROW 'cb5400_source_changed';
+            };
+            -- Fence all publications for this Source, even when no old rows exist.
+            UPDATE $source_id SET updated = time::now() RETURN NONE;
+            DELETE source_embedding WHERE source = $source_id;
+            INSERT INTO source_embedding $records;
+            COMMIT TRANSACTION;
+            """,
+            {
+                "source_id": ensure_record_id(input_data.source_id),
+                "text": text,
+                "revision": revision,
+                "records": records,
+            },
+        )
 
         return {"chunks_created": total_chunks}, f": {total_chunks} chunks"
 

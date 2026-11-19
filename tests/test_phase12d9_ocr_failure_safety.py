@@ -936,10 +936,21 @@ def test_the_ocr_loop_is_upstream_except_the_two_e2_04_changes():
         "df_result = _recognize_region(self, fname, df_osd, page=page, "
         "region=ocr_rect_i, rect=ocr_rect)"
     ]
+    diagnostic = [
+        n
+        for n in ast.walk(ours)
+        if isinstance(n, ast.If) and ast.unparse(n.test) == "_evidence is not None"
+    ]
+    assert [ast.unparse(n) for n in diagnostic] == [
+        "if _evidence is not None:\n    _evidence.recognition_cell(page.page_no, ocr_rect_i, cell)"
+    ]
 
     class Swap(ast.NodeTransformer):
         def visit_Assign(self, node: ast.Assign) -> Any:
             return t_try[0] if node is o_rec[0] else node
+
+        def visit_If(self, node: ast.If) -> Any:
+            return None if node is diagnostic[0] else self.generic_visit(node)
 
     ours = Swap().visit(ours)
     assert ast.dump(ours, include_attributes=False) == ast.dump(

@@ -222,14 +222,17 @@ class TestSourceReview:
     async def test_delete_removes_notebook_links(self):
         # Rejection deletes the source; its reference edges must go too.
         source = Source(id="source:1", approval_status="pending")
-        repo = AsyncMock(return_value=[])
-        with (
-            patch(f"{DOMAIN}.repo_query", new=repo),
-            patch(f"{BASE}.repo_delete", new=AsyncMock(return_value=True)),
+        transaction = AsyncMock(return_value=[{"id": source.id}])
+        with patch(
+            "open_notebook.database.repository.repo_transaction", new=transaction
         ):
             await source.delete()
-        queries = [c.args[0] for c in repo.await_args_list]
-        assert any(q.startswith("DELETE reference WHERE in") for q in queries)
+        transaction.assert_awaited_once()
+        query, bindings = transaction.await_args.args
+        assert "DELETE reference WHERE in = $target" in query
+        assert "DELETE ONLY $target RETURN BEFORE" in query
+        assert bindings["target"].table_name == "source"
+        assert bindings["target"].id == "1"
 
 
 class TestSearchHidesPending:

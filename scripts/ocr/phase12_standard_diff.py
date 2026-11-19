@@ -63,6 +63,7 @@ import functools
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -439,7 +440,6 @@ def load_evidence(
     for kind, cause in (
         ("merges.jsonl", "merge"),
         ("footnotes.jsonl", "footnote"),
-        ("orientation.jsonl", "orientation"),
     ):
         path = (evidence_dir / kind) if evidence_dir else None
         if not path or not path.is_file():
@@ -459,6 +459,8 @@ def load_evidence(
             )
             unit.must_show = cause != "orientation"
             ev.units.append(unit)
+    if evidence_dir and (evidence_dir / "orientation.jsonl").exists():
+        ev.problems.append("orientation correction has no verified producer")
     return ev
 
 
@@ -722,6 +724,279 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _manifest_documents(
+    folder: Path, data: dict[str, Any], problems: list[str]
+) -> dict[str, dict[str, Any]]:
+    entries: dict[str, dict[str, Any]] = {}
+    seen: set[str] = set()
+    rows = data.get("documents")
+    if data.get("invalid") or not isinstance(rows, list) or not rows:
+        problems.append("manifest is missing a valid document inventory")
+        return entries
+    for row in rows:
+        name = row.get("name") if isinstance(row, dict) else None
+        if (
+            not isinstance(name, str)
+            or not name
+            or name in {".", ".."}
+            or any(c in name for c in "/\\:")
+        ):
+            problems.append("invalid document id in manifest")
+            continue
+        if name.casefold() in seen:
+            problems.append("duplicate document ids in the manifest")
+            continue
+        seen.add(name.casefold())
+        entries[name] = row
+        path = folder / f"{name}.md"
+        if (
+            "error" in row
+            or row.get("conversion_status") not in (None, "success")
+            or row.get("conversion_errors")
+        ):
+            problems.append("a document failed to convert")
+        elif not path.is_file() or path.is_symlink():
+            problems.append("a manifest document has no output")
+        elif row.get("output_sha256") != _sha(path):
+            problems.append("an output differs from the manifest (sha256)")
+    if {p.stem for p in folder.glob("*.md")} - entries.keys():
+        problems.append("an output is not listed in the manifest")
+    return entries
+
+
+def _json_lines(path: Path, identity: dict[str, Any]) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    records = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+    if any(not _same_identity(record, identity) for record in records):
+        raise ValueError("evidence belongs to another document or run")
+    return records
+
+
+def _same_identity(record: Any, identity: dict[str, Any]) -> bool:
+    return isinstance(record, dict) and all(
+        record.get(k) == v for k, v in identity.items()
+    )
+
+
+def _bounds(bbox: Any) -> tuple[float, float, float, float]:
+    left, top, right, bottom = bbox[:4]
+    if not all(
+        type(v) in (float, int) and math.isfinite(v) for v in (left, top, right, bottom)
+    ):
+        raise ValueError("invalid evidence coordinates")
+    return min(left, right), min(top, bottom), max(left, right), max(top, bottom)
+
+
+def _digest(value: Any) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value) is not None
+
+
+def _bound_evidence(
+    folder: Path, entry: dict[str, Any], run: dict[str, Any]
+) -> tuple[dict, list, dict]:
+    """Validate the files and row identities of one completed export."""
+    expected = entry.get("evidence_files")
+    actual = {
+        path.relative_to(folder).as_posix(): path
+        for path in folder.rglob("*")
+        if path.is_file()
+    }
+    if (
+        not isinstance(expected, dict)
+        or set(expected) != set(actual)
+        or any(
+            path.is_symlink() or expected[name] != _sha(path)
+            for name, path in actual.items()
+        )
+    ):
+        raise ValueError("evidence inventory or hash differs")
+    identity = {"document": entry["name"], "run_id": run["run_id"]}
+    crops = {}
+    for path in sorted(folder.glob("tesseract/*.tsv")):
+        side = _sidecar(path)
+        if not _same_identity(side, identity):
+            raise ValueError("TSV belongs to another document or run")
+        assert side is not None
+        page, region, serial = (int(v) for v in path.stem.split("_"))
+        invocation = f"{page:04d}-{region:03d}-{serial:06d}"
+        models = side.get("model_files")
+        if (
+            page < 1
+            or region < 1
+            or serial < 1
+            or side.get("page") != page
+            or side.get("region") != region
+            or side.get("invocation") != invocation
+            or invocation in crops
+            or not isinstance(models, list)
+            or not models
+            or any(not _digest(model["sha256"]) for model in models)
+            or side.get("engine") != "+".join(model["name"] for model in models)
+            or {model["name"]: model["sha256"] for model in models}
+            != {
+                name: sha
+                for name, sha in (entry.get("ocr_model_files") or {}).items()
+                if name != "osd"
+            }
+        ):
+            raise ValueError("invalid TSV invocation, page, crop or model")
+        raw = path.read_text(encoding="utf-8")
+        crops[invocation] = (
+            page,
+            _bounds(side["bbox"]),
+            {i: token for i, token, _ in _patched_rows(raw)},
+            _upstream_rows(raw),
+        )
+    elements = {}
+    for record in _json_lines(folder / "elements.jsonl", identity):
+        key = (record["page"], record["cluster"])
+        if key in elements or not isinstance(key[0], int) or key[0] < 1:
+            raise ValueError("duplicate or invalid element identity")
+        elements[key] = record
+    return elements, _json_lines(folder / "output_spans.jsonl", identity), crops
+
+
+def verify_bound_output(
+    before: str, after: str, folder: Path, entry: dict[str, Any], run: dict[str, Any]
+) -> dict:
+    """Reconstruct baseline bytes using only serialization spans owned by source items."""
+    try:
+        elements, spans, crops = _bound_evidence(folder, entry, run)
+        output = []
+        cursor = 0
+        refs: set[str] = set()
+        hyphens: set[tuple[str, int]] = set()
+        expected_hyphens = {
+            (invocation, row)
+            for invocation, (_, _, rows, _) in crops.items()
+            for row, word in rows.items()
+            if "-" in word
+        }
+        classes = set()
+        for span in spans:
+            start, end = span["start"], span["end"]
+            if (
+                not cursor <= start < end <= len(after)
+                or after[start:end] != span["text"]
+                or span["item"] in refs
+            ):
+                raise ValueError("source span does not match the output")
+            refs.add(span["item"])
+            if span.get("kind") == "footnote":
+                previous = span["v120_text"]
+                notes = span["notes"]
+                if (
+                    not notes
+                    or not str(span["item"]).startswith(("#/tables/", "#/pictures/"))
+                    or type(span["page"]) is not int
+                    or span["page"] < 1
+                    or "\n\n".join(text for text in [previous, *notes] if text)
+                    != span["text"]
+                ):
+                    raise ValueError("unbound attached footnotes")
+                output.extend((after[cursor:start], previous))
+                cursor = end
+                classes.add(EXPECTED_FOOTNOTE)
+                continue
+            element = elements[(span["page"], span["cluster"])]
+            if (
+                span["bbox"] != element["bbox"]
+                or markdown(element["text"]) != after[start:end]
+            ):
+                raise ValueError("source span does not match the output")
+            old_cells, cell_ids = [], set()
+            for cell in element["cells"]:
+                token = cell["text"]
+                if cell.get("unmapped_ocr"):
+                    token = None
+                    if span["text"] != span["v120_text"]:
+                        raise ValueError("change includes an unmapped OCR cell")
+                if "invocation" in cell:
+                    invocation, row = cell["invocation"], cell["row"]
+                    page, crop, rows, baseline = crops[invocation]
+                    left, top, right, bottom = _bounds(cell["bbox"])
+                    if (
+                        page != span["page"]
+                        or rows[row].strip() != cell["raw"]
+                        or not crop[0] <= (left + right) / 2 <= crop[2]
+                        or not crop[1] <= (top + bottom) / 2 <= crop[3]
+                    ):
+                        raise ValueError("cell does not belong to the recorded crop")
+                    token = baseline.get(row)
+                    cell_ids.add((invocation, row))
+                if token:
+                    old_cells.append(token.strip())
+            old_text = span["v120_text"]
+            if (
+                old_text != span["text"]
+                and markdown(_upstream_join(old_cells)) != old_text
+            ):
+                raise ValueError("baseline span does not follow source cells")
+            position = start
+            mapped = iter(span["hyphens"])
+            occurrence = next(mapped, None)
+            for cell in element["cells"]:
+                token = cell["text"]
+                if not token:
+                    continue
+                while position < end and after[position].isspace():
+                    position += 1
+                if position + len(token) > end or not after.startswith(token, position):
+                    break
+                if "-" in token and "invocation" in cell:
+                    key = (cell["invocation"], cell["row"])
+                    if (
+                        occurrence
+                        != {
+                            "invocation": key[0],
+                            "row": key[1],
+                            "start": position,
+                            "end": position + len(token),
+                        }
+                        or key not in cell_ids
+                        or key in hyphens
+                    ):
+                        raise ValueError(
+                            "hyphen occurrence does not match the source order"
+                        )
+                    hyphens.add(key)
+                    occurrence = next(mapped, None)
+                position += len(token)
+            if occurrence is not None:
+                raise ValueError("unmatched output occurrence")
+            if old_text != span["text"]:
+                causes = _tsv_cause(old_text, span["text"]).split("+")
+                classes.update(CAUSE_CLASS[cause] for cause in causes)
+            output.extend((after[cursor:start], old_text))
+            cursor = end
+        output.append(after[cursor:])
+        if (
+            before != "".join(output)
+            or hyphens != expected_hyphens
+            or (folder / "orientation.jsonl").exists()
+        ):
+            return {
+                "class": NOT_VERIFIED,
+                "hunks": [],
+                "reason": "unproven difference or OCR occurrence",
+            }
+        return {
+            "class": _doc_class(classes),
+            "hunks": [],
+            "byte_identical": before == after,
+            "hyphen_occurrence_status": "verified" if crops else "not applicable",
+        }
+    except (OSError, TypeError, ValueError, KeyError, IndexError, AttributeError):
+        return {
+            "class": NOT_VERIFIED,
+            "hunks": [],
+            "reason": "invalid or unbound source evidence",
+        }
+
+
 def _failed_documents(folder: Path) -> list[str]:
     """Documents the export of ``folder`` could not convert (manifest ``error``)."""
     data = _manifest(folder)
@@ -729,7 +1004,7 @@ def _failed_documents(folder: Path) -> list[str]:
         return []
     return sorted(
         str(d.get("name"))
-        for d in data.get("documents", [])
+        for d in (data["documents"] if isinstance(data.get("documents"), list) else [])
         if isinstance(d, dict) and "error" in d
     )
 
@@ -744,6 +1019,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--tsv", help="raw TSV per crop: <dir>/<name>/*.tsv or <dir>/<name>_*.tsv"
     )
     p.add_argument("--out", required=True)
+    p.add_argument(
+        "--release",
+        action="store_true",
+        help="require manifest-bound source spans and image identity",
+    )
+    p.add_argument("--candidate-commit", help="expected release candidate commit SHA")
+    p.add_argument(
+        "--candidate-image", help="expected release candidate Docker image ID"
+    )
     p.add_argument(
         "--with-text",
         action="store_true",
@@ -763,38 +1047,101 @@ def main(argv: Optional[list[str]] = None) -> int:
         lower = [n.casefold() for n in names]
         if len(set(lower)) != len(lower):
             problems.append(f"duplicate document ids on the {side} side")
-    manifest = _manifest(after)
-    listed: dict[str, dict[str, Any]] = {}
-    if manifest is not None:
-        if manifest.get("invalid"):
-            problems.append("manifest.json of the candidate is unreadable")
-        for doc in manifest.get("documents", []) if isinstance(manifest, dict) else []:
-            name = str(doc.get("name"))
-            if name in listed:
-                problems.append("duplicate document ids in the manifest")
-            listed[name] = doc
-        for name in a_names:
-            doc = listed.get(name)
-            if doc is None:
-                problems.append("an output is not listed in the manifest")
-            elif doc.get("output_sha256") and doc["output_sha256"] != _sha(
-                after / f"{name}.md"
+    b_manifest, manifest = _manifest(before), _manifest(after)
+    a_docs = (
+        _manifest_documents(after, manifest, problems) if manifest is not None else {}
+    )
+    b_docs = (
+        _manifest_documents(before, b_manifest, problems)
+        if b_manifest is not None
+        else {}
+    )
+    if not args.release and any(
+        run and run.get("image_id") for run in (b_manifest, manifest)
+    ):
+        problems.append("image-labelled release exports require --release")
+    if args.release:
+        for run in (b_manifest, manifest):
+            if (
+                not run
+                or run.get("schema") != "chatbot5400-standard-export/2"
+                or not re.fullmatch(r"[a-f0-9]{32}", str(run.get("run_id", "")))
+                or not re.fullmatch(r"[a-f0-9]{40}", str(run.get("commit", "")))
+                or not re.fullmatch(
+                    r"sha256:[a-f0-9]{64}", str(run.get("image_id", ""))
+                )
             ):
-                problems.append("an output differs from the manifest (sha256)")
-        b_manifest = _manifest(before)
+                problems.append(
+                    "release requires two valid run, commit and image identities"
+                )
         if (
-            b_manifest
-            and isinstance(b_manifest, dict)
-            and not b_manifest.get("invalid")
+            not b_manifest
+            or b_manifest.get("commit") != "f2fdf2714a7c0b5b196132f71cfc091928befc06"
         ):
-            b_inputs = {
-                str(d.get("name")): d.get("input_sha256")
-                for d in b_manifest.get("documents", [])
-            }
-            for name, doc in listed.items():
-                if name in b_inputs and b_inputs[name] != doc.get("input_sha256"):
-                    problems.append("a document's input differs between the two runs")
-    names = sorted(set(b_names) | set(a_names))
+            problems.append("release baseline is not the official v1.2.0 commit")
+        if not (
+            manifest
+            and args.candidate_commit
+            and args.candidate_image
+            and manifest.get("commit") == args.candidate_commit
+            and manifest.get("image_id") == args.candidate_image
+        ):
+            problems.append("candidate commit and image must match the release request")
+        if not manifest or manifest.get("evidence") is not True:
+            problems.append("release requires evidence from the candidate conversion")
+        if tsv_dir is not None:
+            problems.append("external TSV cannot attest a release run")
+        for run, documents in ((manifest, a_docs), (b_manifest, b_docs)):
+            if not run:
+                continue
+            for entry in documents.values():
+                if (
+                    not run.get("engine")
+                    or entry.get("ocr_engine") != run["engine"]
+                    or entry.get("output") != f"{entry['name']}.md"
+                ):
+                    problems.append("document engine or artifact differs from its run")
+        for entry in (*a_docs.values(), *b_docs.values()):
+            files = entry.get("ocr_model_files")
+            config = entry.get("ocr_config")
+            if (
+                not _digest(entry.get("input_sha256"))
+                or entry.get("conversion_status") != "success"
+                or not isinstance(config, dict)
+                or not isinstance(config.get("settings"), dict)
+            ):
+                problems.append("incomplete input or conversion identity")
+            if (
+                not isinstance(files, dict)
+                or not files
+                or not all(_digest(v) for v in files.values())
+            ):
+                problems.append("unverified OCR model identity")
+    if b_manifest is not None and manifest is not None:
+        if set(a_docs) != set(b_docs):
+            problems.append("run document inventories differ")
+        for key in ("engine", "custom_version", "ocr_config", "versions"):
+            if manifest.get(key) != b_manifest.get(key):
+                problems.append(f"run identity differs: {key}")
+        if manifest.get("run_id") and manifest.get("run_id") == b_manifest.get(
+            "run_id"
+        ):
+            problems.append("baseline and candidate use the same run id")
+        for name in a_docs.keys() & b_docs.keys():
+            for key in (
+                "input_sha256",
+                "ocr_engine",
+                "ocr_model_version",
+                "ocr_model_sha256",
+                "ocr_model_files",
+                "ocr_config",
+            ):
+                if a_docs[name].get(key) != b_docs[name].get(key):
+                    problems.append(f"document identity differs: {key}")
+    names = sorted(
+        set(b_docs if b_manifest is not None else b_names)
+        | set(a_docs if manifest is not None else a_names)
+    )
     if not names:
         problems.append("no document to compare")
     for name in names:
@@ -806,15 +1153,43 @@ def main(argv: Optional[list[str]] = None) -> int:
             }
             problems.append("a document is missing on one side")
             continue
-        text_a, text_b = fa.read_text(encoding="utf-8"), fb.read_text(encoding="utf-8")
-        if text_a == text_b:
+        bytes_a, bytes_b = fa.read_bytes(), fb.read_bytes()
+        if bytes_a == bytes_b and not args.release:
             report["documents"][name] = {
                 "class": UNCHANGED,
                 "hunks": [],
                 "byte_identical": True,
             }
             continue
+        try:
+            text_a, text_b = bytes_a.decode("utf-8"), bytes_b.decode("utf-8")
+        except UnicodeDecodeError:
+            problems.append("an output is not UTF-8")
+            report["documents"][name] = {
+                "class": NOT_VERIFIED,
+                "reason": "invalid output encoding",
+            }
+            continue
         evidence_dir = after / f"{name}.evidence"
+        if args.release:
+            if not manifest or name not in a_docs:
+                report["documents"][name] = {
+                    "class": NOT_VERIFIED,
+                    "reason": "missing candidate manifest",
+                }
+            else:
+                report["documents"][name] = verify_bound_output(
+                    text_a, text_b, evidence_dir, a_docs[name], manifest
+                )
+            continue
+        if manifest and isinstance(a_docs.get(name, {}).get("evidence_files"), dict):
+            actual = {
+                p.relative_to(evidence_dir).as_posix(): _sha(p)
+                for p in evidence_dir.rglob("*")
+                if p.is_file() and not p.is_symlink()
+            }
+            if actual != a_docs[name]["evidence_files"]:
+                problems.append("evidence inventory or hash differs")
         evidence = load_evidence(
             name, tsv_dir, evidence_dir if evidence_dir.is_dir() else None
         )

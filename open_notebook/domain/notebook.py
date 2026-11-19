@@ -607,8 +607,10 @@ class Source(ObjectModel):
     # Approval-field values as last loaded/persisted; lets save() detect (and
     # refuse) in-memory edits to them. See _prepare_save_data.
     _approval_snapshot: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    _persisted_full_text: Optional[str] = PrivateAttr(default=None)
 
     def model_post_init(self, __context: Any) -> None:
+        self._persisted_full_text = self.full_text
         self._snapshot_approval()
 
     def _snapshot_approval(self) -> None:
@@ -634,6 +636,7 @@ class Source(ObjectModel):
                     "UPDATE instead"
                 )
         await super().save()
+        self._persisted_full_text = self.full_text
         self._snapshot_approval()
 
     @field_validator("submitted_by", "reviewed_by", "assigned_approver", mode="before")
@@ -881,6 +884,12 @@ class Source(ObjectModel):
         if self.id is not None:
             for field in _APPROVAL_FIELDS:
                 data.pop(field, None)
+            if self.full_text == self._persisted_full_text:
+                # A job changing command metadata must not republish the
+                # text from its stale in-memory copy of the Source.
+                data.pop("full_text", None)
+            else:
+                data["full_text"] = self.full_text
             return data
 
         # Reviewer/submitter links are typed record<user> columns.
@@ -1070,6 +1079,7 @@ class Source(ObjectModel):
 
     async def delete(self) -> bool:
         """Delete source and clean up associated file, embeddings, and insights."""
+        deleted = await super().delete()
         # Clean up uploaded file if it exists
         if self.asset and self.asset.file_path:
             file_path = Path(self.asset.file_path)
@@ -1079,41 +1089,14 @@ class Source(ObjectModel):
                     logger.info(f"Deleted file for source {self.id}: {file_path}")
                 except Exception as e:
                     logger.warning(
-                        f"Failed to delete file {file_path} for source {self.id}: {e}. "
-                        "Continuing with database deletion."
+                        f"Failed to delete file {file_path} for source {self.id}: {e}"
                     )
             else:
                 logger.debug(
                     f"File {file_path} not found for source {self.id}, skipping cleanup"
                 )
 
-        # Delete associated embeddings, insights and notebook links to prevent
-        # orphaned records / dangling graph edges.
-        try:
-            source_id = ensure_record_id(self.id)
-            await repo_query(
-                "DELETE source_embedding WHERE source = $source_id",
-                {"source_id": source_id},
-            )
-            await repo_query(
-                "DELETE source_insight WHERE source = $source_id",
-                {"source_id": source_id},
-            )
-            await repo_query(
-                "DELETE reference WHERE in = $source_id",
-                {"source_id": source_id},
-            )
-            logger.debug(
-                f"Deleted embeddings, insights and references for source {self.id}"
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to delete embeddings/insights/references for source "
-                f"{self.id}: {e}. Continuing with source deletion."
-            )
-
-        # Call parent delete to remove database record
-        return await super().delete()
+        return deleted
 
 
 class Note(ObjectModel):

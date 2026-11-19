@@ -1,0 +1,79 @@
+{
+  "schema": "cb5400-rollback-assets/1",
+  "created": "2026-11-19",
+  "purpose": "Restore RapidOCR (default OCR engine) of ChatBot5400 v1.2.0 offline after the application container is recreated (RB-1, D-32). TEST ARTIFACT - Local acceptance only; official integration by Codex.",
+  "baseline": {
+    "version": "1.2.0",
+    "commit": "f2fdf2714a7c0b5b196132f71cfc091928befc06",
+    "tag": "v1.2.0",
+    "test_image_id": "sha256:1ddc468b1abfdddd4c4817a501096dfac9fcabfd59fb1f7f0c0fbcff1818c703",
+    "note": "test image built locally from f2fdf27; the production image has another ID"
+  },
+  "runtime": {
+    "package": "rapidocr",
+    "version": "3.9.2",
+    "backend": "torch",
+    "requires": {
+      "torch": "2.14.0",
+      "docling": "2.129.0"
+    },
+    "installed_from": "uv cache on the data volume (/app/data/.cache/uv) by the v1.2.0 entrypoint, constraints /app/runtime-constraints.txt (rapidocr==3.9.2, torch==2.14.0, docling==2.129.0)",
+    "default_models_yaml_sha256": "db47df9d6b071721f1633667b41cfef1e40b5d7f09be030aaea8be801ca2f2f5",
+    "recognizer_source_sha256": "84b7a55a8972d14a92800b66facc73976b8d0b06bd8888e551414dbec8d6d326",
+    "dictionary_path_rule": "rapidocr.ch_ppocr_rec.main.DEFAULT_MODEL_PATH / basename(dict_url) - independent of Global.model_root_dir; downloaded with sha256=None when missing"
+  },
+  "recognition_model": {
+    "yaml_path": [
+      "torch",
+      "PP-OCRv6",
+      "rec",
+      "multi_PP-OCRv6_rec_small"
+    ],
+    "file": "PP-OCRv6_rec_small.pth",
+    "sha256": "0107b2ad694ccc9b1db7cf9ed3ffbc93d1795d9e08d9cf823127243a87bce516",
+    "size": 21326017,
+    "location": "Global.model_root_dir = <OCR models dir>/rapidocr (OCR_RAPIDOCR_PERSISTENT=true, data volume) - not restored by this asset set, verified only",
+    "source": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/torch/PP-OCRv6/rec/PP-OCRv6_rec_small.pth"
+  },
+  "related_models_verified_only": [
+    {
+      "yaml_path": "torch/PP-OCRv6/det/multi_PP-OCRv6_det_small",
+      "file": "PP-OCRv6_det_small.pth",
+      "sha256": "fbdc74c97ea7b770ab22cbdc1bba01a52bdf1975efcf3442057356d622b05d54"
+    },
+    {
+      "yaml_path": "torch/PP-OCRv4/cls/ch_ptocr_mobile_v2.0_cls_mobile",
+      "file": "ch_ptocr_mobile_v2.0_cls_mobile.pth",
+      "sha256": "bfe13860824b3365c0c7f7ccfcddc8ff11645c60051739ff18bc9913f60c98e1"
+    }
+  ],
+  "assets": {
+    "dictionary": {
+      "file": "ppocrv6_dict.txt",
+      "source_relative_path": "assets/rapidocr/ppocrv6_dict.txt",
+      "sha256": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d",
+      "size": 74947,
+      "lines": 18708,
+      "encoding": "UTF-8 text, one character per line",
+      "source_url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt",
+      "official_checksum": {
+        "sha256": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d",
+        "from": "ModelScope repo file listing API, model RapidAI/RapidOCR, Revision=v3.9.2 (provenance/official-download/modelscope-file-listing.json)"
+      },
+      "independent_copy": "downloaded by RapidOCR itself into the 12E2 baseline container layer when it was online: identical bytes (provenance/from-12e2-baseline-container)",
+      "rapidocr_yaml_checksum": "none (RapidOCR 3.9.2 downloads the dictionary with sha256=None)",
+      "license": "Apache License 2.0 (ModelScope model RapidAI/RapidOCR metadata; rapidocr 3.9.2 package metadata License: Apache-2.0); redistribution allowed with the license notice",
+      "target_relative_to_site_packages": "rapidocr/models/ppocrv6_dict.txt",
+      "observed_target": "/app/.venv/lib/python3.12/site-packages/rapidocr/models/ppocrv6_dict.txt",
+      "mode": "0644",
+      "owner": "root:root (same as the package files)"
+    }
+  },
+  "other_runtime_files_checked": {
+    "package_onnx_models": "PP-OCRv6_det_small.onnx, PP-OCRv6_rec_small.onnx, ch_ppocr_mobile_v2.0_cls_mobile.onnx: shipped in the rapidocr wheel (uv cache), present after every reinstall",
+    "torch_weights": "on the data volume (model_root_dir), SHA-256 checked by RapidOCR against default_models.yaml",
+    "docling_layout_tableformer": "Hugging Face cache on the data volume (HF_HOME)",
+    "tokenizer": "o200k_base inside the image (/app/tiktoken-cache)",
+    "layer_diff_of_online_12e2_container": "only ppocrv6_dict.txt was downloaded into the RapidOCR package dir; /root/.EasyOCR/user_network (empty dir) created by EasyOCR"
+  }
+}

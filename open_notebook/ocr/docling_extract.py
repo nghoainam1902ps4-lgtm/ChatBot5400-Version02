@@ -20,10 +20,14 @@ Remove this module once content-core accepts OCR options upstream.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import inspect
 import os
 import re
+import threading
 import time
 from dataclasses import replace
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from loguru import logger
@@ -330,6 +334,119 @@ def actual_ocr_models(converter: Any) -> list[str]:
     return sorted(set(names))
 
 
+_NATIVE_EXTRACT_SHA256 = (
+    "62a0daf9b0f616f2138a7d5e1a01dc97de19a28f97e9990d136d02b686279528"
+)
+_NATIVE_DISPATCH_SHA256 = (
+    "4214ea6f55ffc6607c7e4c283e684315c7d285c9e0860fa292a368e23f81b1fb"
+)
+_native_lock = threading.Lock()
+
+
+def install_native_pdf_integrity() -> bool:
+    """Guard content-core's local Docling callback, after URL download/routing."""
+    from content_core import extraction
+
+    with _native_lock:
+        original = extraction.extract_docling
+        if original is None:
+            return False
+        if getattr(original, "__cb5400_native_pdf__", False):
+            return bool(getattr(original, "__cb5400_native_pdf_verified__", False))
+        from open_notebook.ocr.docling_patches import TextPreservationPatchError
+
+        try:
+            dispatch = hashlib.sha256(
+                inspect.getsource(extraction._extract_file).encode()
+            ).hexdigest()
+            if dispatch != _NATIVE_DISPATCH_SHA256:
+                raise TextPreservationPatchError(
+                    "Unverified content-core Docling dispatch"
+                )
+            verified = (
+                version("content-core") == "2.0.7"
+                and hashlib.sha256(inspect.getsource(original).encode()).hexdigest()
+                == _NATIVE_EXTRACT_SHA256
+            )
+        except TextPreservationPatchError:
+            raise
+        except (PackageNotFoundError, OSError, TypeError, ValueError):
+            raise TextPreservationPatchError(
+                "Cannot verify content-core Docling dispatch"
+            ) from None
+
+        async def extract(source: str, config: Any) -> Any:
+            if not _is_pdf(source):
+                return await original(source, config)
+            if not verified:
+                raise TextPreservationPatchError(
+                    "Unverified content-core PDF integration"
+                )
+            return await asyncio.to_thread(_extract_native_pdf, source, config)
+
+        extract.__cb5400_native_pdf__ = True  # type: ignore[attr-defined]
+        extract.__cb5400_native_pdf_verified__ = verified  # type: ignore[attr-defined]
+        extraction.extract_docling = extract
+        return verified
+
+
+def _extract_native_pdf(path: str, config: Any) -> Any:
+    from content_core.common import ExtractionOutput
+    from content_core.processors.document import docling as native
+
+    from open_notebook.ocr import docling_patches
+
+    if not docling_patches.apply_text_preservation(required=True):
+        raise docling_patches.TextPreservationPatchError("PDF patches are not active")
+
+    # Preserve content-core's own default OCR Auto and its PDF pipeline options.
+    converter = native.DocumentConverter(
+        format_options={
+            native.InputFormat.PDF: native.PdfFormatOption(
+                pipeline_options=native.PdfPipelineOptions(
+                    do_ocr=config.docling_ocr,
+                    do_formula_enrichment=config.docling_formulas,
+                    do_picture_description=config.docling_vision,
+                    do_chart_extraction=config.docling_vision,
+                )
+            )
+        }
+    )
+    result = _convert(converter, path)
+    reject_incomplete(result, path)
+    fmt = config.docling_output_format
+    return ExtractionOutput(
+        content=_require_text(_export(result.document, fmt)),
+        source_type="file",
+        identified_type="",
+        metadata={"docling_format": fmt},
+    )
+
+
+def _export(doc: Any, fmt: str) -> str:
+    if fmt in ("html", "json"):
+        _require_text(doc.export_to_text(traverse_pictures=True))
+    if fmt == "html":
+        return doc.export_to_html()
+    if fmt == "json":
+        return doc.export_to_json()
+    from open_notebook.ocr.docling_patches import export_standard_markdown
+
+    return export_standard_markdown(doc)
+
+
+def _convert(converter: Any, path: str) -> Any:
+    try:
+        return converter.convert(path)
+    except Exception as exc:
+        failures = _ocr_region_failures(str(exc))
+        if failures:
+            raise IncompleteConversionError(
+                ocr_region=True, details=f"status=failure, {failures[0]}"
+            ) from None
+        raise
+
+
 def convert_document(
     path: str, cc_config: Any, ocr: OcrSettings
 ) -> tuple[Any, Any, Any]:
@@ -359,21 +476,7 @@ def convert_document(
                 prep.scale = None  # measured for Tesseract only
         prep.mode = decision
         converter = build_converter(cc_config, ocr, scale=prep.scale)
-        try:
-            result = converter.convert(prep.path or path)
-        except Exception as e:
-            # E2-04: every page failed and Docling raised ConversionError; when an
-            # OCR region is the reason, this is not a transient job error
-            found = _ocr_region_failures(str(e))
-            if found:
-                logger.error(
-                    f"Docling conversion of {os.path.basename(path)} failed: "
-                    f"{len(found)} OCR region(s) could not be recognised ({found[0]})"
-                )
-                raise IncompleteConversionError(
-                    ocr_region=True, details=f"status=failure, {found[0]}"
-                ) from None
-            raise
+        result = _convert(converter, prep.path or path)
     finally:
         prep.cleanup()
     return result, converter, prep
@@ -391,11 +494,7 @@ def convert_file(
     doc = result.document
     fmt = getattr(cc_config, "docling_output_format", "markdown")
     normalization: dict[str, Any] = {}
-    if fmt == "html":
-        output = doc.export_to_html()
-    elif fmt == "json":
-        output = doc.export_to_json()
-    elif ocr.legal_normalization and _is_pdf(path):
+    if fmt not in ("html", "json") and ocr.legal_normalization and _is_pdf(path):
         # D-34: same DoclingDocument, serialized by the Legal Document
         # normalizer; any failure falls back to the standard export below.
         from open_notebook.ocr import legal_normalizer
@@ -414,7 +513,7 @@ def convert_file(
             doc, evidence=evidence
         )
     else:
-        output = doc.export_to_markdown()
+        output = _export(doc, fmt)
     if ocr.legal_normalization and not normalization:
         # Legal was requested but this conversion is outside its scope (not a
         # PDF, or HTML / JSON output): say so, do not look normalized (F-07).
@@ -437,7 +536,13 @@ def convert_file(
         **conversion_outcome(result, path),
         **normalization,
     }
-    return output, meta
+    return _require_text(output), meta
+
+
+def _require_text(output: str) -> str:
+    if not output or not output.replace("<!-- image -->", "").strip():
+        raise IncompleteConversionError(ocr_region=False, details="empty document")
+    return output
 
 
 def _is_pdf(path: str) -> bool:
@@ -609,7 +714,7 @@ async def extract_with_selected_ocr(
         f"device={info['device']}, "
         f"threads={ocr.num_threads or 'docling-default'}, full_page={ocr.force_full_page})"
     )
-    content, meta = convert_file(file_path, cc_config, ocr)
+    content, meta = await asyncio.to_thread(convert_file, file_path, cc_config, ocr)
     logger.info(
         f"Docling OCR finished: engine={ocr.engine} actual_models={meta.get('ocr_models')} "
         f"in {meta.get('ocr_seconds')}s (ocr_scale={meta.get('ocr_scale')}, "

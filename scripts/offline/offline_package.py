@@ -95,6 +95,15 @@ FORMAT_VERSION = 3  # 3: image.run_config_sha256 + image.provenance are required
 SIG_NAMESPACE = "chatbot5400-offline"
 MANIFEST = "manifest.json"
 SIGNATURE = "manifest.json.sig"
+RB1_BASE = "f2fdf2714a7c0b5b196132f71cfc091928befc06"
+RB1_DIR = "rollback-assets/v1.2.0"
+RB1_PINNED = {
+    "manifest.json": (4578, "6b51f9038b7124dc93d51b3937035c518ea48801e8e35dcacec59aab34dfbaab"),
+    "restore_rapidocr_assets.py": (9036, "eb4944819f56cb56cfbd53684bf70de19f2161cc5d4def9fe3c804298afda1b2"),
+    "assets/rapidocr/ppocrv6_dict.txt": (74947, "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d"),
+    "LICENSE.txt": (11422, "3e0af25fdd06aa9586ae97adb00ea927ebe5a3805ac77d2d3a81ce5f55693333"),
+}
+RB1_FILES = (*RB1_PINNED, "runtime_gate.py", "startup.sh", "select-compose.sh")
 SUMS = "SHA256SUMS"
 BUNDLE_REF_PREFIX = "refs/cb5400-offline/build/"
 # Files of the Phase 12D3 design that no longer exist: only reported / cleaned up.
@@ -1383,6 +1392,21 @@ def render_sums(files: Dict[str, Dict[str, Any]]) -> str:
     return "".join(f"{meta['sha256']}  {rel}\n" for rel, meta in sorted(files.items()))
 
 
+def rb1_artifacts(root: Path) -> None:
+    for name in RB1_FILES:
+        path = root / name
+        if not path.is_file() or path.is_symlink():
+            raise Refused(f"RB-1 file missing or invalid: {name}")
+        pin = RB1_PINNED.get(name)
+        if pin and (path.stat().st_size, sha256_file(path)) != pin:
+            raise Refused(f"RB-1 file differs from approved bytes: {name}")
+
+
+def requires_rb1(manifest: Dict[str, Any]) -> bool:
+    source = manifest.get("source")
+    return isinstance(source, dict) and source.get("base_commit") == RB1_BASE
+
+
 def verify_tree(
     root: Path,
     platform_expected: Optional[str],
@@ -1415,6 +1439,10 @@ def verify_tree(
         f = root / rel
         if f.stat().st_size != meta["size"] or sha256_file(f) != meta["sha256"]:
             raise Refused(f"checksum mismatch: {rel}")
+    if requires_rb1(manifest):
+        rb1_artifacts(root / RB1_DIR)
+        if not (root / SIGNATURE).is_file() or "scripts/rb1_setup.py" not in listed:
+            raise Refused("RB-1 requires a signed package and rollback setup tool")
     sums = root / SUMS
     if not sums.is_file():
         raise Refused("SHA256SUMS missing")
@@ -1561,7 +1589,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
         authenticity.append("sha256 matched the trusted-channel value")
     members = inspect_archive(package)  # nothing written yet
     manifest_bytes, signature = read_metadata(package, members)
-    if policy == "required":
+    try:
+        raw_manifest = json.loads(manifest_bytes)
+    except ValueError:
+        raise Refused("manifest.json unreadable") from None
+    if policy == "required" or (isinstance(raw_manifest, dict) and requires_rb1(raw_manifest)):
         if signature is None:
             raise Refused(
                 "SIGNATURE REQUIRED: a trusted release key is installed (or SIGNATURE_POLICY="
@@ -1747,8 +1779,12 @@ def _probe_docling_text_patch(app_root: Path) -> Dict[str, Any]:
         f"sys.path.insert(0, {str(app_root)!r})\n"
         "try:\n"
         "    from open_notebook.ocr import docling_patches as P\n"
+        "    from open_notebook.ocr.docling_extract import install_native_pdf_integrity\n"
         "    P.apply_text_preservation(required=True)\n"
-        "    print('TEXTPATCH ' + json.dumps(P.text_status()))\n"
+        "    status = P.text_status()\n"
+        "    status['native_pdf'] = install_native_pdf_integrity()\n"
+        "    status['applied'] = status['applied'] and status['native_pdf']\n"
+        "    print('TEXTPATCH ' + json.dumps(status))\n"
         "except Exception as e:\n"
         "    print('TEXTPATCH ' + json.dumps({'applied': False, 'error': type(e).__name__ + ': ' + str(e)[:300]}))\n"
     )
@@ -1976,8 +2012,6 @@ def _recover_interrupted_publish(out_root: Path, name: str) -> None:
         for p in out_root.glob(pattern)
         if p.is_file() and not p.is_symlink()
     ]
-    if not orphans:
-        return
     wanted = None
     if package.is_file():
         wanted = f"{sha256_file(package)}  {package.name}\n"
@@ -1991,6 +2025,11 @@ def _recover_interrupted_publish(out_root: Path, name: str) -> None:
             else:
                 orphan.unlink()
                 log(f"removed {orphan.name} (left by an interrupted build)")
+    if wanted and not current_ok:
+        raise Refused(f"NOT READY: no verified checksum pair for {package.name}", EXIT_VERIFY)
+    if current_ok:
+        with contextlib.suppress(OSError):
+            sha_file.with_name(sha_file.name + ".tmp").unlink()
 
 
 def check_image_provenance(
@@ -2075,11 +2114,11 @@ def cmd_build(args: argparse.Namespace) -> int:
         raise Refused(
             f"--base-ref {args.base_ref} does not exist in {repo}", EXIT_USAGE
         )
+    if base_commit == RB1_BASE and not args.sign_key:
+        raise Refused("Rollback to v1.2.0 requires a release signing key (--sign-key)", EXIT_USAGE)
     out_root.mkdir(parents=True, exist_ok=True)
     with build_lock(out_root, name):
         tmp_package = out_root / f".{name}.tar.gz.partial-{os.getpid()}"
-        _remove_stale_partials(out_root, name, tmp_package)
-        _recover_interrupted_publish(out_root, name)
         # R2-18: the stage is CLAIMED atomically; a second builder gets a clean refusal.
         try:
             stage.mkdir()
@@ -2090,6 +2129,8 @@ def cmd_build(args: argparse.Namespace) -> int:
                 EXIT_USAGE,
             ) from None
         try:
+            _recover_interrupted_publish(out_root, name)
+            _remove_stale_partials(out_root, name, tmp_package)
             manifest = _build_stage(
                 args, repo, stage, name, commit, base_commit, version, release_tag, tag
             )
@@ -2141,9 +2182,14 @@ def cmd_build(args: argparse.Namespace) -> int:
                         os.replace(new_sha, sha_file)  # the new pair is complete
                     raise
             finally:
-                for leftover in (new_sha, previous_sha):
-                    with contextlib.suppress(OSError):
-                        leftover.unlink()
+                # Until the final pair is verified the staged hash may be the
+                # only copy that can recover it after a persistent rename error.
+                with contextlib.suppress(OSError):
+                    final = sha_file.read_text() if sha_file.is_file() else None
+                    if final and package.is_file() and final == f"{sha256_file(package)}  {package.name}\n":
+                        for leftover in (new_sha, previous_sha, sha_file.with_name(sha_file.name + ".tmp")):
+                            with contextlib.suppress(OSError):
+                                leftover.unlink()
         except BaseException:
             # Only what THIS run created is removed (F-04, R2-18).
             shutil.rmtree(stage, ignore_errors=True)
@@ -2280,6 +2326,13 @@ def _build_stage(
         "offline-update.conf.example",
     ):  # fmt: skip
         shutil.copy2(here / f, stage / "scripts" / f)
+    if base_commit == RB1_BASE:
+        rb1_artifacts(here / "rb1")
+        for name in RB1_FILES:
+            target = stage / RB1_DIR / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(here / "rb1" / name, target)
+        shutil.copy2(here / "rb1_setup.py", stage / "scripts" / "rb1_setup.py")
     docs = repo / "docs" / "deployment"
     for f in (
         "OFFLINE_UPDATE_MANUAL_FALLBACK.md", "OFFLINE_UPDATE_INTEGRATION_CONTRACT.md",
@@ -2646,19 +2699,40 @@ def running_jobs(dep: Deployment) -> Optional[int]:
 # Data fingerprint (R2-05): which records exist, not only how many
 # --------------------------------------------------------------------------- #
 
-RECORD_TABLES = ("source", "notebook", "note", "source_embedding", "source_insight")
+RECORD_TABLES = (
+    "source", "notebook", "note", "source_embedding", "source_insight",
+    "reference", "artifact", "user",
+)
 
 FINGERPRINT_PROBE = (
-    "import asyncio, json\n"
+    "import asyncio, hashlib, json\n"
     "from open_notebook.database.repository import repo_query\n"
     f"TABLES = {list(RECORD_TABLES)!r}\n"
     "async def m():\n"
     "    out = {}\n"
     "    for t in TABLES:\n"
-    "        rows = await repo_query(f'SELECT id, updated FROM {t}')\n"
-    "        ids = [str(r.get('id')) for r in rows]\n"
-    "        upd = [r.get('updated') for r in rows]\n"
-    "        out[t] = {'ids': ids, 'updated': [None if u is None else str(u) for u in upd]\n"
+    "        counts = await repo_query(f'SELECT count() AS total FROM {t} GROUP ALL')\n"
+    "        total = counts[0]['total'] if counts else 0\n"
+    "        by_id = {}\n"
+    "        for offset in range(0, max(total, 1), 500):\n"
+    "            query = (f'SELECT * FROM {t} ORDER BY id LIMIT 500 START {offset}'\n"
+    "                     if total > 500 else f'SELECT * FROM {t}')\n"
+    "            rows = await repo_query(query)\n"
+    "            for row in rows:\n"
+    "                rid = str(row['id'])\n"
+    "                if rid in by_id:\n"
+    "                    raise ValueError('duplicate record in fingerprint')\n"
+    "                encoded = json.dumps(row, sort_keys=True, separators=(',', ':'),\n"
+    "                                     default=str, allow_nan=False).encode()\n"
+    "                by_id[rid] = (hashlib.sha256(encoded).hexdigest(), row.get('updated'))\n"
+    "        if total and len(by_id) != total:\n"
+    "            raise ValueError('fingerprint row count changed')\n"
+    "        ids = sorted(by_id)\n"
+    "        upd = [by_id[rid][1] for rid in ids]\n"
+    "        digest = hashlib.sha256(json.dumps([(i, by_id[i][0]) for i in ids],\n"
+    "                                           separators=(',', ':')).encode()).hexdigest()\n"
+    "        out[t] = {'ids': ids, 'content_sha256': digest,\n"
+    "                  'updated': [None if u is None else str(u) for u in upd]\n"
     "                  if any(u is not None for u in upd) else None}\n"
     "    print('FINGERPRINT ' + json.dumps(out))\n"
     "asyncio.run(m())\n"
@@ -2702,6 +2776,11 @@ def make_fingerprint(raw: Any) -> Optional[Dict[str, Any]]:
             if pairs is None
             else sha256_bytes(json.dumps(pairs).encode()),
         }
+        digest = entry.get("content_sha256")
+        if digest is not None:
+            if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
+                return None
+            tables[t]["content_sha256"] = digest
         ids_by[t] = ordered
     summary = {
         "tables": tables,
@@ -2712,8 +2791,18 @@ def make_fingerprint(raw: Any) -> Optional[Dict[str, Any]]:
 
 def fingerprint(dep: Deployment) -> Optional[Dict[str, Any]]:
     """The data fingerprint read through the running application (None = unreadable)."""
+    # Define a read-only schema check in the same server-side probe. Empty and
+    # missing tables can both return [] from SELECT on a non-strict database.
+    program = FINGERPRINT_PROBE.replace(
+        "    out = {}\n",
+        "    schema = await repo_query('INFO FOR DB')\n"
+        "    if not isinstance(schema, dict) or not set(TABLES) <= set(schema.get('tables', {})):\n"
+        "        raise ValueError('required fingerprint table is missing')\n"
+        "    out = {}\n",
+        1,
+    )
     proc = dep.exec_app(
-        "/app/.venv/bin/python", "-c", FINGERPRINT_PROBE, check=False, timeout=1800
+        "/app/.venv/bin/python", "-c", program, check=False, timeout=1800
     )
     if proc.returncode != 0:
         return None
@@ -4176,6 +4265,8 @@ def cmd_update(args: argparse.Namespace) -> int:
     dep = Deployment(cfg)
     dep.need_deploy_tag()
     manifest = load_package(args.package_dir, cfg)
+    if requires_rb1(manifest):
+        raise Refused("RB-1 packages use the manual offline procedure and rb1_setup.py", EXIT_PREFLIGHT)
     root = Path(args.package_dir).resolve()
     target = manifest["image"]["tag"]
     maintenance = [] if args.no_maintenance else [cfg["MAINTENANCE_OVERRIDE"]]
@@ -5345,10 +5436,12 @@ def compare_snapshots(
         if added:
             info.append(f"added {t}: {added} records")
     rewritten = _changed_in_place(earlier.get("data"), now.get("data"))
-    if rewritten is None and no_writes:
+    if no_writes and not all(_has_content_fingerprint(s.get("data")) for s in (earlier, now)):
         return EXIT_VERIFY, ["the data fingerprint cannot be compared (unread): not 'unchanged'"]
+    if no_writes and earlier["data"] != now["data"] and not rewritten:
+        lost.append("CHANGED the content fingerprint")
     for t in rewritten or []:
-        line = f"CHANGED in place {t}: same records, other update times"
+        line = f"CHANGED in place {t}: same record IDs, different content or update times"
         (lost if no_writes else info).append(line)
     if no_writes:
         for line in [x for x in info if x.startswith("added ")]:
@@ -5381,11 +5474,24 @@ def _changed_in_place(a: Any, b: Any) -> Optional[List[str]]:
     out = []
     for name in sorted(set(ta) & set(tb)):
         x, y = ta[name] or {}, tb[name] or {}
-        if x.get("ids_sha256") == y.get("ids_sha256") and x.get("updated_sha256") != y.get(
-            "updated_sha256"
+        if x.get("ids_sha256") == y.get("ids_sha256") and any(
+            x.get(key) != y.get(key) for key in ("content_sha256", "updated_sha256")
         ):
             out.append(name)
     return out
+
+
+def _has_content_fingerprint(summary: Any) -> bool:
+    tables = summary.get("tables") if isinstance(summary, dict) else None
+    if not isinstance(tables, dict) or set(tables) != set(RECORD_TABLES):
+        return False
+    return (
+        all(isinstance(row, dict) and type(row.get("count")) is int and row["count"] >= 0
+            and all(re.fullmatch(r"[a-f0-9]{64}", str(row.get(key, "")))
+                    for key in ("content_sha256", "ids_sha256"))
+            for row in tables.values())
+        and summary.get("sha256") == sha256_bytes(json.dumps(tables, sort_keys=True).encode())
+    )
 
 
 def cmd_snapshot(args: argparse.Namespace) -> int:

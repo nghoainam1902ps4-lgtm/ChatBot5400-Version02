@@ -70,10 +70,11 @@ là đường dẫn tuyệt đối.
 ## 2. Máy build (có Internet) — tạo gói
 
 1. Build bằng script chính thức: Windows `scripts\offline\build-package.ps1 -Version <ver>`
-   (`OFFLINE_UPDATE_WINDOWS_BUILD.md`) hoặc Linux `scripts/offline/build-package.sh`. Gói gồm:
+   (`OFFLINE_UPDATE_WINDOWS_BUILD.md`) hoặc Linux `scripts/offline/build-package.sh`. Gói có baseline
+   v1.2.0 chính thức bắt buộc nhận `-SignKey` trên PowerShell hoặc `--sign-key` trên Linux. Gói gồm:
    `images/chatbot5400-<ver>.tar` (`docker save`), `source/chatbot5400-<ver>.bundle` (git bundle),
    `source/chatbot5400-<ver>-src.tar.gz`, `manifest.json`, `SHA256SUMS`, `manifest.json.sig`
-   (nếu ký), `scripts/`, `docs/` (gồm tài liệu này).
+   (bắt buộc khi rollback về v1.2.0), `scripts/`, `docs/` và `rollback-assets/v1.2.0/`.
 2. Gửi giá trị SHA-256 của file `.tar.gz` cho người vận hành qua **kênh tin cậy riêng** (không
    gửi cùng gói).
 3. Kiểm gói không chứa dữ liệu nội bộ:
@@ -116,7 +117,7 @@ cd "$DEPLOY_DIR"
 ```
 
 Dừng nếu: lệnh tạo `$WORK` thất bại (thư mục đã có: chọn `WORK` mới, không dùng lại); 3.3 không in
-`Good` khi khóa đã cài (hoặc thiếu `manifest.json.sig`); 3.4 có dòng không `OK` hoặc không in
+`Good` (chữ ký từ khóa tin cậy bắt buộc cho RB-1); 3.4 có dòng không `OK` hoặc không in
 `manifest: every file OK`; `readiness` khác `READY`; `provenance` khác `verified`; `migration_required` là
 `True` (rollback không restore không còn đúng — cần kế hoạch riêng, ngoài quy trình này); phiên
 bản đang chạy không nằm trong `supported from`.
@@ -139,6 +140,24 @@ APP_CID=$($DC ps -q "$APP"); DB_CID=$($DC ps -q "$DB")
 
 - `app_image` phải bằng `deploy_tag_image`. Khác nhau = ứng dụng đang chạy không phải image mà tag
   chỉ tới (lệch từ trước): **dừng**, tìm nguyên nhân trước.
+- **RB-1, trước khi load image hoặc dừng dịch vụ.** Chọn `OLD_ID` đầy đủ từ hồ sơ image v1.2.0 đã
+  duyệt. Chuẩn bị `RB1_STATE` là thư mục con mới trong vùng bền vững do root quản lý, ngoài checkout
+  và `$WORK`, ví dụ `/var/lib/chatbot5400/rollback/v1.2.0` (thư mục cha phải tồn tại). Kiểm trước với
+  gói đã xác thực ở §3:
+
+  ```bash
+  RB1=(python3 "$WORK/$PKG/scripts/rb1_setup.py" --package-dir "$WORK/$PKG"
+       --allowed-signers "$SIGNERS" --identity "$SIGNER" --app-container "$APP_CID"
+       --baseline-image "$OLD_ID" --deploy-tag "$DEPLOY_TAG" --app-service "$APP")
+  "${RB1[@]}"
+  ```
+
+  Chỉ `A-valid` hoặc `B-recoverable` được tiếp tục. Cả hai đòi hỏi runtime torch đã xác minh, đủ
+  model persistent và cache cài lại được trên container tạm `--network none --pull never` với volume
+  nguồn chỉ đọc. Mọi verdict khác phải dừng. Sau khi được phép staging, chạy
+  `"${RB1[@]}" --stage "$RB1_STATE"`. Trước §5, nghiệm thu selector bền vững ở mọi đường khởi động
+  (C10). Với đường đang pin v1.2.0, `sh "$RB1_STATE/select-compose.sh"` phải trả về override. Chỉ
+  cấu hình do đơn vị vận hành đã nghiệm thu mới được dùng để tiếp tục cập nhật.
 - Biến môi trường bắt buộc trong container đang chạy (chỉ in 3 biến này, không in biến khác):
 
   ```bash
@@ -213,16 +232,15 @@ vì archive đã được xác thực ở §3 nên đó không phải lỗi; nh�
 
 5. Sao lưu theo quy trình của đơn vị; ghi mã tham chiếu bản sao lưu vào `$NOTES`. Kiểm restore trên
    **bản sao dùng một lần** (không bao giờ trên DB production). Chưa kiểm được: **dừng**.
-6. Không có gì ghi trong lúc sao lưu — ảnh chụp F2 phải **giống hệt** F1 (số lượng, định danh và
-   dấu thời gian cập nhật của bản ghi):
+6. Ảnh chụp F2 phải **giống hệt** F1, gồm digest nội dung của từng bảng. Giữ chặn writer
+   suốt hai lần lấy ảnh và quá trình sao lưu.
 
    ```bash
    python3 "$WORK/$PKG/scripts/offline_package.py" snapshot --config /etc/chatbot5400/offline-update.conf --out "$WORK/f2.json"
-   python3 -I -c 'import json,sys; a,b=(json.load(open(f))["data"] for f in sys.argv[1:]); ok=a is not None and b is not None and a==b; print("F1 == F2" if ok else ("UNREAD: a data fingerprint could not be read - STOP" if a is None or b is None else "DIFFERENT: something wrote during the backup")); sys.exit(0 if ok else 1)' "$WORK/f1.json" "$WORK/f2.json"
+   python3 -I -c 'import json,re,sys; a,b=(json.load(open(f))["data"] for f in sys.argv[1:]); valid=lambda d:isinstance(d,dict) and all(re.fullmatch("[a-f0-9]{64}",str(d.get("tables",{}).get(t,{}).get("content_sha256",""))) for t in ("source","notebook","note","source_insight","source_embedding","reference","artifact","user")); read=valid(a) and valid(b); ok=read and a==b; print("F1 == F2" if ok else ("DIFFERENT: something wrote during the backup" if read else "UNREAD: incomplete content fingerprint - STOP")); sys.exit(0 if ok else 1)' "$WORK/f1.json" "$WORK/f2.json"
    ```
 
-   Không dùng công cụ: đếm như §4 ngay trước (F1) và ngay sau (F2) sao lưu, phải bằng nhau (chỉ
-   số lượng — yếu hơn). Khác nhau: có ghi trong lúc sao lưu — chặn ghi rồi sao lưu lại.
+   Nếu fingerprint thiếu hoặc khác nhau, dừng và xác minh writer rồi sao lưu lại.
 
 ## 7. Chuyển sang image mới trong chế độ bảo trì
 
@@ -292,11 +310,16 @@ Biến môi trường đã thêm ở §4 có thể giữ (v1.2.0 hiểu chúng).
 
 ### 10.2 Ứng dụng (bất kỳ lúc nào sau §7)
 
+Hợp đồng C10 áp dụng cho cả `$OPS maintenance`, `$OPS normal` và boot guard. Dừng trước lệnh
+recreate nếu cấu hình hữu hiệu bỏ qua startup gate. Giữ `$RB1_STATE` và image cũ sau rollback.
+
 ```bash
 docker tag "chatbot5400:rollback-before-$VER" "$DEPLOY_TAG"     # hoặc: docker tag "$OLD_ID" "$DEPLOY_TAG"
 docker image inspect --format '{{.Id}}' "$DEPLOY_TAG"            # = app_image của §4
+test "$(sh "$RB1_STATE/select-compose.sh")" = "$RB1_STATE/compose.json" || exit 1
 $OPS maintenance                                                 # hoặc lệnh tương đương ở §7.3
-# kiểm như sau 7.3: image = app_image của §4, DB container không đổi, health, snapshot --compare f1.json
+# xác minh log: stock entrypoint chuẩn bị runtime -> RB1 restored/already valid -> supervisord -> worker
+# kiểm image, DB container, health, snapshot --compare f1.json --no-writes trước khi mở ghi
 $OPS normal
 ```
 

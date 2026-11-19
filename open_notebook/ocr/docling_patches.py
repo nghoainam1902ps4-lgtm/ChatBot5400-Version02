@@ -693,6 +693,8 @@ def _tesseract_call(self: Any, conv_res: Any, page_batch: Any) -> Any:
                             confidence=conf / 100.0,
                             rect=rect,
                         )
+                        if _evidence is not None:
+                            _evidence.recognition_cell(page.page_no, ocr_rect_i, cell)
                         all_ocr_cells.append(cell)
 
                 # Post-process the cells
@@ -978,30 +980,49 @@ def same_line_flags(cells: list[Any]) -> list[Optional[bool]]:
     from docling_core.types.doc.base import CoordOrigin
 
     flags: list[Optional[bool]] = []
+    line_left: float | None = None
     for a, b in zip(cells, cells[1:]):
         try:
             ba, bb = a.rect.to_bounding_box(), b.rect.to_bounding_box()
             if ba.coord_origin != bb.coord_origin:
                 flags.append(None)
+                line_left = None
                 continue
             a_lo, a_hi = min(ba.t, ba.b), max(ba.t, ba.b)
             b_lo, b_hi = min(bb.t, bb.b), max(bb.t, bb.b)
             a_left, b_left = min(ba.l, ba.r), min(bb.l, bb.r)
+            a_right, b_right = max(ba.l, ba.r), max(bb.l, bb.r)
             down = 1.0 if ba.coord_origin == CoordOrigin.TOPLEFT else -1.0
         except Exception:  # noqa: BLE001 - a cell without a usable box
             flags.append(None)
+            line_left = None
             continue
         height = min(a_hi - a_lo, b_hi - b_lo)
         if not height > 0:
             flags.append(None)
+            line_left = None
             continue
         overlap = min(a_hi, b_hi) - max(a_lo, b_lo)
         if overlap >= SAME_LINE_MIN_OVERLAP * height:
             flags.append(True if b_left > a_left else None)
-        elif down * ((b_lo + b_hi) - (a_lo + a_hi)) > 0:
-            flags.append(False)
-        else:
-            flags.append(None)  # the next cell is ABOVE: not a line break
+            # Extend only through adjacent words on this line. A gutter
+            # starts a separate footprint even when its baselines coincide.
+            if a_left < b_left <= a_right + 2 * height:
+                line_left = a_left if line_left is None else line_left
+            else:
+                line_left = None
+            continue
+        start = a_left if line_left is None else line_left
+        vertical = down * ((b_lo + b_hi) - (a_lo + a_hi)) / 2
+        line_pitch = 3 * max(a_hi - a_lo, b_hi - b_lo)
+        overlaps_line = min(a_right, b_right) > max(start, b_left)
+        starts_near_margin = abs(start - b_left) <= 2 * height
+        flags.append(
+            False
+            if 0 < vertical <= line_pitch and overlaps_line and starts_near_margin
+            else None
+        )
+        line_left = None
     return flags
 
 
@@ -1300,9 +1321,12 @@ def attached_footnotes(
             continue
         if isinstance(visited, set):
             visited.add(done)
-        written = doc_serializer.post_process(text=note.text)
+        rendered = doc_serializer.text_serializer.serialize(
+            item=note, doc_serializer=doc_serializer, doc=doc, **kwargs
+        )
+        written = rendered.text
         sink = _evidence
-        if sink is not None:
+        if sink is not None and not getattr(_capture, "serializing_spans", False):
             sink.footnote(note, written)
         out.append(create_ser_result(text=written, span_source=note))
     return out
@@ -1317,15 +1341,23 @@ def _with_attached_footnotes(upstream: Any) -> Any:
         res = upstream(
             self, item=item, doc_serializer=doc_serializer, doc=doc, **kwargs
         )
-        if kwargs.get("_nested_in_table"):
+        mime = getattr(getattr(doc, "origin", None), "mimetype", None)
+        if kwargs.get("_nested_in_table") or (
+            mime and mime != "application/pdf" and not mime.startswith("image/")
+        ):
             return res  # a table inside a table cell: upstream's subtree text
         notes = attached_footnotes(item, doc_serializer, doc, **kwargs)
         if not notes:
             return res
         parts = [r for r in (res, *notes) if r.text]
-        return create_ser_result(
-            text="\n\n".join(r.text for r in parts), span_source=parts
-        )
+        text = "\n\n".join(r.text for r in parts)
+        if _evidence is not None and getattr(_capture, "serializing_spans", False):
+            _evidence.floating[item.self_ref] = (
+                res.text,
+                text,
+                [r.text for r in notes],
+            )
+        return create_ser_result(text=text, span_source=parts)
 
     return serialize
 
@@ -1366,10 +1398,16 @@ def _private_dir(path: Path) -> None:
 class EvidenceSink:
     def __init__(self, folder: Path, document: str) -> None:
         self.folder, self.document = Path(folder), document
+        self.run_id: str | None = None
         self.lock = threading.Lock()
         self.count = 0
-        self.crops: dict[int, list[tuple[Any, dict[str, Optional[str]]]]] = {}
+        self.crops: dict[
+            tuple[int, int], tuple[str, dict[int, tuple[str, Optional[str]]]]
+        ] = {}
+        self.recognized_cells: dict[tuple, list[tuple[str, int, Optional[str]]]] = {}
         self.model_sha: dict[str, str] = {}
+        self.assembled: dict[tuple, list[dict[str, Any]]] = {}
+        self.floating: dict[str, tuple[str, str, list[str]]] = {}
         _private_dir(self.folder)
 
     def _write(self, rel: str, text: str, append: bool = False) -> None:
@@ -1381,6 +1419,7 @@ class EvidenceSink:
             fh.write(text)
 
     def _line(self, rel: str, record: dict[str, Any]) -> None:
+        record = {**record, "document": self.document, "run_id": self.run_id}
         self._write(rel, json.dumps(record, ensure_ascii=False) + "\n", append=True)
 
     def _models(self, model: Any) -> list[dict[str, Any]]:
@@ -1430,6 +1469,7 @@ class EvidenceSink:
                     {
                         "schema": "chatbot5400-ocr-evidence/1",
                         "document": self.document,
+                        "run_id": self.run_id,
                         "page": int(page.page_no),
                         "region": region + 1,
                         "bbox": bbox,
@@ -1441,38 +1481,166 @@ class EvidenceSink:
                     ensure_ascii=False,
                 ),
             )
-            if rect is not None:
+            if rect is not None and len(raws) == 1:
+                forms = _old_forms(raw)
                 with self.lock:
-                    self.crops.setdefault(int(page.page_no), []).append(
-                        (rect, _old_forms(raw))
+                    self.crops[(int(page.page_no), region)] = (
+                        f"{int(page.page_no):04d}-{region + 1:03d}-{n:06d}",
+                        forms,
                     )
+
+    def recognition_cell(self, page: int, region: int, cell: Any) -> None:
+        """Bind a row before Docling replaces its index with a page-local index."""
+        with self.lock:
+            crop = self.crops.get((page, region))
+            if crop is None:
+                return
+            invocation, rows = crop
+            item = rows.get(int(cell.index))
+            if item is None or item[0] != cell.text.strip():
+                return
+            bbox = cell.rect.to_bounding_box().to_top_left_origin(10**9)
+            key = (self._element_key(page, bbox), cell.text.strip())
+            self.recognized_cells.setdefault(key, []).append(
+                (invocation, int(cell.index), item[1])
+            )
 
     def element(
         self, model: Any, page: Any, cluster: Any, cells: list[Any], text: str
     ) -> None:
-        with self.lock:
-            crops = list(self.crops.get(int(page.page_no), []))
         old: list[str] = []
+        origins = []
         for cell in cells:
             value: Optional[str] = cell.text.replace("\x02", "-").strip()
+            origin: dict[str, Any] = {"text": value}
             if getattr(cell, "from_ocr", False):
-                forms = _crop_of(cell, crops)
-                if forms is not None and value in forms:
-                    value = forms[value]
+                cell_box = cell.rect.to_bounding_box().to_top_left_origin(10**9)
+                key = (
+                    self._element_key(int(page.page_no), cell_box),
+                    cell.text.strip(),
+                )
+                with self.lock:
+                    matches = self.recognized_cells.get(key, [])
+                if len(matches) == 1:
+                    invocation, row, previous = matches[0]
+                    origin.update(invocation=invocation, row=row, raw=cell.text.strip())
+                    origin["bbox"] = [cell_box.l, cell_box.t, cell_box.r, cell_box.b]
+                    value = previous
+                else:
+                    origin["unmapped_ocr"] = True
+            origins.append(origin)
             if value:
                 old.append(value)
         v120 = text_upstream("sanitize_text")(model, old)
         box = cluster.bbox
-        self._line(
-            "elements.jsonl",
-            {
-                "page": int(page.page_no),
-                "cluster": int(cluster.id),
-                "label": str(getattr(cluster.label, "value", cluster.label)),
-                "bbox": [box.l, box.t, box.r, box.b],
-                "text": text,
-                "v120_text": v120,
-            },
+        record = {
+            "page": int(page.page_no),
+            "cluster": int(cluster.id),
+            "label": str(getattr(cluster.label, "value", cluster.label)),
+            "bbox": [box.l, box.t, box.r, box.b],
+            "text": text,
+            "v120_text": v120,
+            "cells": origins,
+        }
+        key = self._element_key(int(page.page_no), box)
+        with self.lock:
+            self.assembled.setdefault(key, []).append(record)
+        self._line("elements.jsonl", record)
+
+    @staticmethod
+    def _element_key(page: int, box: Any) -> tuple:
+        return page, tuple(round(float(v), 4) for v in (box.l, box.t, box.r, box.b))
+
+    def markdown(self, doc: Any) -> str:
+        from docling_core.transforms.serializer.markdown import (
+            MarkdownDocSerializer,
+            MarkdownParams,
+        )
+        from docling_core.types.doc.document import (
+            DEFAULT_CONTENT_LAYERS,
+            DOCUMENT_TOKENS_EXPORT_LABELS,
+        )
+
+        sink = self
+
+        class SpanSerializer(MarkdownDocSerializer):
+            def serialize_doc(self, *, parts, **kwargs):
+                result = super().serialize_doc(parts=parts, **kwargs)
+                offset = 0
+                for part in parts:
+                    if not part.text:
+                        continue
+                    start, end = offset, offset + len(part.text)
+                    offset = end + 2  # MarkdownDocSerializer's actual separator
+                    items = part.get_unique_doc_items()
+                    for holder in items:
+                        floating = sink.floating.get(holder.self_ref)
+                        if (
+                            floating
+                            and floating[1] == part.text
+                            and len(holder.prov) == 1
+                        ):
+                            prov = holder.prov[0]
+                            sink._line(
+                                "output_spans.jsonl",
+                                {
+                                    "kind": "footnote",
+                                    "page": prov.page_no,
+                                    "item": holder.self_ref,
+                                    "start": start,
+                                    "end": end,
+                                    "text": part.text,
+                                    "v120_text": floating[0],
+                                    "notes": floating[2],
+                                },
+                            )
+                            break
+                    if len(items) != 1 or len(items[0].prov) != 1:
+                        continue
+                    item = items[0]
+                    prov = item.prov[0]
+                    page = doc.pages.get(prov.page_no)
+                    if page is None:
+                        continue
+                    box = prov.bbox.to_top_left_origin(page.size.height)
+                    candidates = sink.assembled.get(
+                        sink._element_key(prov.page_no, box), []
+                    )
+                    if len(candidates) != 1:
+                        continue
+                    element = candidates[0]
+                    if getattr(item, "text", None) != element[
+                        "text"
+                    ] or part.text != self.post_process(text=element["text"]):
+                        continue
+                    sink._line(
+                        "output_spans.jsonl",
+                        {
+                            "page": prov.page_no,
+                            "cluster": element["cluster"],
+                            "bbox": element["bbox"],
+                            "item": item.self_ref,
+                            "start": start,
+                            "end": end,
+                            "text": part.text,
+                            "v120_text": self.post_process(text=element["v120_text"]),
+                            "hyphens": _hyphen_spans(
+                                element["cells"], part.text, start
+                            ),
+                        },
+                    )
+                return result
+
+        return (
+            SpanSerializer(
+                doc=doc,
+                params=MarkdownParams(
+                    labels=DOCUMENT_TOKENS_EXPORT_LABELS,
+                    layers=DEFAULT_CONTENT_LAYERS,
+                ),
+            )
+            .serialize()
+            .text
         )
 
     def merge(self, record: dict[str, Any]) -> None:
@@ -1486,21 +1654,21 @@ class EvidenceSink:
         )
 
 
-def _old_forms(raw: str) -> dict[str, Optional[str]]:
-    """raw cell text -> what Docling 2.129.0's pandas parse made of it in THIS
-    crop (None: dropped)."""
+def _old_forms(raw: str) -> dict[int, tuple[str, Optional[str]]]:
+    """The literal and upstream text of each row of this exact invocation."""
     import pandas as pd
 
     df = pd.read_csv(io.StringIO(raw), quoting=csv.QUOTE_NONE, sep="\t")
     upstream = df[df["text"].notna() & (df["text"].apply(str).str.strip() != "")]
     ours = read_tesseract_tsv_plain(raw)
-    forms: dict[str, Optional[str]] = {}
+    forms: dict[int, tuple[str, Optional[str]]] = {}
     for i, row in ours.iterrows():
         text = str(row["text"])
         if not text.strip():
             continue
-        forms[text.strip()] = (
-            str(upstream.loc[i, "text"]).strip() if i in upstream.index else None
+        forms[int(i)] = (
+            text.strip(),
+            str(upstream.loc[i, "text"]).strip() if i in upstream.index else None,
         )
     return forms
 
@@ -1515,16 +1683,32 @@ def read_tesseract_tsv_plain(decoded_data: str) -> Any:
         _capture.raw = saved
 
 
-def _crop_of(cell: Any, crops: list[tuple[Any, dict[str, Optional[str]]]]) -> Any:
-    try:
-        box = cell.rect.to_bounding_box().to_top_left_origin(10**9)
-    except Exception:  # noqa: BLE001
-        return None
-    cx, cy = (box.l + box.r) / 2, (box.t + box.b) / 2
-    for rect, forms in crops:
-        if rect.l <= cx <= rect.r and rect.t <= cy <= rect.b:
-            return forms
-    return None
+def _hyphen_spans(
+    cells: list[dict[str, Any]], text: str, start: int
+) -> list[dict[str, Any]]:
+    """Map ordered source cells to this one known serializer part, without searching."""
+    position = 0
+    mapped = []
+    for cell in cells:
+        token = cell["text"]
+        if not token:
+            continue
+        while position < len(text) and text[position].isspace():
+            position += 1
+        if not text.startswith(token, position):
+            return []
+        end = position + len(token)
+        if "-" in token and "invocation" in cell:
+            mapped.append(
+                {
+                    "invocation": cell["invocation"],
+                    "row": cell["row"],
+                    "start": start + position,
+                    "end": start + end,
+                }
+            )
+        position = end
+    return mapped if not text[position:].strip() else []
 
 
 def _record_merge(new_item: Any, merged_elem: Any) -> None:
@@ -1563,3 +1747,19 @@ class evidence_capture:  # noqa: N801 - used like a function
         global _evidence
         with _lock:
             _evidence = None
+
+
+def export_standard_markdown(doc: Any) -> str:
+    sink = _evidence
+    if sink is None:
+        return doc.export_to_markdown()
+    # Require byte parity with the application's normal renderer before any
+    # span produced by the evidence view can be used.
+    rendered = doc.export_to_markdown()
+    _capture.serializing_spans = True
+    try:
+        if sink.markdown(doc) != rendered:
+            (sink.folder / "output_spans.jsonl").unlink(missing_ok=True)
+    finally:
+        _capture.serializing_spans = False
+    return rendered

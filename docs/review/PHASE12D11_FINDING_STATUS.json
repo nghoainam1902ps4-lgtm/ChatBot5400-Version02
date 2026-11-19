@@ -1,0 +1,342 @@
+{
+  "schema": "chatbot5400-finding-status/12D11",
+  "phase": "12D11",
+  "repository": "nghoainam1902ps4-lgtm/ChatBot5400-Version02",
+  "pr": 50,
+  "version": "1.2.0",
+  "baseline": "f2fdf2714a7c0b5b196132f71cfc091928befc06",
+  "remediation_base": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+  "independent_review_commit": "abbcc37c89f5c72f14bcd3aadd52c70817f36120",
+  "independent_review_branch": "review/phase12d10-codex-targeted",
+  "implementation": {
+    "agent": "Codex",
+    "model": "gpt-6.2-sol",
+    "model_evidence": "turn_context.model of this Codex session"
+  },
+  "environment": {
+    "backend": "Ubuntu 26.04.1 LTS WSL2, CPython 3.12.16",
+    "windows": "Windows 11 25H2 (26200.9974), CPython 3.12.14, Node.js 24.19.0, npm 11.17.0",
+    "pinned_ocr": "Docling 2.129.0, Docling Core 2.96.0, Content Core 2.0.7, Tesseract 5.5.0",
+    "database": "Real SurrealDB engine embedded via Python SDK 1.0.8; isolated synthetic fixtures"
+  },
+  "controls": {
+    "red": {
+      "failed": 13,
+      "passed": 3
+    },
+    "green": {
+      "failed": 0,
+      "passed": 16,
+      "strict_xfail_controls_passed": 13
+    },
+    "review_assertions_changed": false
+  },
+  "verdict": {
+    "code_findings_fixed": 9,
+    "code_release_blockers_remaining": 0,
+    "ready_for_targeted_re_review": "YES",
+    "ready_for_windows_retest": "CONDITIONAL",
+    "ready_for_release": "NO",
+    "ready_for_production": "NO",
+    "production": "UNCHANGED",
+    "automatic_updater": "EXPERIMENTAL",
+    "E2-01": "NEEDS LOCAL EVIDENCE",
+    "E2-02": "NEEDS LOCAL EVIDENCE"
+  },
+  "rb1_supplement": {
+    "local_restore_helper": "VERIFIED",
+    "local_rb_g1_through_g10": "PASS",
+    "rb_g10_tables_preserved": 22,
+    "rb_g10_user_included": true,
+    "rb_g10_db_restarts": 0,
+    "rb_g11_ubuntu_vm_reboot": "PENDING",
+    "official_package_local_rehearsal": "PENDING",
+    "d10_09_positive_controls": {"passed": 8, "total": 8, "environment": "isolated embedded SurrealDB"},
+    "d10_09_n0": {"status": "PASS", "environment": "isolated embedded SurrealDB with live subscriptions and an unchanged schema"},
+    "local_gate": "D11-W09"
+  },
+  "findings": [
+    {
+      "id": "D10-01",
+      "severity": "P1",
+      "status": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "root_cause": "Native URL routing reached the original content-core PDF callback after an optional patch refusal.",
+      "red": {
+        "commit": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+        "outcome": "FAILED",
+        "controls": [
+          "test_remote_native_pdf_fails_closed_if_patch_is_incompatible"
+        ]
+      },
+      "fix": "The version/source-guarded callback examines the downloaded PDF before dispatch and requires text-patch initialization.",
+      "locations": [
+        "open_notebook/ocr/docling_extract.py::install_native_pdf_integrity",
+        "open_notebook/graphs/source.py::content_process"
+      ],
+      "green": {
+        "outcome": "PASSED",
+        "original_controls": [
+          "test_remote_native_pdf_fails_closed_if_patch_is_incompatible"
+        ],
+        "regression_suites": [
+          "tests/test_phase12d11_pdf_integrity.py"
+        ]
+      },
+      "local_gates": [
+        "D11-W01"
+      ]
+    },
+    {
+      "id": "D10-02",
+      "severity": "P1",
+      "status": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "root_cause": "Native PDF exported before checking its conversion verdict. The embedding worker deleted vectors before calling the provider.",
+      "red": {
+        "commit": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+        "outcome": "FAILED",
+        "controls": [
+          "test_native_content_core_refuses_incomplete_docling_result",
+          "test_old_embedding_survives_failed_ocr_and_failed_inflight_embedding"
+        ]
+      },
+      "fix": "Reject failed, partial, unknown, erroneous, or wholly empty PDF output before publication. Generate and validate vectors before one revision-guarded SurrealQL transaction. Publish changed content with stale-vector retirement in a single transaction.",
+      "locations": [
+        "open_notebook/ocr/docling_extract.py::reject_incomplete",
+        "commands/embedding_commands.py::embed_source_command",
+        "open_notebook/database/repository.py::repo_transaction",
+        "api/routers/sources.py::_create_source_sync_path"
+      ],
+      "green": {
+        "outcome": "PASSED",
+        "original_controls": [
+          "test_native_content_core_refuses_incomplete_docling_result",
+          "test_old_embedding_survives_failed_ocr_and_failed_inflight_embedding"
+        ],
+        "regression_suites": [
+          "tests/test_phase12d11_pdf_integrity.py",
+          "tests/test_phase12d11_embedding_transactions.py"
+        ]
+      },
+      "local_gates": [
+        "D11-W02",
+        "D11-W03"
+      ]
+    },
+    {
+      "id": "D10-03",
+      "severity": "P1",
+      "status": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "root_cause": "Vertical displacement was treated as consecutive lines regardless of the source box's horizontal position.",
+      "red": {
+        "commit": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+        "outcome": "FAILED",
+        "controls": [
+          "test_assembly_does_not_fuse_hyphenated_cell_across_a_column_gutter"
+        ]
+      },
+      "fix": "Hyphen continuation requires a compatible line margin, nearby geometry and a contiguous source line. Ambiguous boundaries keep the separator.",
+      "locations": [
+        "open_notebook/ocr/docling_patches.py::same_line_flags"
+      ],
+      "green": {
+        "outcome": "PASSED",
+        "original_controls": [
+          "test_assembly_does_not_fuse_hyphenated_cell_across_a_column_gutter"
+        ],
+        "regression_suites": [
+          "tests/test_phase12d9_text_preservation.py",
+          "tests/test_phase12d10_review_controls.py"
+        ]
+      },
+      "local_gates": [
+        "D11-W04"
+      ]
+    },
+    {
+      "id": "D10-04",
+      "severity": "P2",
+      "status": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "root_cause": "Attached footnote Markdown bypassed the active Legal text serializer.",
+      "red": {
+        "commit": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+        "outcome": "FAILED",
+        "controls": [
+          "test_attached_legal_note_preserves_literal_block_syntax"
+        ]
+      },
+      "fix": "Render each resolved footnote through the active text serializer and apply literal Markdown escaping to Legal notes.",
+      "locations": [
+        "open_notebook/ocr/docling_patches.py",
+        "open_notebook/ocr/legal_normalizer.py"
+      ],
+      "green": {
+        "outcome": "PASSED",
+        "original_controls": [
+          "test_attached_legal_note_preserves_literal_block_syntax"
+        ],
+        "regression_suites": [
+          "tests/test_phase12d9_text_preservation.py",
+          "tests/test_phase12d10_review_controls.py"
+        ]
+      },
+      "local_gates": [
+        "D11-W04"
+      ]
+    },
+    {
+      "id": "D10-05",
+      "severity": "P1",
+      "status": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "root_cause": "Universal newlines and a glob-derived inventory hid byte changes and missing output.",
+      "red": {
+        "commit": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+        "outcome": "FAILED",
+        "controls": [
+          "test_gate_rejects_lf_to_crlf_change",
+          "test_gate_rejects_a_success_missing_on_both_sides"
+        ]
+      },
+      "fix": "Compare read_bytes() against the validated manifest inventory and recorded hashes.",
+      "locations": [
+        "scripts/ocr/phase12_standard_diff.py"
+      ],
+      "green": {
+        "outcome": "PASSED",
+        "original_controls": [
+          "test_gate_rejects_lf_to_crlf_change",
+          "test_gate_rejects_a_success_missing_on_both_sides"
+        ],
+        "regression_suites": [
+          "tests/test_phase12d11_bound_gate.py",
+          "tests/test_phase12d9_standard_gate.py"
+        ]
+      },
+      "local_gates": [
+        "D11-W05"
+      ]
+    },
+    {
+      "id": "D10-06",
+      "severity": "P1",
+      "status": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "root_cause": "The gate compared output without binding it to model weights and accepted free-standing orientation evidence.",
+      "red": {
+        "commit": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+        "outcome": "FAILED",
+        "controls": [
+          "test_gate_rejects_different_models_even_with_equal_output",
+          "test_gate_does_not_accept_orientation_without_invocation_evidence"
+        ]
+      },
+      "fix": "Release mode validates both export identities, model/config/hash parity and a row-to-output provenance chain. Unproved orientation is NOT VERIFIED.",
+      "locations": [
+        "scripts/ocr/phase12d9_standard_export.py",
+        "scripts/ocr/phase12_standard_diff.py::verify_bound_output"
+      ],
+      "green": {
+        "outcome": "PASSED",
+        "original_controls": [
+          "test_gate_rejects_different_models_even_with_equal_output",
+          "test_gate_does_not_accept_orientation_without_invocation_evidence"
+        ],
+        "regression_suites": [
+          "tests/test_phase12d11_bound_gate.py"
+        ]
+      },
+      "local_gates": [
+        "D11-W05"
+      ]
+    },
+    {
+      "id": "D10-07",
+      "severity": "P1",
+      "status": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "root_cause": "A single substring could count toward two OCR hyphen occurrences.",
+      "red": {
+        "commit": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+        "outcome": "FAILED",
+        "controls": [
+          "test_hyphen_count_requires_two_distinct_occurrences"
+        ]
+      },
+      "fix": "Strict G-H1 uses separate source-row identities and ordered output spans. Diagnostic counts consume distinct visible positions and carry no G-H1 verdict.",
+      "locations": [
+        "scripts/ocr/phase12_standard_diff.py::verify_bound_output",
+        "scripts/ocr/phase12d9_standard_export.py"
+      ],
+      "green": {
+        "outcome": "PASSED",
+        "original_controls": [
+          "test_hyphen_count_requires_two_distinct_occurrences"
+        ],
+        "regression_suites": [
+          "tests/test_phase12d11_bound_gate.py"
+        ]
+      },
+      "local_gates": [
+        "D11-W05"
+      ]
+    },
+    {
+      "id": "D10-08",
+      "severity": "P2",
+      "status": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "root_cause": "Two failed checksum replacement attempts could discard the prepared checksum for the visible archive.",
+      "red": {
+        "commit": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+        "outcome": "FAILED",
+        "controls": [
+          "test_failed_hash_publish_leaves_enough_to_recover"
+        ]
+      },
+      "fix": "Keep matching recovery material until the exact filename/digest pair is verified. Preserve the atomic stage and lock refusal.",
+      "locations": [
+        "scripts/offline/offline_package.py::cmd_build",
+        "scripts/offline/offline_package.py::_recover_interrupted_publish"
+      ],
+      "green": {
+        "outcome": "PASSED",
+        "original_controls": [
+          "test_failed_hash_publish_leaves_enough_to_recover"
+        ],
+        "regression_suites": [
+          "tests/review_phase12d4/test_offline_evidence_trust_build.py",
+          "tests/test_phase12d10_review_controls.py"
+        ]
+      },
+      "local_gates": [
+        "D11-W06"
+      ]
+    },
+    {
+      "id": "D10-09",
+      "severity": "P1",
+      "status": "FIXED_CODE_LOCAL_GATE_PENDING",
+      "root_cause": "The no-writes comparison hashed IDs and timestamps while ignoring chunk and vector content.",
+      "red": {
+        "commit": "2cc824f66638d6db229993b4cc98948300e6bd8b",
+        "outcome": "FAILED",
+        "controls": [
+          "test_offline_no_writes_detects_in_place_vector_change"
+        ]
+      },
+      "fix": "Collect ordered hashes for eight required business tables on the deployment server, including relationships and user records. Exclude transient LIVE metadata. Require complete, equal digests for no-writes and F1/F2.",
+      "locations": [
+        "scripts/offline/offline_package.py::FINGERPRINT_PROBE",
+        "docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md"
+      ],
+      "green": {
+        "outcome": "PASSED",
+        "original_controls": [
+          "test_offline_no_writes_detects_in_place_vector_change"
+        ],
+        "regression_suites": [
+          "tests/test_phase12d11_offline_fingerprint.py"
+        ]
+      },
+      "local_gates": [
+        "D11-W07"
+      ]
+    }
+  ]
+}

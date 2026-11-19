@@ -607,8 +607,16 @@ def _build_serializer(doc: Any, drop_picture_refs: set[str]) -> Any:
                 or not res.text
             ):
                 return res
+            text = res.text
+            if item.label == DocItemLabel.FOOTNOTE:
+                # These are printed characters, including any literal markup
+                # typed in a footnote, rather than Docling formatting metadata.
+                marker = "(*)" if text.startswith("(*) ") else ""
+                text = marker + re.sub(r"([\\`*_\[\]~])", r"\\\1", text[len(marker) :])
+                text = re.sub(r"(?m)^( {0,3}\d{1,9})([.)])(?=\s)", r"\1\\\2", text)
+                text = re.sub(r"(?m)^( {0,3})([-+])(?=\s)", r"\1\\\2", text)
             return create_ser_result(
-                text=escape_literal_block_syntax(res.text), span_source=item
+                text=escape_literal_block_syntax(text), span_source=item
             )
 
     class LegalListSerializer(MarkdownListSerializer):

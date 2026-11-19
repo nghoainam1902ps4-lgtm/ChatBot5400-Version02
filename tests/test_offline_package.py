@@ -79,7 +79,7 @@ OPERATOR_ENV = {
 }
 
 FAKE_DOCKER = r"""#!/usr/bin/env python3
-import hashlib, io, json, os, re, sys, tarfile
+import ast, hashlib, io, json, os, re, sys, tarfile
 state_path = os.environ["FAKE_DOCKER_STATE"]
 state = json.load(open(state_path))
 argv = sys.argv[1:]
@@ -207,11 +207,14 @@ if argv[0] == "compose":
             # one record id per counted row (or the explicit ids of state["records"]);
             # tables with `updated` report it ("u1" for the ids of state["touched"])
             raw = {}
-            for t, n in state["counts"].items():
+            tables = ast.literal_eval(re.search(r'^TABLES = (.+)$', joined, re.M)[1])
+            for t in tables:
+                n = state["counts"].get(t, 0)
                 ids = state.get("records", {}).get(t) or ["%s:%d" % (t, i) for i in range(1, n + 1)]
                 touched = state.get("touched", {}).get(t, [])
                 upd = None if t == "source_embedding" else ["u1" if i in touched else "u0" for i in ids]
-                raw[t] = {"ids": ids, "updated": upd}
+                digest = hashlib.sha256(json.dumps([ids, upd]).encode()).hexdigest()
+                raw[t] = {"ids": ids, "updated": upd, "content_sha256": digest}
             out("FINGERPRINT " + json.dumps(raw)); sys.exit(0)
         if "TABLES =" in joined: out(json.dumps(state["counts"])); sys.exit(0)
         if "command WHERE" in joined: out(str(state["jobs"])); sys.exit(0)
@@ -1196,6 +1199,26 @@ def signing(tmp_path):
         f"release@chatbot5400 {(tmp_path / 'release_key.pub').read_text().strip()}\n"
     )
     return key, signers
+
+
+@needs_ssh_keygen
+def test_rb1_release_packages_bind_the_allowlist_to_a_trusted_signature(
+    fake_docker, repo, tmp_path, signing, monkeypatch
+):
+    key, signers = signing
+    monkeypatch.setattr(OP, "RB1_BASE", _git(repo, "rev-parse", "v1.2.0^{commit}"))
+    assert _build_rc(repo, tmp_path / "unsigned") == OP.EXIT_USAGE
+    assert fake_docker.calls() == []
+    pkg, digest = _build(repo, tmp_path, "--sign-key", str(key))
+    assets = _manifest_of(pkg)["files"]
+    for name in OP.RB1_FILES:
+        assert f"{OP.RB1_DIR}/{name}" in assets
+    for name, (size, digest_pin) in OP.RB1_PINNED.items():
+        assert assets[f"{OP.RB1_DIR}/{name}"] == {"sha256": digest_pin, "size": size}
+    assert "scripts/rb1_setup.py" in assets
+    assert not any("release_key" in name for name in assets)
+    assert _verify(pkg, tmp_path / "no_key", "--expected-sha256", digest) == OP.EXIT_VERIFY
+    assert _verify(pkg, tmp_path / "ok", "--allowed-signers", str(signers)) == 0
 
 
 @needs_ssh_keygen

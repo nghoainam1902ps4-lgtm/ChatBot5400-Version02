@@ -729,13 +729,19 @@ async def _create_source_sync_path(
         # Run in thread pool to avoid blocking the event loop
         # execute_command_sync uses asyncio.run() internally which can't
         # be called from an already-running event loop (FastAPI)
-        result = await asyncio.to_thread(
-            execute_command_sync,
-            "open_notebook",  # app name
-            "process_source",  # command name
-            command_input.model_dump(),
-            timeout=300,  # 5 minute timeout for sync processing
-        )
+        try:
+            result = await asyncio.to_thread(
+                execute_command_sync,
+                "open_notebook",
+                "process_source",
+                command_input.model_dump(),
+                timeout=300,
+            )
+        except (TimeoutError, asyncio.CancelledError):
+            # A worker may still be converting. Source publication checks
+            # existence in its transaction, so deletion fences a late result.
+            await asyncio.shield(source.delete())
+            raise
 
         if not result.is_success():
             logger.error(f"Sync processing failed: {result.error_message}")

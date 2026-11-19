@@ -662,8 +662,8 @@ def test_control_manual_f1_f2_comparison_on_read_data(tmp_path):
         return subprocess.run(["bash", "-c", line], env=dict(os.environ, WORK=str(tmp_path)),
                               capture_output=True, text=True, timeout=60)  # fmt: skip
 
-    same, other = OP.make_fingerprint({t: {"ids": ["x:1"], "updated": ["u1"]} for t in OP.RECORD_TABLES}), None
-    other = OP.make_fingerprint({t: {"ids": ["x:1"], "updated": ["u2"]} for t in OP.RECORD_TABLES})
+    same = OP.make_fingerprint({t: {"ids": ["x:1"], "updated": ["u1"], "content_sha256": "a" * 64} for t in OP.RECORD_TABLES})
+    other = OP.make_fingerprint({t: {"ids": ["x:1"], "updated": ["u2"], "content_sha256": "b" * 64} for t in OP.RECORD_TABLES})
     ok = run(same["summary"], same["summary"])
     assert ok.returncode == 0 and ok.stdout.strip() == "F1 == F2"  # taken_at is not compared
     changed = run(same["summary"], other["summary"])  # same ids, another `updated`

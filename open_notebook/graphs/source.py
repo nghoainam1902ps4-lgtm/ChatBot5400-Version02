@@ -17,6 +17,7 @@ from open_notebook.graphs.transformation import graph as transform_graph
 from open_notebook.ocr.docling_extract import (
     extract_url_with_selected_ocr,
     extract_with_selected_ocr,
+    install_native_pdf_integrity,
     should_use_native_ocr,
     should_use_native_ocr_for_url,
 )
@@ -199,6 +200,7 @@ async def content_process(state: SourceState) -> dict:
         # Docling would read as a PDF / scan is refused on a Docling the patches
         # were not written for (no silent loss); other sources only log it.
         await _apply_docling_text_preservation(content_state, bool(file_path_only))
+        install_native_pdf_integrity()
     try:
         if file_path_only and await should_use_native_ocr(
             content_state["file_path"],

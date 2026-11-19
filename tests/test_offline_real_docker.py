@@ -45,7 +45,7 @@ pytestmark = pytest.mark.skipif(
     not _docker_ok(), reason="real Docker rehearsal: set CB5400_REAL_DOCKER=1 (needs a daemon)"
 )
 
-TABLES = ("source", "notebook", "note", "source_embedding", "source_insight")
+TABLES = OP.RECORD_TABLES
 
 STAND_IN_PYTHON = r"""#!/bin/sh
 # Stand-in for /app/.venv/bin/python of the ChatBot5400 image (rehearsal only):
@@ -192,6 +192,7 @@ class Lab:
         for t in TABLES:
             ids = [f"{t}:{i}" for i in range(1, counts.get(t, 0) + 1)]
             raw[t] = {"ids": ids, "updated": None if t == "source_embedding" else ["u0"] * len(ids)}
+            raw[t]["content_sha256"] = OP.sha256_bytes(json.dumps(ids).encode())
         db = self.container("surrealdb")
         _sh("docker", "exec", "-i", db, "sh", "-c", "cat > /data/records.json",
             input_text=json.dumps(raw))  # fmt: skip

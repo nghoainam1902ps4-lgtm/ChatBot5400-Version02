@@ -39,8 +39,25 @@ minh trên Docker 29 thật (phòng thí nghiệm Cloud): `docker tag <id mới>
 | C7 | Image ứng dụng mang sẵn bộ mã hóa token (`TIKTOKEN_CACHE_DIR=/app/tiktoken-cache`, SHA-256 đúng); trong container đang chạy, kiểm tokenizer báo `PASS` khi không có mạng. | `token_utils.main(["--check"])` trong container | Cloud: test với file thật; LOCAL (W-INT-07) |
 | C8 | Không còn file pin của Phase 12D3 (`docker-compose.offline-pin.yml`) trong danh sách file của script vận hành / boot guard; không còn `image-override.yml` của công cụ trong đó. | đọc script; `status` của công cụ báo file sót lại | LOCAL (W-INT-08) |
 | C9 | Tag rollback: image trước cập nhật được giữ dưới một tên (`chatbot5400:rollback-before-<ver>` khi làm thủ công; tag rollback của công cụ khi tự động) cho tới bản phát hành sau; không chạy `docker image prune -a` / `system prune -a`. | `docker image ls chatbot5400` | LOCAL (W-INT-09) |
+| C10 | RB-1 cho v1.2.0: tất cả đường tạo lại ứng dụng chọn cùng override bền vững theo ID hiện tại của tag C1. Giữ ID baseline, assets và selector ngoài checkout. | Kiểm cấu hình hữu hiệu và nghiệm thu recreate, restart, đổi chế độ, rollback, boot guard | LOCAL (D11-W09, RB-G11) |
 
 ## 3. Hợp đồng adapter cho script vận hành (khi chưa biết script làm gì)
+
+**C10 (RB-1).** `rb1_setup.py` kiểm chữ ký, định danh image và thử cache offline trước khi ghi
+thư mục staging bền vững. Adapter thường, bảo trì và boot guard gọi
+`rb1_file=$(sh "$RB1_STATE/select-compose.sh") || exit 1` sau khi chọn tag đã duyệt và trước khi
+dùng Compose. Nếu `rb1_file` có giá trị, nối `-f "$rb1_file"` **cuối** danh sách file. Kiểm
+`docker compose config --format json` ở cả hai chế độ. Service ứng dụng giữ nguyên image tag C1,
+dùng entrypoint `[/bin/sh, /opt/cb5400-rb1/startup.sh]`, command rỗng, bind mount chỉ đọc tới
+`/opt/cb5400-rb1` và `pull_policy: never`. Mọi lệnh recreate chỉ nêu service ứng dụng và dùng
+`--no-deps --no-build --pull never`. Nếu không chọn được cấu hình, adapter phải dừng.
+
+Override này đi cùng image v1.2.0 đã duyệt. Khi tag trỏ candidate, selector trả chuỗi rỗng. Docker
+restart giữ nguyên mount và entrypoint đã cấu hình. Khi recreate hoặc boot dựa vào Compose phải
+gọi selector như trên. Compose thông thường chỉ được gọi thông qua cùng adapter. Startup script
+xác minh entrypoint baseline, yêu cầu cấu hình offline đã được duyệt, gọi entrypoint đó để cài
+runtime từ uv cache, xác minh và khôi phục từ điển, rồi mới chạy `supervisord`. Cho tới khi
+RB-G11 đạt, chưa nghiệm thu hành vi reboot trên VM. Không chỉnh script vận hành thật trong phase này.
 
 Script vận hành và boot guard của production không có trong repository. Thay vì đoán, chúng phải
 thỏa **adapter contract** sau (LOCAL VERIFICATION REQUIRED — W-INT-10):
