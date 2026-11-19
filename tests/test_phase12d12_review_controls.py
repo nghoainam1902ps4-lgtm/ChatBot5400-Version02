@@ -25,6 +25,17 @@ from urllib.parse import urlsplit
 import pytest
 from test_phase12d9_ocr_failure_safety import database as database  # noqa: F401
 
+try:  # the rendered-OCR rig needs Docling; the other controls do not
+    import test_phase12d9_standard_gate as ocr_rig
+    from test_phase12d9_standard_gate import gate as d12_rendered  # noqa: F401
+except pytest.skip.Exception:  # pragma: no cover - Docling not installed
+    ocr_rig = None
+
+    @pytest.fixture
+    def d12_rendered():
+        pytest.skip("needs Docling")
+
+
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_URL_VAR = "CB5400_D12_SURREAL_URL"
 SERVER_USER_VAR = "CB5400_D12_SURREAL_USER"
@@ -199,7 +210,10 @@ async def test_server_stale_job_cannot_restore_a_deleted_source(
     result = await task
     assert result.success is False
     assert await Source.get(keep.id)
-    assert await db.repo_query("SELECT * FROM $id", {"id": db.ensure_record_id(source.id)}) == []
+    assert (
+        await db.repo_query("SELECT * FROM $id", {"id": db.ensure_record_id(source.id)})
+        == []
+    )
     assert await _vectors(source.id) == []
     links = await db.repo_query("SELECT VALUE in FROM reference")
     assert [str(link) for link in links] == [str(keep.id)], links
@@ -301,7 +315,10 @@ def _cell(index, text, left, top, right, bottom):
 HYPHEN_GEOMETRY = {
     # a wrapped identifier closes up only on line-break evidence
     "line cells, same margin": (
-        [("Thong tu 05/2024/TT-", 72, 100, 500, 112), ("BNNPTNT ngay 1", 72, 116, 300, 128)],
+        [
+            ("Thong tu 05/2024/TT-", 72, 100, 500, 112),
+            ("BNNPTNT ngay 1", 72, 116, 300, 128),
+        ],
         "Thong tu 05/2024/TT-BNNPTNT ngay 1",
     ),
     "word cells, wrapped": (
@@ -444,3 +461,178 @@ def test_legal_footnote_is_stored_as_printed_like_body_text():
     blocks = normalize_document(_legal_document(literal)).content.split("\n\n")
     assert blocks[2] == literal  # body paragraph: printed characters (F-17)
     assert blocks[1] == literal, blocks[1]  # the footnote: same characters
+
+
+# --------------------------------------------------------------------------- #
+# R05 - Standard expected-diff, release mode
+# --------------------------------------------------------------------------- #
+
+D12_03 = (
+    "D12-03 (release gate, residual of D10-06): verify_bound_output proves the "
+    "BASELINE text of a span from its TSV rows but takes the candidate text from "
+    "the candidate's own element record; a candidate token no row supports is "
+    "classified 'expected TSV fix' with exit 0"
+)
+
+
+def _bound_case(tmp_path, rows, joined, upstream):
+    """One page, one crop, honest row-to-cell evidence; only the JOINED text of
+    the element (what the candidate's assembly produced) is the caller's."""
+    import hashlib
+    import json
+
+    from scripts.ocr import phase12_standard_diff as gate
+
+    folder = tmp_path / "case.evidence"
+    (folder / "tesseract").mkdir(parents=True)
+    identity = {"document": "case", "run_id": "a" * 32}
+    models = {"vie": "b" * 64}
+    raw = (
+        gate._TSV_HEADER
+        + gate._TSV_PARENTS
+        + "".join(
+            f"5\t1\t1\t1\t1\t{i + 1}\t{7 + 15 * i}\t7\t8\t9\t96\t{word}\n"
+            for i, word in enumerate(rows)
+        )
+    )
+    (folder / "tesseract/0001_001_000001.tsv").write_text(raw, encoding="utf-8")
+    (folder / "tesseract/0001_001_000001.json").write_text(
+        json.dumps(
+            {
+                **identity,
+                "invocation": "0001-001-000001",
+                "page": 1,
+                "region": 1,
+                "bbox": [0, 0, 500, 50],
+                "engine": "vie",
+                "model_files": [{"name": "vie", "sha256": models["vie"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    element = {
+        **identity,
+        "page": 1,
+        "cluster": 1,
+        "bbox": [0, 0, 500, 50],
+        "text": joined,
+        "v120_text": upstream,
+        "cells": [
+            {
+                "invocation": "0001-001-000001",
+                "row": 4 + i,
+                "raw": word,
+                "text": word,
+                "bbox": [7 + 15 * i, 7, 15 + 15 * i, 16],
+            }
+            for i, word in enumerate(rows)
+        ],
+    }
+    span = {
+        **{k: element[k] for k in ("document", "run_id", "page", "cluster", "bbox")},
+        "text": joined,
+        "v120_text": upstream,
+        "item": "#/texts/0",
+        "start": 0,
+        "end": len(joined),
+        "hyphens": [],
+    }
+    for name, record in (("elements", element), ("output_spans", span)):
+        (folder / f"{name}.jsonl").write_text(
+            json.dumps(record) + "\n", encoding="utf-8"
+        )
+    files = {
+        p.relative_to(folder).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in folder.rglob("*")
+        if p.is_file()
+    }
+    report = gate.verify_bound_output(
+        upstream,
+        joined,
+        folder,
+        {"name": "case", "evidence_files": files, "ocr_model_files": models},
+        identity,
+    )
+    return gate, report
+
+
+def test_bound_gate_control_unchanged_span_is_accepted(tmp_path):
+    gate, report = _bound_case(
+        tmp_path, ["Article", "5", "applies"], "Article 5 applies", "Article 5 applies"
+    )
+    assert report["class"] not in (gate.NOT_VERIFIED, gate.UNEXPECTED), report
+
+
+@pytest.mark.xfail(strict=True, reason=D12_03)
+@pytest.mark.parametrize(
+    "joined",
+    [
+        "Article 6 applies",  # a digit no OCR row contains
+        "Article applies",  # a recognised token dropped
+        "Article 5 applies and an invented clause",  # text without a source cell
+    ],
+)
+def test_bound_gate_refuses_candidate_text_its_own_rows_do_not_support(
+    tmp_path, joined
+):
+    gate, report = _bound_case(
+        tmp_path, ["Article", "5", "applies"], joined, "Article 5 applies"
+    )
+    assert report["class"] == gate.NOT_VERIFIED, report
+
+
+@pytest.mark.xfail(strict=True, reason=D12_03)
+def test_release_gate_refuses_a_candidate_join_defect_real_ocr(
+    d12_rendered,  # noqa: F811
+    monkeypatch,
+):
+    """Real Tesseract + Docling, the unmodified exporter and comparator. Only the
+    candidate's text join is given a defect, after the baseline export."""
+    import json
+
+    if ocr_rig.needs_ocr.args[0]:
+        pytest.skip("needs Tesseract with the vie model")
+    rendered = d12_rendered
+    patches = ocr_rig.P
+    rendered.pdf(
+        "defect",
+        [["Điều 5. Hiệu lực thi hành"], ["Bên A không chịu trách nhiệm bồi thường"]],
+    )
+    baseline = rendered.export_v120()
+
+    def defective(model, page, cluster, kept_cells, textlines):
+        text = model.sanitize_text(
+            textlines, same_line=patches.same_line_flags(kept_cells)
+        )
+        text = text.replace("Điều 5", "Điều 6").replace("không ", "")
+        if patches._evidence is not None:
+            patches._evidence.element(model, page, cluster, kept_cells, text)
+        return text
+
+    monkeypatch.setattr(patches, "_assembled_text", defective)
+    candidate = rendered.export_candidate()
+    before = (rendered.before / "defect.md").read_text(encoding="utf-8")
+    after = (rendered.after / "defect.md").read_text(encoding="utf-8")
+    assert "Điều 5" in before and "không chịu" in before, "OCR precondition"
+    assert "Điều 6" in after and "không" not in after, "defect precondition"
+    folder = rendered.after / "defect.evidence"
+    sidecar = json.loads(
+        sorted((folder / "tesseract").glob("*.json"))[0].read_text(encoding="utf-8")
+    )
+    models = {m["name"]: m["sha256"] for m in sidecar["model_files"]}
+    candidate["documents"][0]["ocr_model_files"] = models
+    baseline["documents"][0]["ocr_model_files"] = models
+    baseline.update(
+        commit="f2fdf2714a7c0b5b196132f71cfc091928befc06", image_id="sha256:" + "a" * 64
+    )
+    candidate.update(commit="a" * 40, image_id="sha256:" + "b" * 64)
+    for root, manifest in ((rendered.before, baseline), (rendered.after, candidate)):
+        (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    code, report = rendered.diff(
+        "--release",
+        "--candidate-commit",
+        candidate["commit"],
+        "--candidate-image",
+        candidate["image_id"],
+    )
+    assert code != 0, report["documents"]["defect"]["class"]
