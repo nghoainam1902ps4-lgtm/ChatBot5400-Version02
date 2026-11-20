@@ -103,7 +103,13 @@ RB1_PINNED = {
     "assets/rapidocr/ppocrv6_dict.txt": (74947, "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d"),
     "LICENSE.txt": (11422, "3e0af25fdd06aa9586ae97adb00ea927ebe5a3805ac77d2d3a81ce5f55693333"),
 }
-RB1_FILES = (*RB1_PINNED, "runtime_gate.py", "startup.sh", "select-compose.sh")
+RB1_FILES = (
+    *RB1_PINNED,
+    "runtime_gate.py",
+    "startup.sh",
+    "select-compose.sh",
+    "verify_stage.py",  # 12D13: staged bytes = signed bytes, before every start
+)
 SUMS = "SHA256SUMS"
 BUNDLE_REF_PREFIX = "refs/cb5400-offline/build/"
 # Files of the Phase 12D3 design that no longer exist: only reported / cleaned up.

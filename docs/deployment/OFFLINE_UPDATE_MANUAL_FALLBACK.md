@@ -155,8 +155,13 @@ APP_CID=$($DC ps -q "$APP"); DB_CID=$($DC ps -q "$DB")
   Chỉ `A-valid` hoặc `B-recoverable` được tiếp tục. Cả hai đòi hỏi runtime torch đã xác minh, đủ
   model persistent và cache cài lại được trên container tạm `--network none --pull never` với volume
   nguồn chỉ đọc. Mọi verdict khác phải dừng. Sau khi được phép staging, chạy
-  `"${RB1[@]}" --stage "$RB1_STATE"`. Trước §5, nghiệm thu selector bền vững ở mọi đường khởi động
-  (C10). Với đường đang pin v1.2.0, `sh "$RB1_STATE/select-compose.sh"` phải trả về override. Chỉ
+  `"${RB1[@]}" --stage "$RB1_STATE"`. `--app-service` phải đúng nhãn
+  `com.docker.compose.service` của container đang chạy; `RB1_STATE` không được nằm trong gói, `$WORK`
+  hay một checkout git. Stage được kiểm bằng khoá tin cậy trước và sau khi đặt vào chỗ, rồi đặt chỉ
+  đọc. Trước §5, nghiệm thu selector bền vững ở mọi đường khởi động (C10):
+  `python3 -I "$RB1_STATE/verify_stage.py" --allowed-signers "$SIGNERS" --identity "$SIGNER" --service "$APP"`
+  phải in `"rb1_stage": "verified"`, và với đường đang pin v1.2.0,
+  `test "$(sh "$RB1_STATE/select-compose.sh")" = "$RB1_STATE/compose.json"` phải đạt. Chỉ
   cấu hình do đơn vị vận hành đã nghiệm thu mới được dùng để tiếp tục cập nhật.
 - Biến môi trường bắt buộc trong container đang chạy (chỉ in 3 biến này, không in biến khác):
 
@@ -316,6 +321,7 @@ recreate nếu cấu hình hữu hiệu bỏ qua startup gate. Giữ `$RB1_STATE
 ```bash
 docker tag "chatbot5400:rollback-before-$VER" "$DEPLOY_TAG"     # hoặc: docker tag "$OLD_ID" "$DEPLOY_TAG"
 docker image inspect --format '{{.Id}}' "$DEPLOY_TAG"            # = app_image của §4
+python3 -I "$RB1_STATE/verify_stage.py" --allowed-signers "$SIGNERS" --identity "$SIGNER" --service "$APP" || exit 1
 test "$(sh "$RB1_STATE/select-compose.sh")" = "$RB1_STATE/compose.json" || exit 1
 $OPS maintenance                                                 # hoặc lệnh tương đương ở §7.3
 # xác minh log: stock entrypoint chuẩn bị runtime -> RB1 restored/already valid -> supervisord -> worker

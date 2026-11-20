@@ -44,9 +44,19 @@ minh trên Docker 29 thật (phòng thí nghiệm Cloud): `docker tag <id mới>
 ## 3. Hợp đồng adapter cho script vận hành (khi chưa biết script làm gì)
 
 **C10 (RB-1).** `rb1_setup.py` kiểm chữ ký, định danh image và thử cache offline trước khi ghi
-thư mục staging bền vững. Adapter thường, bảo trì và boot guard gọi
-`rb1_file=$(sh "$RB1_STATE/select-compose.sh") || exit 1` sau khi chọn tag đã duyệt và trước khi
-dùng Compose. Nếu `rb1_file` có giá trị, nối `-f "$rb1_file"` **cuối** danh sách file. Kiểm
+thư mục staging bền vững. Adapter thường, bảo trì và boot guard, sau khi chọn tag đã duyệt và trước
+khi dùng Compose, phải (Phase 12D13):
+
+1. `python3 -I "$RB1_STATE/verify_stage.py" --allowed-signers "$SIGNERS" --identity "$SIGNER" --service "$APP" || exit 1`
+   (`$SIGNERS` là file khoá tin cậy nằm **ngoài** `$RB1_STATE`, do root quản lý). Bước này kiểm chủ sở
+   hữu / quyền của thư mục và từng file, đúng tập file, chữ ký của manifest gói đã chép vào stage, và
+   mọi file đã stage đúng kích thước + SHA-256 đã ký, override Compose đúng mẫu startup gate.
+2. `rb1_file=$(sh "$RB1_STATE/select-compose.sh") || exit 1`. Metadata hỏng (ID cắt ngắn, CRLF, sai
+   hoa/thường, nhiều dòng, rỗng) hoặc lỗi Docker ⇒ mã khác 0, không in gì.
+3. Nếu tag đã chọn là image baseline: bắt buộc `test "$rb1_file" = "$RB1_STATE/compose.json" || exit 1`
+   (đầu ra rỗng lúc này nghĩa là selector bị thay, không phải "không cần override").
+
+Nếu `rb1_file` có giá trị, nối `-f "$rb1_file"` **cuối** danh sách file. Kiểm
 `docker compose config --format json` ở cả hai chế độ. Service ứng dụng giữ nguyên image tag C1,
 dùng entrypoint `[/bin/sh, /opt/cb5400-rb1/startup.sh]`, command rỗng, bind mount chỉ đọc tới
 `/opt/cb5400-rb1` và `pull_policy: never`. Mọi lệnh recreate chỉ nêu service ứng dụng và dùng
