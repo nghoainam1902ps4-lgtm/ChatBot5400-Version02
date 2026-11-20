@@ -17,6 +17,7 @@ from open_notebook.graphs.transformation import graph as transform_graph
 from open_notebook.ocr.docling_extract import (
     extract_url_with_selected_ocr,
     extract_with_selected_ocr,
+    install_native_pdf_integrity,
     should_use_native_ocr,
     should_use_native_ocr_for_url,
 )
@@ -177,7 +178,8 @@ async def content_process(state: SourceState) -> dict:
         f"docling_ocr={config_kwargs.get('docling_ocr', 'auto')}, "
         f"docling_formulas={config_kwargs.get('docling_formulas', 'auto')}, "
         f"docling_vision={config_kwargs.get('docling_vision', 'auto')}, "
-        f"ocr_engine={ocr_settings.engine})"
+        f"ocr_engine={ocr_settings.engine}, "
+        f"text_normalization={ocr_settings.text_normalization})"
     )
 
     # Every extraction path (incl. content-core's default RapidOCR path) may
@@ -191,6 +193,14 @@ async def content_process(state: SourceState) -> dict:
         and not content_state.get("url")
         and not content_state.get("content")
     )
+    if content_state.get("file_path") or content_state.get("url"):
+        # D8-03 / D8-02 (Phase 12D9): every path that can reach Docling's PDF
+        # pipeline - content-core's own default path included - keeps the
+        # hyphens and the table / picture footnotes the document has. A file
+        # Docling would read as a PDF / scan is refused on a Docling the patches
+        # were not written for (no silent loss); other sources only log it.
+        await _apply_docling_text_preservation(content_state, bool(file_path_only))
+        install_native_pdf_integrity()
     try:
         if file_path_only and await should_use_native_ocr(
             content_state["file_path"],
@@ -237,6 +247,24 @@ async def content_process(state: SourceState) -> dict:
             raise ValueError(message) from e
         raise
 
+    if ocr_settings.legal_normalization and file_path_only:
+        meta = getattr(processed, "metadata", None)
+        if isinstance(meta, dict) and meta.get("legal_normalization_status") is None:
+            # Legal was requested and this file never reached the normalizer
+            # (other format, Docling not installed): the standard content is
+            # kept, and the Source says so instead of looking normalized.
+            from open_notebook.ocr import legal_normalizer
+
+            meta["text_normalization"] = legal_normalizer.MODE_LEGAL
+            meta["legal_normalization_status"] = "skipped"
+            meta["legal_normalization_record"] = legal_normalizer.skipped_record(
+                "not a PDF converted by the Docling layer"
+            )
+            logger.info(
+                "Legal document normalization not applied to this source "
+                "(only PDFs converted by Docling are normalized)."
+            )
+
     # content-core signals a soft extraction failure (e.g. an unreachable or
     # invalid URL, via the bs4 fallback) by returning title="Error" and content
     # prefixed with "Failed to extract content:" instead of raising. Detect that
@@ -275,6 +303,25 @@ async def content_process(state: SourceState) -> dict:
     return {"extraction": processed}
 
 
+async def _apply_docling_text_preservation(
+    content_state: dict, file_only: bool
+) -> None:
+    from open_notebook.ocr import docling_patches
+    from open_notebook.ocr.docling_extract import OCR_MIME_TYPES
+
+    required = False
+    if file_only:
+        try:
+            from content_core.content.identification import get_file_type
+
+            required = (
+                await get_file_type(content_state["file_path"])
+            ) in OCR_MIME_TYPES
+        except Exception:  # noqa: BLE001 - unknown type: content-core decides later
+            required = False
+    docling_patches.apply_text_preservation(required=required)
+
+
 async def save_source(state: SourceState) -> dict:
     content_state = state["content_state"]
     extraction = state["extraction"]
@@ -286,8 +333,16 @@ async def save_source(state: SourceState) -> dict:
 
     # Update the source with processed content. content-core's ExtractionOutput
     # does not echo url/file_path back, so carry them from the input state.
+    # How this text was produced, when it is not the standard export (Legal
+    # Document normalization applied / failed / skipped - finding F-07). A
+    # re-processed Source always gets the record of the new run (or none).
+    record = (getattr(extraction, "metadata", None) or {}).get(
+        "legal_normalization_record"
+    )
     source.asset = Asset(
-        url=content_state.get("url"), file_path=content_state.get("file_path")
+        url=content_state.get("url"),
+        file_path=content_state.get("file_path"),
+        extraction=record if isinstance(record, dict) else None,
     )
     source.full_text = extraction.content
 

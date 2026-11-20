@@ -1,2 +1,17 @@
 # Ensure shell scripts always use LF so they run in Linux containers (e.g. Docker)
 *.sh text eol=lf
+# The Tesseract orientation gate is executed through its #! line inside the
+# Linux container (D-25). With Windows line endings the line reads
+# "python3\r", the gate cannot start and OCR crops are rotated ungated
+# (E1-05, Phase 12D7). The Dockerfile also normalises and self-tests it.
+open_notebook/ocr/tesseract_gate.py text eol=lf
+# Pinned rollback assets are verified byte-for-byte on Windows and Linux.
+scripts/offline/rb1/manifest.json -text whitespace=cr-at-eol
+scripts/offline/rb1/restore_rapidocr_assets.py -text
+scripts/offline/rb1/LICENSE.txt -text
+scripts/offline/rb1/assets/rapidocr/ppocrv6_dict.txt -text
+tests/fixtures/phase12f1/f0_synthetic.py -text
+tests/fixtures/phase12f1/f0_preserve.py -text
+tests/fixtures/phase12f1/f0_schema.py -text
+tests/fixtures/phase12f1/f0_live_control.py -text
+tests/fixtures/phase12f1/f0_case_matrix.py -text

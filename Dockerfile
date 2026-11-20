@@ -146,10 +146,29 @@ RUN if [ "$OCR_INSTALL_TESSERACT" = "true" ]; then \
       apt-get update && apt-get install -y --no-install-recommends tesseract-ocr \
       && rm -rf /var/lib/apt/lists/*; \
     fi
+# Optional build profile for OFFLINE servers (Phase 12F, docs/deployment/
+# OFFLINE_UPDATE_PACKAGE.md): bake Docling (+ EasyOCR) into the image with the
+# SAME command and the SAME locked constraints the entrypoint would run at the
+# first start, so a recreated container needs no package index at all.
+# Default false: the image and its behaviour are unchanged.
+ARG OCR_PREINSTALL_RUNTIMES=false
+RUN if [ "$OCR_PREINSTALL_RUNTIMES" = "true" ]; then \
+      CCORE="$(/app/.venv/bin/python -c 'import importlib.metadata as m; print(m.version("content-core"))')" \
+      && UV_TORCH_BACKEND=cpu uv pip install --no-cache --python /app/.venv/bin/python \
+           -c /app/runtime-constraints.txt "content-core[docling]==${CCORE}" "easyocr==1.7.2" \
+      && /app/.venv/bin/python -c "import docling, easyocr; print('docling', docling.__version__ if hasattr(docling, '__version__') else 'ok')"; \
+    fi
 
-# Data directory (volume-mounted by users) and supervisor log directory
+# Data directory (volume-mounted by users) and supervisor log directory.
+# The Tesseract orientation gate runs through its #! line (D-25). Built from a
+# Windows checkout (CRLF line endings, no executable bit) it cannot start and
+# every OCR crop is rotated ungated (E1-05, Phase 12D7): normalise it and prove
+# it starts (/bin/true stands in for Tesseract, which may not be installed yet).
 RUN mkdir -p /app/data /var/log/supervisor \
-    && chmod +x /app/scripts/wait-for-api.sh /app/scripts/docker-entrypoint.sh
+    && chmod +x /app/scripts/wait-for-api.sh /app/scripts/docker-entrypoint.sh \
+    && sed -i 's/\r$//' /app/open_notebook/ocr/tesseract_gate.py \
+    && chmod 0755 /app/open_notebook/ocr/tesseract_gate.py \
+    && OCR_TESSERACT_REAL=/bin/true /app/open_notebook/ocr/tesseract_gate.py --version >/dev/null
 
 # Copy supervisord configuration (shared programs: api, worker, frontend)
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf

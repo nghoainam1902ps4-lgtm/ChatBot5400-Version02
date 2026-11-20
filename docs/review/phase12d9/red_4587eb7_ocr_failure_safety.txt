@@ -1,0 +1,48 @@
+# Phase 12D9 - RED run of tests/test_phase12d9_ocr_failure_safety.py (E2-04) on the unpatched candidate
+# candidate 4587eb77e25935db2d4375fe55be64f22341d1bb (git worktree), same .venv; real tesseract 5 + fault wrapper; embedded SurrealDB
+# FAILED = the behaviour E2-04 adds (no silent region loss, refusal, Source/embedding safety, guards)
+# PASSED = control unchanged by E2-04 (OCR that succeeds without text is not a failure)
+ERROR    docling.datamodel.stage_model_specs:stage_model_specs.py:581 Preset 'granite_vision_v4' already registered for ChartExtractionVlmEngineOptions
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:351 OSD failed (doc auto.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6624a84a0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:351 OSD failed (doc osd.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6624a8920>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:351 OSD failed (doc osd.pdf, page: 0, OCR rectangle: 1, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6624a8b90>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc always.pdf, page: 0, OCR rectangle: 1, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6625e6ed0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc always.pdf, page: 0, OCR rectangle: 2, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6625e71d0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc bad.pdf, page: 0, OCR rectangle: 1, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6624a84d0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc complete.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa57508c5c0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc crash.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6625a6180>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc fail_exit.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6625e5cd0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc good.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6624a4260>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc hang.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6625e6450>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc logs.pdf, page: 0, OCR rectangle: 1, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa5750bd7c0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc middle.pdf, page: 1, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa66277f6e0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc newfail.pdf, page: 0, OCR rectangle: 1, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa5750a31a0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc nomodel.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6624a8380>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc reprocess.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa57a17fcb0>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc single.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6625b5160>):
+ERROR    docling.models.stages.ocr.tesseract_ocr_cli_model:tesseract_ocr_cli_model.py:372 tesseract OCR failed (doc transient.pdf, page: 0, OCR rectangle: 0, processed image file <tempfile._TemporaryFileWrapper object at 0x7fa6aa43cc80>):
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_complete_conversion_is_stored_and_queued_for_embedding
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_crash_or_an_error_exit_is_retried[crash]
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_crash_or_an_error_exit_is_retried[fail_exit]
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_failed_reprocess_keeps_the_previous_content_and_embeddings
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_hung_tesseract_times_out_and_is_retried
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_middle_page_failure_is_named_and_refused
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_missing_model_file_is_not_retried
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_new_source_whose_region_fails_gets_no_content_and_no_embedding
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_partial_result_with_data_is_refused_before_storage
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_region_that_always_fails_rejects_the_document
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_a_transient_failure_is_retried_on_the_same_crop_and_model
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_control_upstream_drops_the_failed_region_and_reports_success
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_every_page_failing_is_refused_not_retried_as_a_job
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_failure_categories_and_what_is_retried
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_guards_cover_the_ocr_loop
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_logs_and_the_source_error_carry_no_stderr_and_no_document_text
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_ocr_region_error_is_not_a_called_process_error
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_only_the_tail_of_stderr_is_read
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_osd_failure_alone_keeps_the_region_and_the_document
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_osd_failure_in_auto_script_mode_fails_the_region_instead_of_dropping_it
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_recognize_region_retries_exactly_the_policy
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_the_ocr_loop_is_upstream_except_the_two_e2_04_changes
+FAILED tests/test_phase12d9_ocr_failure_safety.py::test_two_concurrent_conversions_keep_their_own_outcome
+PASSED tests/test_phase12d9_ocr_failure_safety.py::test_ocr_that_succeeds_without_text_is_not_a_failure
+23 failed, 1 passed, 35 warnings in 102.71s (0:01:42)

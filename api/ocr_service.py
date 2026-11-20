@@ -24,6 +24,7 @@ from open_notebook.ocr import (
     compat,
     custom_models,
     installer,
+    legal_normalizer,
     paths,
     pdf_prep,
     readiness,
@@ -56,6 +57,8 @@ async def _settings() -> ContentSettings:
 
 def _config(settings: ContentSettings) -> OcrConfig:
     engine = settings.docling_ocr_engine or catalog.DEFAULT_ENGINE
+    # Records saved before Phase 12 have no such field: Standard.
+    saved_mode = getattr(settings, "ocr_text_normalization", None)
     return OcrConfig(
         docling_ocr=True
         if settings.docling_ocr is None
@@ -64,6 +67,10 @@ def _config(settings: ContentSettings) -> OcrConfig:
         docling_ocr_device="cpu",
         docling_ocr_num_threads=settings.docling_ocr_num_threads,
         docling_ocr_force_full_page=bool(settings.docling_ocr_force_full_page),
+        ocr_text_normalization=("legal" if saved_mode == "legal" else "standard"),
+        ocr_text_normalization_effective=legal_normalizer.effective_mode(saved_mode),
+        legal_normalization_available=legal_normalizer.legal_normalization_available(),
+        legal_normalizer_version=legal_normalizer.NORMALIZER_VERSION,
     )
 
 
@@ -445,6 +452,17 @@ async def update_config(update: OcrConfigUpdate) -> OcrConfig:
         settings.docling_ocr_num_threads = update.docling_ocr_num_threads or None
     if update.docling_ocr_force_full_page is not None:
         settings.docling_ocr_force_full_page = update.docling_ocr_force_full_page
+    if update.ocr_text_normalization is not None:
+        if (
+            update.ocr_text_normalization == "legal"
+            and not legal_normalizer.legal_normalization_available()
+        ):
+            # Refuse rather than store a choice that would silently do nothing.
+            raise InvalidInputError(
+                "Legal Document normalization is not enabled on this deployment "
+                f"(set {legal_normalizer.ENV_FLAG}=true and restart)."
+            )
+        settings.ocr_text_normalization = update.ocr_text_normalization
     await settings.update()
     return _config(settings)
 

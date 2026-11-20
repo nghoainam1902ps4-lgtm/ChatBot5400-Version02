@@ -32,7 +32,7 @@ export const ocrApi = {
     (await apiClient.post<OcrEngineStatus>(`/ocr/engines/${id}/custom/verify`, { version })).data,
   job: async (jobId: string) =>
     (await apiClient.get<OcrJobStatus>(`/ocr/jobs/${encodeURIComponent(jobId)}`)).data,
-  updateConfig: async (data: Partial<Pick<OcrConfig, 'docling_ocr' | 'docling_ocr_force_full_page'>> & {
+  updateConfig: async (data: Partial<Pick<OcrConfig, 'docling_ocr' | 'docling_ocr_force_full_page' | 'ocr_text_normalization'>> & {
     docling_ocr_num_threads?: number
   }) => (await apiClient.put<OcrConfig>('/ocr/config', data)).data,
 }

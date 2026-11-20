@@ -1,0 +1,6615 @@
+{
+  "schema": "chatbot5400-phase12-benchmark/2",
+  "oracle": "declared ground truth of the fixtures (tests/fixtures/legal); the Phase 12 numbers of schema /1 used a circular oracle and are superseded",
+  "fixtures": 45,
+  "normalizer_version": "1.1.0",
+  "before_normalizer_version": "1.0.0",
+  "versions": {
+    "docling": "2.129.0",
+    "docling-core": "2.96.0"
+  },
+  "tesseract": "tesseract 5.3.4",
+  "aggregate": {
+    "standard": {
+      "required_units": 273,
+      "false_deletion_units": 27,
+      "false_deletion_tokens": 39,
+      "false_merge": 0,
+      "false_insertion": 22,
+      "false_insertion_tokens": 22,
+      "false_reordering": 1,
+      "placeholders": 13,
+      "numeric_only_lines": 54,
+      "table_rows": 11,
+      "critical_fields": [
+        44,
+        47
+      ],
+      "markers": [
+        17,
+        36
+      ],
+      "artifacts_removed": [
+        0,
+        47
+      ],
+      "joins": [
+        1,
+        5
+      ],
+      "renumbered_items": [
+        3,
+        30
+      ],
+      "documents_with_false_deletion": 9,
+      "documents_with_false_merge": 0,
+      "tables_ok": true,
+      "cer_mean": 0.106,
+      "wer_mean": 0.1264,
+      "ms_total": 66.65
+    },
+    "legal_before": {
+      "required_units": 273,
+      "false_deletion_units": 53,
+      "false_deletion_tokens": 170,
+      "false_merge": 6,
+      "false_insertion": 0,
+      "false_insertion_tokens": 0,
+      "false_reordering": 1,
+      "placeholders": 2,
+      "numeric_only_lines": 7,
+      "table_rows": 11,
+      "critical_fields": [
+        36,
+        47
+      ],
+      "markers": [
+        36,
+        36
+      ],
+      "artifacts_removed": [
+        45,
+        47
+      ],
+      "joins": [
+        5,
+        5
+      ],
+      "renumbered_items": [
+        0,
+        0
+      ],
+      "documents_with_false_deletion": 13,
+      "documents_with_false_merge": 6,
+      "tables_ok": true,
+      "cer_mean": 0.0595,
+      "wer_mean": 0.0607
+    },
+    "legal": {
+      "required_units": 273,
+      "false_deletion_units": 0,
+      "false_deletion_tokens": 0,
+      "false_merge": 0,
+      "false_insertion": 0,
+      "false_insertion_tokens": 0,
+      "false_reordering": 1,
+      "placeholders": 4,
+      "numeric_only_lines": 34,
+      "table_rows": 11,
+      "critical_fields": [
+        47,
+        47
+      ],
+      "markers": [
+        36,
+        36
+      ],
+      "artifacts_removed": [
+        24,
+        47
+      ],
+      "joins": [
+        3,
+        5
+      ],
+      "renumbered_items": [
+        0,
+        0
+      ],
+      "documents_with_false_deletion": 0,
+      "documents_with_false_merge": 0,
+      "tables_ok": true,
+      "cer_mean": 0.0511,
+      "wer_mean": 0.0596,
+      "ms_total": 152.08,
+      "peak_kib_max": 192.7,
+      "tables_identical": true,
+      "documents_with_warning": {
+        "hyphen_at_page_break_not_joined": 1,
+        "join_not_made": 6,
+        "page_number_kept": 13,
+        "picture_without_text": 2,
+        "repeated_line_kept": 5
+      }
+    },
+    "direct_tesseract": {
+      "documents": 45,
+      "cer_mean": 0.0688,
+      "wer_mean": 0.0847,
+      "recall_mean": 0.9729,
+      "protected_exact": [
+        43,
+        47
+      ]
+    }
+  },
+  "rows": [
+    {
+      "name": "f01_one_page_decision",
+      "pages": 1,
+      "standard": {
+        "required_units": 13,
+        "false_deletion_units": 3,
+        "false_deletion_tokens": 0,
+        "false_deleted": [
+          "a) Khách hàng cá nhân mở tài khoản lần đầu;",
+          "b) Khách hàng là học sinh, sinh viên;",
+          "đ) Các trường hợp khác do Tổng Giám đốc quyết định."
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 3,
+        "false_insertion_tokens": 3,
+        "false_inserted": [
+          "• a) Khách hàng cá nhân mở tài khoản lần đầu;",
+          "• b) Khách hàng là học sinh, sinh viên;",
+          "5. đ) Các trường hợp khác do Tổng Giám đốc quyết định."
+        ],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          2,
+          5
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 2,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          3
+        ],
+        "cer": 0.0889,
+        "wer": 0.0989,
+        "ms_median": 3.082
+      },
+      "legal": {
+        "required_units": 13,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          5,
+          5
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 6.136,
+        "peak_kib": 160.1,
+        "counts": {
+          "image_placeholder_dropped": 2,
+          "picture_text_items": 0,
+          "list_markers_preserved": 4,
+          "synthesized_number_avoided": 1
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 13,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          5,
+          5
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "image_placeholder_dropped": 2,
+          "picture_text_items": 0,
+          "list_markers_preserved": 4,
+          "synthesized_number_avoided": 1
+        }
+      },
+      "recognition": {
+        "cer": 0.024,
+        "wer": 0.033,
+        "recall": 0.967,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "seconds": 0.81
+      }
+    },
+    {
+      "name": "f02_clause_across_pages",
+      "pages": 2,
+      "standard": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          1
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 1,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          3
+        ],
+        "cer": 0.0815,
+        "wer": 0.0909,
+        "ms_median": 1.38
+      },
+      "legal": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          1
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0172,
+        "wer": 0.0364,
+        "ms_median": 2.975,
+        "peak_kib": 131.7,
+        "counts": {
+          "image_placeholder_dropped": 1,
+          "picture_text_items": 0,
+          "list_markers_preserved": 3
+        },
+        "warnings": [
+          "join_not_made",
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "artifacts_removed": [
+          2,
+          2
+        ],
+        "joins": [
+          1,
+          1
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "join_across_pages": 1,
+          "page_number_to_furniture": 2,
+          "image_placeholder_dropped": 1,
+          "picture_text_items": 0,
+          "list_markers_preserved": 3
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.81
+      }
+    },
+    {
+      "name": "f03_missing_word_not_invented",
+      "pages": 2,
+      "standard": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          1,
+          1
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          1
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          1
+        ],
+        "cer": 0.044,
+        "wer": 0.0952,
+        "ms_median": 1.212
+      },
+      "legal": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          1,
+          1
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          1
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.044,
+        "wer": 0.0952,
+        "ms_median": 2.872,
+        "peak_kib": 109.2,
+        "counts": {
+          "picture_text_items": 0,
+          "list_markers_preserved": 1
+        },
+        "warnings": [
+          "join_not_made",
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          1,
+          1
+        ],
+        "artifacts_removed": [
+          2,
+          2
+        ],
+        "joins": [
+          1,
+          1
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.033,
+        "wer": 0.0476,
+        "counts": {
+          "join_across_pages": 1,
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0,
+          "list_markers_preserved": 1
+        }
+      },
+      "recognition": {
+        "cer": 0.033,
+        "wer": 0.0476,
+        "recall": 0.9524,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.68
+      }
+    },
+    {
+      "name": "f04_new_clause_not_joined",
+      "pages": 3,
+      "standard": {
+        "required_units": 6,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 0,
+        "false_deleted": [
+          "a) khách hàng cá nhân;",
+          "b) khách hàng tổ chức;"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 2,
+        "false_insertion_tokens": 2,
+        "false_inserted": [
+          "• a) khách hàng cá nhân;",
+          "• b) khách hàng tổ chức;"
+        ],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          2,
+          4
+        ],
+        "artifacts_removed": [
+          0,
+          3
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 3,
+        "renumbered_items": [
+          0,
+          2
+        ],
+        "cer": 0.0592,
+        "wer": 0.1351,
+        "ms_median": 2.332
+      },
+      "legal": {
+        "required_units": 6,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          4,
+          4
+        ],
+        "artifacts_removed": [
+          3,
+          3
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 4.032,
+        "peak_kib": 135.9,
+        "counts": {
+          "page_number_to_furniture": 3,
+          "picture_text_items": 0,
+          "list_markers_preserved": 4
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 6,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          4,
+          4
+        ],
+        "artifacts_removed": [
+          3,
+          3
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 3,
+          "picture_text_items": 0,
+          "list_markers_preserved": 4
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "seconds": 1.08
+      }
+    },
+    {
+      "name": "f05_list_starts_at_10_not_continuous",
+      "pages": 1,
+      "standard": {
+        "required_units": 7,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 2,
+        "false_deleted": [
+          "7. Lưu trữ hồ sơ theo quy định.",
+          "13. Thực hiện các nhiệm vụ khác."
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 2,
+        "false_insertion_tokens": 2,
+        "false_inserted": [
+          "6. Lưu trữ hồ sơ theo quy định.",
+          "12. Thực hiện các nhiệm vụ khác."
+        ],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          5
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          2,
+          5
+        ],
+        "cer": 0.0082,
+        "wer": 0.0364,
+        "ms_median": 1.13
+      },
+      "legal": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          5,
+          5
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.612,
+        "peak_kib": 125.7,
+        "counts": {
+          "picture_text_items": 0,
+          "list_markers_preserved": 5
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          5,
+          5
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0,
+          "list_markers_preserved": 5
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.48
+      }
+    },
+    {
+      "name": "f06_multilevel_list",
+      "pages": 1,
+      "standard": {
+        "required_units": 12,
+        "false_deletion_units": 10,
+        "false_deletion_tokens": 1,
+        "false_deleted": [
+          "1.1 Tuân thủ pháp luật;",
+          "1.2 Bảo đảm an toàn;",
+          "2.1 Khách hàng có năng lực pháp luật dân sự;",
+          "a) có phương án sử dụng vốn khả thi;",
+          "b) có khả năng tài chính;",
+          "c) có tài sản bảo đảm;",
+          "d) không có nợ xấu;",
+          "đ) đáp ứng điều kiện khác;"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 10,
+        "false_insertion_tokens": 10,
+        "false_inserted": [
+          "• 1.1 Tuân thủ pháp luật;",
+          "• 1.2 Bảo đảm an toàn;",
+          "• 2.1 Khách hàng có năng lực pháp luật dân sự;",
+          "• a) có phương án sử dụng vốn khả thi;"
+        ],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          2,
+          12
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          4
+        ],
+        "cer": 0.0695,
+        "wer": 0.1316,
+        "ms_median": 1.683
+      },
+      "legal": {
+        "required_units": 12,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          12,
+          12
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.101,
+        "peak_kib": 145.5,
+        "counts": {
+          "picture_text_items": 0,
+          "list_markers_preserved": 10,
+          "synthesized_number_avoided": 2
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 12,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          12,
+          12
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0,
+          "list_markers_preserved": 10,
+          "synthesized_number_avoided": 2
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.69
+      }
+    },
+    {
+      "name": "f07_parts_chapters_sections",
+      "pages": 2,
+      "standard": {
+        "required_units": 8,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0205,
+        "wer": 0.0455,
+        "ms_median": 1.328
+      },
+      "legal": {
+        "required_units": 8,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0205,
+        "wer": 0.0455,
+        "ms_median": 2.885,
+        "peak_kib": 117.1,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 8,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          2,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.8
+      }
+    },
+    {
+      "name": "f08_protected_fields",
+      "pages": 2,
+      "standard": {
+        "required_units": 8,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          12,
+          12
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 4,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0108,
+        "wer": 0.0308,
+        "ms_median": 1.539
+      },
+      "legal": {
+        "required_units": 8,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          12,
+          12
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 4,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0108,
+        "wer": 0.0308,
+        "ms_median": 3.259,
+        "peak_kib": 119.5,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 8,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          12,
+          12
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          2,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0676,
+        "wer": 0.1077,
+        "recall": 0.8923,
+        "protected_exact": [
+          10,
+          12
+        ],
+        "seconds": 1.0
+      }
+    },
+    {
+      "name": "f09_table",
+      "pages": 1,
+      "standard": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 4,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.77
+      },
+      "legal": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 4,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.618,
+        "peak_kib": 109.4,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [],
+        "tables_identical": true
+      },
+      "legal_before": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 4,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0149,
+        "wer": 0.0426,
+        "recall": 0.9787,
+        "protected_exact": [
+          2,
+          2
+        ],
+        "seconds": 0.61
+      }
+    },
+    {
+      "name": "f10_table_across_pages",
+      "pages": 2,
+      "standard": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 5,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.026,
+        "wer": 0.0541,
+        "ms_median": 2.265
+      },
+      "legal": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 5,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.026,
+        "wer": 0.0541,
+        "ms_median": 4.568,
+        "peak_kib": 117.6,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ],
+        "tables_identical": true
+      },
+      "legal_before": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          2,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 5,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0065,
+        "wer": 0.027,
+        "recall": 0.973,
+        "protected_exact": [
+          4,
+          4
+        ],
+        "seconds": 0.91
+      }
+    },
+    {
+      "name": "f11_blank_page",
+      "pages": 3,
+      "standard": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0541,
+        "wer": 0.1111,
+        "ms_median": 0.933
+      },
+      "legal": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0541,
+        "wer": 0.1111,
+        "ms_median": 2.933,
+        "peak_kib": 92.7,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          2,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 1.26
+      }
+    },
+    {
+      "name": "f12_two_columns",
+      "pages": 1,
+      "standard": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 1,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.232,
+        "wer": 0.3256,
+        "ms_median": 1.155
+      },
+      "legal": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 1,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.232,
+        "wer": 0.3256,
+        "ms_median": 2.925,
+        "peak_kib": 95.5,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 1,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.232,
+        "wer": 0.3256,
+        "counts": {
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.3591,
+        "wer": 0.4186,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.59
+      }
+    },
+    {
+      "name": "f13_footnotes",
+      "pages": 2,
+      "standard": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0282,
+        "wer": 0.0769,
+        "ms_median": 1.164
+      },
+      "legal": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0282,
+        "wer": 0.0769,
+        "ms_median": 3.071,
+        "peak_kib": 96.2,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          2,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          2,
+          2
+        ],
+        "seconds": 11.26
+      }
+    },
+    {
+      "name": "f14_running_header_footer",
+      "pages": 4,
+      "standard": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          8
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 1.1429,
+        "wer": 1.1765,
+        "ms_median": 2.543
+      },
+      "legal": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          4,
+          8
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.8707,
+        "wer": 0.9412,
+        "ms_median": 5.808,
+        "peak_kib": 133.3,
+        "counts": {
+          "page_number_to_furniture": 4,
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "repeated_line_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          8,
+          8
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 4,
+          "running_header_footer_to_furniture": 4,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 1.1429,
+        "wer": 1.1765,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 3.03
+      }
+    },
+    {
+      "name": "f15_watermark_and_large_picture",
+      "pages": 1,
+      "standard": {
+        "required_units": 3,
+        "false_deletion_units": 1,
+        "false_deletion_tokens": 3,
+        "false_deleted": [
+          "NGÂN HÀNG MẪU"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 2,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.2935,
+        "wer": 0.2857,
+        "ms_median": 0.731
+      },
+      "legal": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 1,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.163,
+        "wer": 0.1429,
+        "ms_median": 2.004,
+        "peak_kib": 96.0,
+        "counts": {
+          "image_placeholder_dropped": 1,
+          "image_placeholder_kept": 1,
+          "picture_text_items": 1
+        },
+        "warnings": [
+          "picture_without_text"
+        ]
+      },
+      "legal_before": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 1,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.163,
+        "wer": 0.1429,
+        "counts": {
+          "image_placeholder_dropped": 1,
+          "image_placeholder_kept": 1,
+          "picture_text_items": 1
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.52
+      }
+    },
+    {
+      "name": "f16_text_inside_picture",
+      "pages": 1,
+      "standard": {
+        "required_units": 2,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 14,
+        "false_deleted": [
+          "Điều 5. Phí dịch vụ",
+          "Phí rút tiền là 1.100 đồng mỗi giao dịch."
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 1,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.918,
+        "wer": 1.0,
+        "ms_median": 0.641
+      },
+      "legal": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.359,
+        "peak_kib": 85.9,
+        "counts": {
+          "image_placeholder_dropped": 1,
+          "picture_text_items": 2
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "image_placeholder_dropped": 1,
+          "picture_text_items": 2
+        }
+      },
+      "recognition": {
+        "cer": 0.2951,
+        "wer": 0.4286,
+        "recall": 0.5714,
+        "protected_exact": [
+          0,
+          1
+        ],
+        "seconds": 0.54
+      }
+    },
+    {
+      "name": "f17_signature_block",
+      "pages": 1,
+      "standard": {
+        "required_units": 7,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 2,
+        "false_deleted": [
+          "- Như Điều 3;",
+          "- Lưu VT."
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 2,
+        "false_insertion_tokens": 2,
+        "false_inserted": [
+          "• Như Điều 3;",
+          "• Lưu VT."
+        ],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 2,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.2689,
+        "wer": 0.2759,
+        "ms_median": 1.849
+      },
+      "legal": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.959,
+        "peak_kib": 116.5,
+        "counts": {
+          "image_placeholder_dropped": 2,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 7,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "image_placeholder_dropped": 2,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.3697,
+        "wer": 0.4828,
+        "recall": 0.9655,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.5
+      }
+    },
+    {
+      "name": "f18_literal_html_comment",
+      "pages": 1,
+      "standard": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.634
+      },
+      "legal": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.259,
+        "peak_kib": 80.7,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "seconds": 0.46
+      }
+    },
+    {
+      "name": "f19_hyphen_at_page_break",
+      "pages": 2,
+      "standard": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          1
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.598
+      },
+      "legal": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.089,
+        "peak_kib": 107.6,
+        "counts": {
+          "picture_text_items": 0,
+          "list_markers_preserved": 1
+        },
+        "warnings": [
+          "hyphen_at_page_break_not_joined"
+        ]
+      },
+      "legal_before": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0,
+          "list_markers_preserved": 1
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.73
+      }
+    },
+    {
+      "name": "f20_finished_sentence_not_joined",
+      "pages": 2,
+      "standard": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0476,
+        "wer": 0.1111,
+        "ms_median": 0.755
+      },
+      "legal": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0476,
+        "wer": 0.1111,
+        "ms_median": 2.102,
+        "peak_kib": 92.1,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "join_not_made",
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 2,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          2,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.81
+      }
+    },
+    {
+      "name": "f21_dash_paragraphs",
+      "pages": 1,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 3,
+        "false_deletion_tokens": 3,
+        "false_deleted": [
+          "- Tiếp nhận hồ sơ của khách hàng;",
+          "- Kiểm tra tính đầy đủ của hồ sơ.",
+          "15. Kết quả được trả tại quầy."
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 3,
+        "false_insertion_tokens": 3,
+        "false_inserted": [
+          "• Tiếp nhận hồ sơ của khách hàng;",
+          "• Kiểm tra tính đầy đủ của hồ sơ.",
+          "13. Kết quả được trả tại quầy."
+        ],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          1,
+          3
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          1,
+          2
+        ],
+        "cer": 0.0217,
+        "wer": 0.0882,
+        "ms_median": 1.271
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.861,
+        "peak_kib": 91.1,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.51
+      }
+    },
+    {
+      "name": "f22_single_page_number_kept",
+      "pages": 1,
+      "standard": {
+        "required_units": 1,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          1
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 1,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.678
+      },
+      "legal": {
+        "required_units": 1,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          1
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 1,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.018,
+        "peak_kib": 80.4,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 1,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          1
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 1,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.1,
+        "wer": 0.2,
+        "recall": 0.8,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.41
+      }
+    },
+    {
+      "name": "f23_heading_at_page_top_not_removed",
+      "pages": 3,
+      "standard": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          3
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 3,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0606,
+        "wer": 0.15,
+        "ms_median": 1.621
+      },
+      "legal": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          3,
+          3
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.238,
+        "peak_kib": 108.0,
+        "counts": {
+          "page_number_to_furniture": 3,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          3,
+          3
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 3,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 1.14
+      }
+    },
+    {
+      "name": "f24_join_chain_and_footer_label",
+      "pages": 3,
+      "standard": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          1,
+          2
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.477
+      },
+      "legal": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          2,
+          2
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.557,
+        "peak_kib": 94.6,
+        "counts": {
+          "join_across_pages": 1,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          2,
+          2
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "join_across_pages": 1,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 1.15
+      }
+    },
+    {
+      "name": "f25_appendix_unit_line_every_page",
+      "pages": 3,
+      "standard": {
+        "required_units": 9,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          3,
+          3
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.296
+      },
+      "legal": {
+        "required_units": 9,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          3,
+          3
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.728,
+        "peak_kib": 116.6,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "repeated_line_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 9,
+        "false_deletion_units": 3,
+        "false_deletion_tokens": 15,
+        "false_deleted": [
+          "Đơn vị tính: triệu đồng",
+          "Đơn vị tính: triệu đồng",
+          "Đơn vị tính: triệu đồng"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          3
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.213,
+        "wer": 0.1852,
+        "counts": {
+          "running_header_footer_to_furniture": 3,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          3,
+          3
+        ],
+        "seconds": 1.32
+      }
+    },
+    {
+      "name": "f26_bundle_of_one_page_notices",
+      "pages": 4,
+      "standard": {
+        "required_units": 16,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.382
+      },
+      "legal": {
+        "required_units": 16,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 6.877,
+        "peak_kib": 149.4,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "repeated_line_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 16,
+        "false_deletion_units": 8,
+        "false_deletion_tokens": 68,
+        "false_deleted": [
+          "NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH",
+          "(Ký, ghi rõ họ tên và đóng dấu)",
+          "NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH",
+          "(Ký, ghi rõ họ tên và đóng dấu)",
+          "NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH",
+          "(Ký, ghi rõ họ tên và đóng dấu)",
+          "NGÂN HÀNG THƯƠNG MẠI MẪU - CHI NHÁNH TỈNH",
+          "(Ký, ghi rõ họ tên và đóng dấu)"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.4966,
+        "wer": 0.5,
+        "counts": {
+          "running_header_footer_to_furniture": 8,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          3,
+          4
+        ],
+        "seconds": 2.33
+      }
+    },
+    {
+      "name": "f27_years_at_page_bottom",
+      "pages": 3,
+      "standard": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.703
+      },
+      "legal": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.775,
+        "peak_kib": 97.2,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 5,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 2,
+        "false_deleted": [
+          "2024",
+          "2025"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          2
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0806,
+        "wer": 0.0769,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          2,
+          2
+        ],
+        "seconds": 1.34
+      }
+    },
+    {
+      "name": "f28_clause_numbers_at_page_top",
+      "pages": 3,
+      "standard": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.751
+      },
+      "legal": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 2,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.245,
+        "peak_kib": 98.7,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 5,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 2,
+        "false_deleted": [
+          "2",
+          "3"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0268,
+        "wer": 0.0625,
+        "counts": {
+          "page_number_to_furniture": 2,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0268,
+        "wer": 0.0625,
+        "recall": 0.9375,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 1.47
+      }
+    },
+    {
+      "name": "f29_footnote_labelled_text",
+      "pages": 2,
+      "standard": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.962
+      },
+      "legal": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 4.434,
+        "peak_kib": 97.4,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "join_not_made"
+        ]
+      },
+      "legal_before": {
+        "required_units": 5,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 0,
+        "false_deleted": [
+          "1 Thông tư số 39/2016/TT-NHNN",
+          "khách hàng theo quy định tại Điều 5 Quy chế này."
+        ],
+        "false_merge": 1,
+        "false_merged": [
+          "1 Thông tư số 39/2016/TT-NHNN khách hàng theo quy định tại Điều 5 Quy chế này."
+        ],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "join_across_pages": 1,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0047,
+        "wer": 0.0204,
+        "recall": 0.9796,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "seconds": 1.12
+      }
+    },
+    {
+      "name": "f30_two_page_running_footer",
+      "pages": 2,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.1675,
+        "wer": 0.1818,
+        "ms_median": 0.918
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.1675,
+        "wer": 0.1818,
+        "ms_median": 2.646,
+        "peak_kib": 100.2,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "join_not_made"
+        ]
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 1,
+        "false_deletion_tokens": 0,
+        "false_deleted": [
+          "trong trường hợp đặc biệt, Tổng Giám đốc quyết định mức cho vay."
+        ],
+        "false_merge": 1,
+        "false_merged": [
+          "Lưu hành nội bộ trong trường hợp đặc biệt, Tổng Giám đốc quyết định mức cho vay."
+        ],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          1,
+          2
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.1675,
+        "wer": 0.1818,
+        "counts": {
+          "join_across_pages": 1,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.1728,
+        "wer": 0.2045,
+        "recall": 0.9773,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.81
+      }
+    },
+    {
+      "name": "f31_lettered_points_a_dot",
+      "pages": 2,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          1
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.705
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.02,
+        "peak_kib": 92.1,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 0,
+        "false_deleted": [
+          "2. Hồ sơ vay vốn bao gồm các giấy tờ",
+          "a. Giấy đề nghị vay vốn;"
+        ],
+        "false_merge": 1,
+        "false_merged": [
+          "2. Hồ sơ vay vốn bao gồm các giấy tờ a. Giấy đề nghị vay vốn;"
+        ],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "join_across_pages": 1,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.8
+      }
+    },
+    {
+      "name": "f31_lettered_points_a_slash",
+      "pages": 2,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          1
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.845
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.476,
+        "peak_kib": 91.8,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 0,
+        "false_deleted": [
+          "2. Hồ sơ vay vốn bao gồm các giấy tờ",
+          "a/ Giấy đề nghị vay vốn;"
+        ],
+        "false_merge": 1,
+        "false_merged": [
+          "2. Hồ sơ vay vốn bao gồm các giấy tờ a/ Giấy đề nghị vay vốn;"
+        ],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "join_across_pages": 1,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.77
+      }
+    },
+    {
+      "name": "f31_lettered_points_dd_dot",
+      "pages": 2,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          1
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.925
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.548,
+        "peak_kib": 91.5,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 0,
+        "false_deleted": [
+          "2. Hồ sơ vay vốn bao gồm các giấy tờ",
+          "đ. Giấy đề nghị vay vốn;"
+        ],
+        "false_merge": 1,
+        "false_merged": [
+          "2. Hồ sơ vay vốn bao gồm các giấy tờ đ. Giấy đề nghị vay vốn;"
+        ],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "join_across_pages": 1,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.83
+      }
+    },
+    {
+      "name": "f31_lettered_points_paren",
+      "pages": 2,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          1
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.642
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.667,
+        "peak_kib": 92.2,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.82
+      }
+    },
+    {
+      "name": "f31_lettered_points_a_1",
+      "pages": 2,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          1
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.075
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.998,
+        "peak_kib": 92.9,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.83
+      }
+    },
+    {
+      "name": "f31_lettered_points_dd_paren",
+      "pages": 2,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          1
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.035
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.736,
+        "peak_kib": 91.3,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.77
+      }
+    },
+    {
+      "name": "f32_pictures_5_12_20_percent",
+      "pages": 1,
+      "standard": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 3,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.6164,
+        "wer": 0.5294,
+        "ms_median": 1.286
+      },
+      "legal": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 3,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.6164,
+        "wer": 0.5294,
+        "ms_median": 3.173,
+        "peak_kib": 102.0,
+        "counts": {
+          "image_placeholder_kept": 3,
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "picture_without_text"
+        ]
+      },
+      "legal_before": {
+        "required_units": 3,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 1,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.2055,
+        "wer": 0.1765,
+        "counts": {
+          "image_placeholder_dropped": 2,
+          "image_placeholder_kept": 1,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.39
+      }
+    },
+    {
+      "name": "f33_five_pages_real_page_numbers_and_join",
+      "pages": 5,
+      "standard": {
+        "required_units": 10,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "artifacts_removed": [
+          0,
+          5
+        ],
+        "joins": [
+          0,
+          1
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 5,
+        "renumbered_items": [
+          0,
+          3
+        ],
+        "cer": 0.0248,
+        "wer": 0.0543,
+        "ms_median": 3.289
+      },
+      "legal": {
+        "required_units": 10,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "artifacts_removed": [
+          5,
+          5
+        ],
+        "joins": [
+          1,
+          1
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 5.777,
+        "peak_kib": 161.5,
+        "counts": {
+          "join_across_pages": 1,
+          "page_number_to_furniture": 5,
+          "picture_text_items": 0,
+          "list_markers_preserved": 3
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 10,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          3,
+          3
+        ],
+        "artifacts_removed": [
+          5,
+          5
+        ],
+        "joins": [
+          1,
+          1
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "join_across_pages": 1,
+          "page_number_to_furniture": 5,
+          "picture_text_items": 0,
+          "list_markers_preserved": 3
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "seconds": 2.06
+      }
+    },
+    {
+      "name": "f34_five_pages_detached_clause_numbers",
+      "pages": 5,
+      "standard": {
+        "required_units": 8,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 3,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.204
+      },
+      "legal": {
+        "required_units": 8,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 3,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.694,
+        "peak_kib": 113.3,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 8,
+        "false_deletion_units": 3,
+        "false_deletion_tokens": 3,
+        "false_deleted": [
+          "2",
+          "3",
+          "4"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0263,
+        "wer": 0.0612,
+        "counts": {
+          "page_number_to_furniture": 3,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0263,
+        "wer": 0.0612,
+        "recall": 0.9388,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 1.92
+      }
+    },
+    {
+      "name": "f35_unrecognised_table_repeated_column_headers",
+      "pages": 4,
+      "standard": {
+        "required_units": 24,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 8,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.968
+      },
+      "legal": {
+        "required_units": 24,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 8,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 8.022,
+        "peak_kib": 192.7,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "page_number_kept",
+          "repeated_line_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 24,
+        "false_deletion_units": 16,
+        "false_deletion_tokens": 24,
+        "false_deleted": [
+          "STT",
+          "CHỈ TIÊU",
+          "SỐ TIỀN",
+          "101",
+          "STT",
+          "CHỈ TIÊU",
+          "SỐ TIỀN",
+          "102"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 4,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.6289,
+        "wer": 0.5455,
+        "counts": {
+          "page_number_to_furniture": 4,
+          "running_header_footer_to_furniture": 12,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          4,
+          4
+        ],
+        "seconds": 1.87
+      }
+    },
+    {
+      "name": "f36_six_pages_mirrored_page_numbers",
+      "pages": 6,
+      "standard": {
+        "required_units": 6,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          6
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 6,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0393,
+        "wer": 0.0909,
+        "ms_median": 2.735
+      },
+      "legal": {
+        "required_units": 6,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          6,
+          6
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 4.936,
+        "peak_kib": 133.1,
+        "counts": {
+          "page_number_to_furniture": 6,
+          "picture_text_items": 0
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 6,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          6,
+          6
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 6,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 2.3
+      }
+    },
+    {
+      "name": "f37_repeated_business_lines",
+      "pages": 4,
+      "standard": {
+        "required_units": 20,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.022
+      },
+      "legal": {
+        "required_units": 20,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          4,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 6.33,
+        "peak_kib": 176.6,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "repeated_line_kept"
+        ]
+      },
+      "legal_before": {
+        "required_units": 20,
+        "false_deletion_units": 8,
+        "false_deletion_tokens": 56,
+        "false_deleted": [
+          "Kính gửi: Các chi nhánh trong hệ thống",
+          "Nơi nhận: Như trên; Lưu VT",
+          "Kính gửi: Các chi nhánh trong hệ thống",
+          "Nơi nhận: Như trên; Lưu VT",
+          "Kính gửi: Các chi nhánh trong hệ thống",
+          "Nơi nhận: Như trên; Lưu VT",
+          "Kính gửi: Các chi nhánh trong hệ thống",
+          "Nơi nhận: Như trên; Lưu VT"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          2,
+          4
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.4055,
+        "wer": 0.4242,
+        "counts": {
+          "running_header_footer_to_furniture": 8,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0061,
+        "wer": 0.0303,
+        "recall": 0.9697,
+        "protected_exact": [
+          4,
+          4
+        ],
+        "seconds": 2.01
+      }
+    },
+    {
+      "name": "f38_two_columns_across_pages",
+      "pages": 2,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 0.641
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 1.868,
+        "peak_kib": 92.7,
+        "counts": {
+          "picture_text_items": 0
+        },
+        "warnings": [
+          "join_not_made"
+        ]
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 0,
+        "false_deleted": [
+          "Cột phải trang một nói về thời hạn và lãi suất áp dụng và",
+          "cột trái trang hai tiếp tục một nội dung khác hẳn."
+        ],
+        "false_merge": 1,
+        "false_merged": [
+          "Cột phải trang một nói về thời hạn và lãi suất áp dụng và cột trái trang hai tiếp tục một nội dung khác hẳn."
+        ],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          0,
+          0
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "join_across_pages": 1,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.361,
+        "wer": 0.3478,
+        "recall": 1.0,
+        "protected_exact": [
+          0,
+          0
+        ],
+        "seconds": 0.86
+      }
+    },
+    {
+      "name": "f39_text_then_table_across_pages",
+      "pages": 3,
+      "standard": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          3
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 2,
+        "placeholders": 0,
+        "numeric_only_lines": 3,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.04,
+        "wer": 0.0857,
+        "ms_median": 1.354
+      },
+      "legal": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          3,
+          3
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 2,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 2.595,
+        "peak_kib": 111.8,
+        "counts": {
+          "page_number_to_furniture": 3,
+          "picture_text_items": 0
+        },
+        "warnings": [],
+        "tables_identical": true
+      },
+      "legal_before": {
+        "required_units": 5,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          1
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          3,
+          3
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 2,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "page_number_to_furniture": 3,
+          "picture_text_items": 0
+        }
+      },
+      "recognition": {
+        "cer": 0.0,
+        "wer": 0.0,
+        "recall": 1.0,
+        "protected_exact": [
+          1,
+          1
+        ],
+        "seconds": 1.3
+      }
+    },
+    {
+      "name": "f40_caption_and_picture_text",
+      "pages": 1,
+      "standard": {
+        "required_units": 4,
+        "false_deletion_units": 2,
+        "false_deletion_tokens": 14,
+        "false_deleted": [
+          "Lãi suất kỳ hạn 12 tháng: 5,2%/năm",
+          "Lãi suất kỳ hạn 24 tháng: 5,8%/năm"
+        ],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          1,
+          3
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 2,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.4079,
+        "wer": 0.4242,
+        "ms_median": 1.139
+      },
+      "legal": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          3,
+          3
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "ms_median": 3.291,
+        "peak_kib": 102.9,
+        "counts": {
+          "image_placeholder_dropped": 2,
+          "picture_text_items": 3
+        },
+        "warnings": []
+      },
+      "legal_before": {
+        "required_units": 4,
+        "false_deletion_units": 0,
+        "false_deletion_tokens": 0,
+        "false_deleted": [],
+        "false_merge": 0,
+        "false_merged": [],
+        "false_insertion": 0,
+        "false_insertion_tokens": 0,
+        "false_inserted": [],
+        "false_reordering": 0,
+        "critical_fields": [
+          3,
+          3
+        ],
+        "markers": [
+          0,
+          0
+        ],
+        "artifacts_removed": [
+          0,
+          0
+        ],
+        "joins": [
+          0,
+          0
+        ],
+        "tables_ok": true,
+        "table_rows": 0,
+        "placeholders": 0,
+        "numeric_only_lines": 0,
+        "renumbered_items": [
+          0,
+          0
+        ],
+        "cer": 0.0,
+        "wer": 0.0,
+        "counts": {
+          "image_placeholder_dropped": 2,
+          "picture_text_items": 3
+        }
+      },
+      "recognition": {
+        "cer": 0.0855,
+        "wer": 0.1212,
+        "recall": 0.8788,
+        "protected_exact": [
+          3,
+          3
+        ],
+        "seconds": 0.65
+      }
+    }
+  ]
+}

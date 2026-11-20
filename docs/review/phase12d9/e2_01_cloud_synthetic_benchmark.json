@@ -1,0 +1,605 @@
+{
+ "schema": "chatbot5400-crop-diagnose/1",
+ "mode": "benchmark",
+ "langs": [
+  "vie"
+ ],
+ "summary": {
+  "psm3": {
+   "empty": 7,
+   "correct": 5,
+   "correct empty": 6
+  },
+  "psm6": {
+   "correct": 12,
+   "correct empty": 3,
+   "false insertion": 3
+  },
+  "psm7": {
+   "correct": 11,
+   "false insertion": 5,
+   "correct empty": 1,
+   "false recognition": 1
+  },
+  "fallback": {
+   "empty": 2,
+   "correct": 10,
+   "correct empty": 2,
+   "false insertion": 4
+  }
+ },
+ "summary_by_kind": {
+  "short": {
+   "psm3": {
+    "empty": 7,
+    "correct": 4
+   },
+   "psm6": {
+    "correct": 11
+   },
+   "psm7": {
+    "correct": 11
+   },
+   "fallback": {
+    "empty": 2,
+    "correct": 9
+   }
+  },
+  "empty": {
+   "psm3": {
+    "correct empty": 6
+   },
+   "psm6": {
+    "correct empty": 3,
+    "false insertion": 3
+   },
+   "psm7": {
+    "false insertion": 5,
+    "correct empty": 1
+   },
+   "fallback": {
+    "correct empty": 2,
+    "false insertion": 4
+   }
+  },
+  "multi": {
+   "psm3": {
+    "correct": 1
+   },
+   "psm6": {
+    "correct": 1
+   },
+   "psm7": {
+    "false recognition": 1
+   },
+   "fallback": {
+    "correct": 1
+   }
+  }
+ },
+ "rows": [
+  {
+   "case": 1,
+   "category": "single digit",
+   "kind": "short",
+   "stats": {
+    "width": 68,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0498,
+    "contrast": 54.0,
+    "edge_energy": 21.95,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "empty",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "empty"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 95.9,
+    "psm7": 95.9
+   },
+   "fallback_used": false
+  },
+  {
+   "case": 2,
+   "category": "single digit",
+   "kind": "short",
+   "stats": {
+    "width": 68,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0575,
+    "contrast": 56.6,
+    "edge_energy": 23.73,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "empty",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "empty"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 96.6,
+    "psm7": 96.9
+   },
+   "fallback_used": false
+  },
+  {
+   "case": 3,
+   "category": "clause number",
+   "kind": "short",
+   "stats": {
+    "width": 81,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0514,
+    "contrast": 53.8,
+    "edge_energy": 21.99,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "empty",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 96.4,
+    "psm7": 96.4
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 4,
+   "category": "clause number",
+   "kind": "short",
+   "stats": {
+    "width": 81,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0449,
+    "contrast": 51.5,
+    "edge_energy": 20.5,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "empty",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 88.8,
+    "psm7": 88.8
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 5,
+   "category": "clause number",
+   "kind": "short",
+   "stats": {
+    "width": 137,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0653,
+    "contrast": 60.5,
+    "edge_energy": 22.33,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "correct",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": 96.2,
+    "psm6": 96.2,
+    "psm7": 96.2
+   },
+   "fallback_used": false
+  },
+  {
+   "case": 6,
+   "category": "point marker",
+   "kind": "short",
+   "stats": {
+    "width": 98,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.055,
+    "contrast": 55.5,
+    "edge_energy": 21.89,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "empty",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 91.8,
+    "psm7": 91.8
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 7,
+   "category": "point marker",
+   "kind": "short",
+   "stats": {
+    "width": 99,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0638,
+    "contrast": 59.8,
+    "edge_energy": 22.82,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "empty",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 89.8,
+    "psm7": 89.8
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 8,
+   "category": "short document number",
+   "kind": "short",
+   "stats": {
+    "width": 152,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0965,
+    "contrast": 72.2,
+    "edge_energy": 25.82,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "correct",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": 96.1,
+    "psm6": 96.1,
+    "psm7": 96.1
+   },
+   "fallback_used": false
+  },
+  {
+   "case": 9,
+   "category": "short document number",
+   "kind": "short",
+   "stats": {
+    "width": 222,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0991,
+    "contrast": 72.9,
+    "edge_energy": 26.22,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "correct",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": 96.5,
+    "psm6": 96.5,
+    "psm7": 96.5
+   },
+   "fallback_used": false
+  },
+  {
+   "case": 10,
+   "category": "Vietnamese word",
+   "kind": "short",
+   "stats": {
+    "width": 141,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0914,
+    "contrast": 70.8,
+    "edge_energy": 26.65,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "empty",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 95.7,
+    "psm7": 95.7
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 11,
+   "category": "Vietnamese word",
+   "kind": "short",
+   "stats": {
+    "width": 178,
+    "height": 80,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0948,
+    "contrast": 71.2,
+    "edge_energy": 25.33,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "correct",
+    "psm6": "correct",
+    "psm7": "correct",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": 96.5,
+    "psm6": 96.5,
+    "psm7": 96.5
+   },
+   "fallback_used": false
+  },
+  {
+   "case": 12,
+   "category": "blank crop",
+   "kind": "empty",
+   "stats": {
+    "width": 260,
+    "height": 90,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0,
+    "contrast": 0.0,
+    "edge_energy": 7.58,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "correct empty",
+    "psm6": "correct empty",
+    "psm7": "false insertion",
+    "fallback": "correct empty"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": null,
+    "psm7": 55.3
+   },
+   "fallback_used": false
+  },
+  {
+   "case": 13,
+   "category": "noise at the page edge",
+   "kind": "empty",
+   "stats": {
+    "width": 260,
+    "height": 90,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0109,
+    "contrast": 25.6,
+    "edge_energy": 11.04,
+    "ink_touches_edge": true
+   },
+   "outcomes": {
+    "psm3": "correct empty",
+    "psm6": "correct empty",
+    "psm7": "correct empty",
+    "fallback": "correct empty"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": null,
+    "psm7": null
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 14,
+   "category": "stamp",
+   "kind": "empty",
+   "stats": {
+    "width": 260,
+    "height": 90,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0904,
+    "contrast": 61.7,
+    "edge_energy": 22.64,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "correct empty",
+    "psm6": "false insertion",
+    "psm7": "false insertion",
+    "fallback": "false insertion"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 51.8,
+    "psm7": 54.3
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 15,
+   "category": "signature",
+   "kind": "empty",
+   "stats": {
+    "width": 260,
+    "height": 90,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0489,
+    "contrast": 52.8,
+    "edge_energy": 16.67,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "correct empty",
+    "psm6": "false insertion",
+    "psm7": "false insertion",
+    "fallback": "false insertion"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 62.5,
+    "psm7": 62.5
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 16,
+   "category": "picture",
+   "kind": "empty",
+   "stats": {
+    "width": 260,
+    "height": 90,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.4155,
+    "contrast": 42.3,
+    "edge_energy": 8.91,
+    "ink_touches_edge": true
+   },
+   "outcomes": {
+    "psm3": "correct empty",
+    "psm6": "correct empty",
+    "psm7": "false insertion",
+    "fallback": "false insertion"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": null,
+    "psm7": 15.1
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 17,
+   "category": "table rule",
+   "kind": "empty",
+   "stats": {
+    "width": 260,
+    "height": 90,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0445,
+    "contrast": 52.6,
+    "edge_energy": 14.82,
+    "ink_touches_edge": true
+   },
+   "outcomes": {
+    "psm3": "correct empty",
+    "psm6": "false insertion",
+    "psm7": "false insertion",
+    "fallback": "false insertion"
+   },
+   "mean_conf": {
+    "psm3": null,
+    "psm6": 11.8,
+    "psm7": 11.8
+   },
+   "fallback_used": true
+  },
+  {
+   "case": 18,
+   "category": "several lines",
+   "kind": "multi",
+   "stats": {
+    "width": 440,
+    "height": 170,
+    "dpi": [
+     216.0,
+     216.0
+    ],
+    "ink_share": 0.0817,
+    "contrast": 66.8,
+    "edge_energy": 18.45,
+    "ink_touches_edge": false
+   },
+   "outcomes": {
+    "psm3": "correct",
+    "psm6": "correct",
+    "psm7": "false recognition",
+    "fallback": "correct"
+   },
+   "mean_conf": {
+    "psm3": 95.6,
+    "psm6": 95.6,
+    "psm7": 52.1
+   },
+   "fallback_used": false
+  }
+ ],
+ "note": "Phase 12D9 Cloud run: SYNTHETIC crops (DejaVu Sans, 216 dpi), Tesseract 5 'vie' of the Cloud container - tool validation, NOT Windows evidence. Metadata only."
+}

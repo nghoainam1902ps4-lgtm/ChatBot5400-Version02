@@ -146,5 +146,20 @@ if is_true "$OPEN_NOTEBOOK_ENABLE_OCR_TESSERACT" || is_true "$OPEN_NOTEBOOK_ENAB
     fi
 fi
 
+# ---------------------------------------------------------------------------
+# RapidOCR recognition dictionary (D-32; Phase 12D13 D12-L1). RapidOCR 3.9.2
+# keeps it in its package folder, i.e. the container layer: every recreate
+# loses it and RapidOCR would download it unverified. Put the approved one back
+# (scripts/offline/rb1, SHA-256 pinned, offline) AFTER the runtime above is
+# installed and BEFORE supervisord starts the API / worker. Degrade, don't die:
+# a refusal is logged, and with OCR_OFFLINE=true RapidOCR conversions then
+# refuse instead of downloading (open_notebook/ocr/rapidocr_dictionary.py).
+# ---------------------------------------------------------------------------
+if has_module rapidocr; then
+    if ! "$VENV_PY" -m open_notebook.ocr.rapidocr_dictionary; then
+        log "WARNING: RapidOCR dictionary not verified; offline RapidOCR conversions will refuse."
+    fi
+fi
+
 log "Starting Open Notebook."
 exec "$@"

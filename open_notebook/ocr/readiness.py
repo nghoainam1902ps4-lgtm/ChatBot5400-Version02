@@ -234,7 +234,9 @@ def quality_config(engine_id: str) -> dict[str, Any]:
         }
     }
     if spec.runtime == "tesseract":
-        cfg["osd_gate"] = options.tesseract_osd_gate_enabled()
+        # D8-ORI-02 (Phase 12D9): the gate that REALLY runs, not the variable
+        # alone (a gate that cannot start is reported - and fingerprinted - as off)
+        cfg["osd_gate"] = bool(options.tesseract_gate_state()["active"])
         cfg["osd_gate_min_confidence"] = tesseract_gate.min_confidence()
     elif spec.runtime == "easyocr":
         cfg["confidence_threshold"] = options.easyocr_confidence_threshold()

@@ -1,0 +1,1199 @@
+{
+ "schema": "chatbot5400-phase12d5-finding-status/1",
+ "phase": "12D5 targeted remediation and simplification",
+ "head_commit": "6edd7b6183ba7a04007d6b70db6d04d4be449953",
+ "baseline": {
+  "v1.2.0": "f2fdf2714a7c0b5b196132f71cfc091928befc06",
+  "feature_before_12d5": "8d0c438a4653a9d98bf32860d2ac2355967fd9df",
+  "review_12d4": "2a26ce1"
+ },
+ "independence_note": "Phase 12D5 was done in a session other than 12D3/12D4, but it is still remediation by the implementer side: an independent review must follow in another session.",
+ "status_values": {
+  "FIXED IN CLOUD": "fixed in code and proven by tests in Cloud; nothing environment-specific left",
+  "LOCAL VERIFICATION REQUIRED": "fixed in code, Cloud tests green; behaviour in the real environment (real scans, Windows / PowerShell, production Docker, operations script, SurrealDB) must still be verified locally",
+  "PARTIAL": "partly fixed; the rest is named",
+  "OPEN": "not fixed",
+  "DEFERRED WITH JUSTIFICATION": "deliberately not fixed in 12D5, with the reason"
+ },
+ "summary": {
+  "reviewed": 51,
+  "by_status": {
+   "FIXED IN CLOUD": 24,
+   "LOCAL VERIFICATION REQUIRED": 27
+  },
+  "p0_open": 0,
+  "p1_open": 0,
+  "open_or_partial_by_severity": {},
+  "code_release_blockers": [],
+  "local_release_blockers": [
+   "F-01",
+   "F-02",
+   "F-03",
+   "F-04",
+   "F-08",
+   "F-11",
+   "F-06",
+   "F-07",
+   "F-09",
+   "F-20",
+   "F-21",
+   "F-22",
+   "T-03",
+   "F-15",
+   "F-16",
+   "F-17",
+   "F-24",
+   "F-27",
+   "R2-01",
+   "R2-02",
+   "R2-04",
+   "R2-05",
+   "R2-06",
+   "R2-10",
+   "R2-11",
+   "R2-16",
+   "R2-22"
+  ],
+  "automatic_offline_updater": "EXPERIMENTAL / NOT READY - not recommended for production",
+  "simplified_offline_fallback": "IMPLEMENTED (docs/deployment/OFFLINE_UPDATE_MANUAL_FALLBACK.md), not VERIFIED on a real server"
+ },
+ "findings": [
+  {
+   "finding_id": "F-01",
+   "origin": "PHASE12D2",
+   "severity": "P1",
+   "title": "Xóa nhầm nội dung hợp lệ lặp lại ở đầu/cuối trang vì coi là header/footer",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Không đổi ở 12D5 về nguyên tắc (dòng lặp nhãn TEXT không bao giờ bị bỏ). Bổ sung: nội dung nhãn header/footer chỉ xuất hiện một lần được giữ (R2-11). Oracle đột biến 'xóa một lần xuất hiện của nội dung lặp' 58/58 bị phát hiện.",
+   "tests": [
+    "tests/test_ocr_legal_normalizer.py::test_repeated_text_lines_are_reported_never_removed",
+    "tests/test_ocr_legal_normalizer.py::test_no_false_deletion_merge_or_insertion[*]",
+    "tests/test_phase12d5_oracle.py (one occurrence of repeated content)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-LEG-01",
+    "W-LEG-02",
+    "W-LEG-13",
+    "W-RC-07"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-02",
+   "origin": "PHASE12D2",
+   "severity": "P1",
+   "title": "Xóa nhầm số năm, số khoản, số lượng vì coi là số trang",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Số đứng riêng chỉ là số trang khi đủ mọi bằng chứng (docstring legal_normalizer điểm 1: dạng chặt, một mình trên dòng, không dưới nhãn ':', căn giữa / mép ngoài / đối xứng, cùng độ lệch trên >= 3 trang và >= 60 %); còn lại giữ (page_number_kept). 14 fixture d5_f02_* (số khoản thụt đầu dòng, 'Số: 0001', 'Kỳ: 1/2024', năm, số 0 đầu, số trùng số trang).",
+   "tests": [
+    "tests/review_phase12d4/test_normalizer_counterexamples.py::test_regression_f02_standard_and_legal_keep_these_numbers (was test_control_f02_*)",
+    "tests/review_phase12d4/test_normalizer_counterexamples.py::test_f02_content_numbers_that_track_the_page_index_are_kept (xfail removed)",
+    "tests/test_ocr_legal_normalizer.py::test_no_false_deletion_merge_or_insertion[d5_f02_*]"
+   ],
+   "red_evidence": "benchmark_8d0c438_final_oracle.json: Legal 1.1.0 xóa nhầm 30 đơn vị; red_8d0c438_normalizer_tests.txt",
+   "green_evidence": "benchmark_after.json: 0 xóa nhầm, trường trọng yếu 89/89",
+   "local_verification": [
+    "W-RC-09",
+    "W-LEG-03",
+    "W-LEG-04",
+    "W-LEG-05",
+    "W-LEG-19",
+    "W-LEG-25"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-03",
+   "origin": "PHASE12D2",
+   "severity": "P1",
+   "title": "Ghép sai liên trang tạo ra câu không tồn tại trong văn bản gốc",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Nối qua trang chỉ khi đúng một ứng viên ở hai phía và dòng sau không mở một đơn vị mới (điểm 'c )', 'a-', 'a,', 'o ', footnote '(*)' '1.' '¹', ngày tháng, đơn vị tính, 'trong đó:', URL, 'trang n/m', dòng ký, tiêu đề chạy, phụ lục, văn bản độc lập, bảng); lý do từ chối được báo (join_not_made).",
+   "tests": [
+    "tests/review_phase12d4/test_normalizer_counterexamples.py::test_regression_f03_standard_and_legal_keep_the_two_lines_apart (was test_control_f03_*)",
+    "tests/review_phase12d4/test_normalizer_counterexamples.py::test_f03_no_sentence_is_created_across_the_page_break (xfail removed)",
+    "tests/test_ocr_legal_normalizer.py::test_no_false_deletion_merge_or_insertion[d5_f03_*]"
+   ],
+   "red_evidence": "Legal 1.1.0: 30 nối sai (oracle cuối)",
+   "green_evidence": "Legal 1.2.0: 0 nối sai; 14 tài liệu có join_not_made",
+   "local_verification": [
+    "W-LEG-06",
+    "W-LEG-07",
+    "W-LEG-10",
+    "W-LEG-11",
+    "W-LEG-20",
+    "W-LEG-22"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-04",
+   "origin": "PHASE12D2",
+   "severity": "P1",
+   "title": "Lệnh build gói theo tài liệu luôn thất bại ở bước git bundle",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Không đổi về thiết kế (bundle git có ref tên); build còn đòi nhãn revision = commit (R2-08) và tài liệu quy trình thủ công trong gói.",
+   "tests": [
+    "tests/test_offline_package.py::test_build_uses_docker_save_and_git_bundle",
+    "tests/test_offline_package.py::test_build_package_sh_builds_a_package_with_a_usable_bundle",
+    "tests/review_phase12d2/test_offline_counterexamples.py::test_f04_*",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-01",
+    "W-OFF-02",
+    "W-OFF-03",
+    "W-PS-01..03"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-08",
+   "origin": "PHASE12D2",
+   "severity": "P1",
+   "title": "Lần cập nhật thứ hai sau rollback/thất bại dùng lại backup cũ",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Như R2-04: không TTL; mỗi lần chạy một backup sau khi dừng ghi; backup của đơn vị theo hai lần chạy; mã backup dùng một lần.",
+   "tests": [
+    "tests/test_offline_package.py::test_resumed_run_takes_its_own_backup",
+    "tests/test_offline_package.py::test_an_operator_backup_is_accepted_only_after_the_tool_stopped_the_writes",
+    "tests/review_phase12d4/test_offline_evidence_data.py (4 test đảo ngược R2-04)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-17",
+    "W-OFF-18",
+    "W-OFF-32",
+    "W-FB-05"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-11",
+   "origin": "PHASE12D2",
+   "severity": "P1",
+   "title": "Image mới và biến môi trường chỉ tồn tại trong override ngoài thư mục triển khai: một lệnh `docker compose up -d` thông thường âm thầm đưa ứng dụng về bản cũ",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Hợp đồng DEPLOY_IMAGE_TAG: tag cục bộ của chính file compose triển khai là con trỏ duy nhất, chỉ đổi sau finish / rollback đã kiểm; preflight từ chối mọi vi phạm; không còn override dùng chung / pin. Tài liệu hợp đồng + adapter cho script vận hành.",
+   "tests": [
+    "tests/test_offline_package.py::test_plain_compose_up_keeps_the_approved_image",
+    "tests/test_offline_package.py::test_preflight_refuses_every_breach_of_the_contract",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)",
+    "tests/test_offline_manual_fallback_real_docker.py (CB5400_REAL_DOCKER=1)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-INT-01..10",
+    "W-FB-08",
+    "W-FB-09"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-05",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "--sync-source không thể hoạt động với gói build từ HEAD/SHA",
+   "status_12d4": "VERIFIED FIXED IN CLOUD",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Không đổi; K_intent (R2-15) bảo vệ đồng bộ mã nguồn khi bị ngắt.",
+   "tests": [
+    "tests/review_phase12d2/test_offline_counterexamples.py::test_f05_sync_source_from_a_default_package"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-26"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "F-06",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "Bỏ placeholder của ảnh <15% diện tích trang mà không để lại dấu vết",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Placeholder chỉ bỏ với ảnh < 4 % trang; mọi ảnh khác giữ kèm cảnh báo có vị trí; caption / một chữ không phải bằng chứng ảnh đã OCR (picture_text_unverified).",
+   "tests": [
+    "tests/review_phase12d4/test_normalizer_counterexamples.py::test_f06_large_picture_keeps_a_trace (xfail removed)",
+    "tests/test_phase12d5_oracle.py (picture placeholder lost 6/6)"
+   ],
+   "red_evidence": null,
+   "green_evidence": "placeholder mất 0 / 9 (1.1.0: 5 / 9)",
+   "local_verification": [
+    "W-LEG-08",
+    "W-LEG-21"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-07",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "Không lưu bằng chứng chuẩn hóa: không biết Source nào đã qua Legal, phiên bản nào, đã xóa/ghép gì",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Bản ghi chuẩn hóa không đổi cấu trúc; phiên bản 1.2.0 và các cảnh báo mới (upstream_merge_undone, furniture_text_kept, picture_text_unverified, upstream_dehyphenation) đi vào bản ghi. Model miền chịu được giá trị lạ (R2-03).",
+   "tests": [
+    "tests/test_ocr_legal_pipeline.py::test_convert_file_legal",
+    "tests/review_phase12d4/test_legal_reaudit.py::test_verified_v120_asset_model_ignores_the_new_key"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-LEG-16",
+    "W-LEG-23",
+    "W-STD-06"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-09",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "finish và rollback báo thành công mà không kiểm tra ứng dụng",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "finish / rollback chạy đủ health + kiểm danh tính + kiểm dữ liệu so với baseline; thất bại => FINISH_FAILED / ROLLBACK_FAILED, tag về image đã duyệt (finish).",
+   "tests": [
+    "tests/review_phase12d2/test_offline_counterexamples.py::test_f09_finish_checks_health_before_reporting_completed",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-19"
+   ],
+   "release_blocker_12d5": "local",
+   "note": "Rủi ro còn lại: sau FINISH_FAILED container vẫn chạy image mới ở chế độ thường tới khi người vận hành rollback."
+  },
+  {
+   "finding_id": "F-10",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "Chi phí bậc hai khi có nhiều phép ghép và với trang có nhiều item ngắn trong dải; số liệu 2,5 ms/trang không đại diện",
+   "status_12d4": "VERIFIED FIXED IN CLOUD",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "12D5 phát hiện và sửa một hồi quy bậc hai mới (tách item bằng list.remove với __eq__ của pydantic: 500 trang 7,7 s) — giờ children.pop(); 1 000 trang 1,4 s.",
+   "tests": [
+    "tests/test_ocr_legal_normalizer.py::test_undoing_upstream_merges_scales_linearly",
+    "tests/test_ocr_legal_normalizer.py (resource / time limit tests)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "F-20",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "So sánh image ID giữa máy build và máy chủ có thể luôn sai khi hai bên dùng image store khác nhau",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Như R2-06: id, hoặc digest cấu hình, hoặc cùng layer VÀ cùng run_config_sha256 + nền tảng; bỏ qua manifest attestation của Docker 29.",
+   "tests": [
+    "tests/test_offline_package.py::test_same_image_across_image_stores",
+    "tests/test_offline_package.py::test_image_archive_identity_of_a_docker29_containerd_archive",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-04",
+    "W-OFF-05",
+    "W-OFF-06"
+   ],
+   "release_blocker_12d5": "local",
+   "note": "Image store containerd: kiểm trên Docker thật; image store cổ điển (overlay2): chỉ giả lập."
+  },
+  {
+   "finding_id": "F-21",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "Việc 'database không bị đụng tới' chỉ được kiểm tra trên cấu hình Compose, không kiểm tra trên container thật; đường cơ sở lấy sau khi đã đồng bộ mã nguồn",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Như R2-05: danh tính container / image / mount / volume DB và ảnh chụp định danh bản ghi so với baseline bất biến; không đọc được = FAIL.",
+   "tests": [
+    "tests/test_offline_package.py::test_compose_file_changed_by_the_source_sync_cannot_touch_the_database",
+    "tests/review_phase12d4/test_offline_reaudit.py::test_r2_05_*"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-13",
+    "W-OFF-29",
+    "W-OFF-33"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-22",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "Gói không chứa và không kiểm tra trước các model cần cho OCR offline; bước chép RapidOCR bỏ qua kết quả",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Ứng dụng: một bộ nạp có guard; offline chỉ đọc cache đã kiểm SHA-256, không có thì TokenizerUnavailableError (không tải, không ước lượng); --check. Công cụ: health kiểm file cache + nạp bảng mã thật; file model băm SHA-256. Model vẫn không đóng gói (preflight kiểm readiness).",
+   "tests": [
+    "tests/test_token_utils_offline.py",
+    "tests/review_phase12d4/test_offline_reaudit.py::test_regression_r2_10_*",
+    "tests/test_offline_package.py::test_token_probe_asserts_the_cached_encoding_itself[*]",
+    "tests/test_offline_package.py::test_model_file_with_the_same_size_but_another_content_fails_the_update"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-TOK-01..06",
+    "W-OFF-08",
+    "W-OFF-21",
+    "W-OFF-22",
+    "W-RAG-06",
+    "W-RAG-08"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "T-01",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "Oracle '0 từ bị mất' tự cộng lại phần normalizer đã xóa nên không thể phát hiện xóa nhầm",
+   "status_12d4": "VERIFIED FIXED IN CLOUD",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Oracle mới theo định danh nguồn (scripts/ocr/phase12_oracle.py), không suy từ đầu ra; kiểm đột biến 10 lớp, phát hiện 100 %.",
+   "tests": [
+    "tests/test_phase12d5_oracle.py",
+    "tests/test_ocr_legal_normalizer.py (oracle self-tests)"
+   ],
+   "red_evidence": null,
+   "green_evidence": "docs/review/phase12d5/oracle_mutations.json",
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "T-03",
+   "origin": "PHASE12D2",
+   "severity": "P2",
+   "title": "Số lượng test bị thổi phồng bởi tham số hóa rỗng; fixture quá nhỏ; đường quan trọng không có test",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "47 fixture d5_* (mọi phản ví dụ 12D4 + biến thể vị trí / nhãn / đuôi Unicode), fixture gốc bị sửa ở 12D3 được trả lại, oracle định danh, đột biến; benchmark đo trên mã 8d0c438 trước khi sửa. Còn lại: pipeline OCR thật (Layout Heron / TableFormer / Tesseract / Agri trên scan) không chạy được ở Cloud.",
+   "tests": [
+    "tests/test_phase12d5_oracle.py",
+    "tests/test_ocr_legal_normalizer.py",
+    "scripts/ocr/phase12_benchmark.py"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-PIPE-01..05",
+    "W-RC-01..09"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-12",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Giá trị trong manifest (image.tag, source.commit, release_tag) và --to-image không được kiểm tra định dạng trước khi ghi vào YAML / truyền cho git",
+   "status_12d4": "VERIFIED FIXED IN CLOUD",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Không đổi; override của attempt chỉ còn image + pull_policy (giá trị trong ngoặc kép, kiểm định dạng).",
+   "tests": [
+    "tests/test_offline_package.py::test_override_values_are_checked_and_quoted"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "F-13",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Journal hỏng (mất điện giữa lúc ghi) làm mọi lệnh dừng bằng traceback",
+   "status_12d4": "VERIFIED FIXED IN CLOUD",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Journal hỏng: dừng với hướng dẫn; bản lịch sử ghi trước khi thay journal.json (R2-13).",
+   "tests": [
+    "tests/test_offline_package.py::test_damaged_journal_stops_everything_without_a_blind_reset[*]",
+    "tests/review_phase12d4/test_offline_evidence_state.py::test_kill_between_archive_and_first_save_keeps_a_journal"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-20"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "F-14",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Archive: chấp nhận entry trùng tên; giải nén trước khi kiểm chữ ký; không kiểm dung lượng trống; để lại cây giải nén dở khi thất bại",
+   "status_12d4": "VERIFIED FIXED IN CLOUD",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Không đổi + quét trước header tar có giới hạn bộ nhớ (R2-19).",
+   "tests": [
+    "tests/test_offline_package.py (archive safety)",
+    "tests/test_offline_package.py::test_prescan_accepts_normal_extended_headers_and_refuses_oversized_ones"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "F-15",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Bật Legal làm đổi ĐƯỜNG OCR của PDF, không chỉ đổi cách xuất Markdown",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Không đổi ở 12D5.",
+   "tests": [
+    "tests/test_ocr_legal_pipeline.py::test_legal_changing_the_ocr_path_is_logged"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-STD-01..06"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-16",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Chế độ Legal làm mất định dạng phân cấp Điều/Khoản/điểm sẵn có của trang Source",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Không đổi ở 12D5 (phân cấp hiển thị từ ký hiệu đầu đoạn, chữ không đổi).",
+   "tests": [
+    "frontend/src/components/sources/SourceDetailContent.test.tsx"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-LEG-17"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-17",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Ký tự thoát Markdown (`9\\.`, `\\-`, `\\+`) được lưu vào full_text và đi vào chunk, embedding, ngữ cảnh LLM",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "full_text Legal = chữ in: không còn thoát Markdown của ký hiệu, '_', '&', '<' (chỉ '\\#' / '\\>' đầu dòng và '&lt;' mở thẻ HTML / comment). Trang Source thoát lúc hiển thị (legal-display.ts = bản Python, 48 vector chung); chunk / embedding / sao chép / hiển thị cùng chữ.",
+   "tests": [
+    "tests/review_phase12d4/test_legal_reaudit.py::test_f17_stored_legal_text_equals_the_printed_text (xfail removed)",
+    "tests/test_ocr_legal_normalizer.py (display escape vectors)",
+    "frontend/src/lib/utils/legal-display.test.ts",
+    "frontend/src/components/sources/SourceDetailContent.test.tsx ('Markdown-significant characters are displayed as printed')"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-RAG-09",
+    "W-LEG-24"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-23",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "rollback legal-off/legal-on mặc định đưa ứng dụng đang chạy bình thường vào chế độ bảo trì và không có đường 'finish'",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Thiết kế lại: cổng Legal là cấu hình của đơn vị; rollback legal-off / legal-on từ chối (mã 2), in quy trình, không đổi gì.",
+   "tests": [
+    "tests/test_offline_package.py::test_legal_gate_commands_refuse_and_change_nothing",
+    "tests/test_offline_package.py::test_legal_gate_commands_refuse_during_an_update_too",
+    "tests/test_offline_package.py::test_legal_gate_command_on_a_fresh_deployment_changes_nothing"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-23"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "F-24",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Rollback dùng tag có thể bị đổi, không khôi phục mã nguồn, và journal có thể bị ghi đè",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Rollback theo image ID đã kiểm (tag chỉ dùng khi còn trỏ đúng ID), tag triển khai chuyển về, mã nguồn khôi phục từ K_intent; --to-image cần --force-image khi không phải baseline hoặc không có journal.",
+   "tests": [
+    "tests/test_offline_package.py::test_rollback_uses_the_image_id_when_the_tag_was_moved",
+    "tests/test_offline_package.py::test_rollback_to_image_is_validated",
+    "tests/test_offline_package.py::test_rollback_after_finish_points_the_deploy_tag_back",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)",
+    "tests/test_offline_manual_fallback_real_docker.py (CB5400_REAL_DOCKER=1)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-16",
+    "W-OFF-26",
+    "W-OFF-27",
+    "W-FB-10"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "F-25",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "docker load có thể gắn lại các tag khác có trong archive mà công cụ không kiểm tra",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Không đổi: file image đọc trước docker load (đúng một image, đúng một tag); docker load thật kiểm trong lab.",
+   "tests": [
+    "tests/test_offline_package.py::test_build_refuses_an_archive_with_more_tags_than_approved",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-06",
+    "W-OFF-07"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "F-26",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Các điểm yếu nhỏ của chuỗi tin cậy và cấu hình",
+   "status_12d4": "PARTIALLY FIXED",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "(a) R2-07. Phần còn lại (lead, sau review): thư mục cha của file cấu hình / allowed_signers / bản ghi verify phải thuộc root (hoặc người chạy) và không ghi được bởi nhóm / người khác (thư mục sticky được phép); file compose và override bảo trì: ghi được bởi bất kỳ ai (file hoặc thư mục cha không sticky) => preflight / finish / rollback từ chối trước khi đổi gì; ghi được bởi nhóm hoặc thuộc tài khoản khác => cảnh báo (nhóm riêng của người dùng Ubuntu).",
+   "tests": [
+    "tests/test_offline_package.py::test_config_in_a_folder_writable_by_others_is_refused",
+    "tests/test_offline_package.py::test_compose_files_writable_by_anybody_are_refused",
+    "tests/test_offline_package.py::test_config_writable_by_others_is_refused"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-09",
+    "W-OFF-24",
+    "W-OFF-25",
+    "W-OFF-34"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "F-27",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Không thể build gói 1.3.0-rc.1 từ HEAD hiện tại vì VERSION vẫn là 1.2.0",
+   "status_12d4": "FIXED IN CODE — LOCAL VERIFICATION REQUIRED",
+   "release_blocker_12d4": null,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Không đổi (kiểm VERSION trước mọi lệnh Docker); build-package.ps1 sửa R2-22.",
+   "tests": [
+    "tests/test_offline_package.py::test_build_package_ps1_has_the_same_order_static"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-01 (PowerShell 5.1 và 7)",
+    "W-PS-01"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "T-02",
+   "origin": "PHASE12D2",
+   "severity": "P3",
+   "title": "Phép kiểm tra an toàn lệnh Docker luôn đúng với `compose down` nếu có '--pull'",
+   "status_12d4": "VERIFIED FIXED IN CLOUD",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Mỗi lệnh Docker ghi lại được kiểm từng điều kiện riêng (_assert_safe_calls); mọi compose up chỉ app, --no-deps --no-build --pull never.",
+   "tests": [
+    "tests/review_phase12d2/test_offline_counterexamples.py::test_verified_every_compose_up_is_app_only_no_deps_no_build_pull_never",
+    "tests/test_offline_package.py (_assert_safe_calls)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "F-18",
+   "origin": "PHASE12D2",
+   "severity": "P4",
+   "title": "PDF có phần mở đầu không phải khoảng trắng trước '%PDF-' bị bỏ qua chuẩn hóa một cách im lặng",
+   "status_12d4": "VERIFIED FIXED IN CLOUD",
+   "release_blocker_12d4": null,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Không đổi ở 12D5; test vẫn xanh.",
+   "tests": [
+    "tests/test_ocr_legal_pipeline.py::test_pdf_with_leading_bytes_is_still_normalized"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-01",
+   "origin": "PHASE12D4",
+   "severity": "P2",
+   "title": "Phép nối của chính Docling (qua trang / qua cột, bỏ gạch nối) đi thẳng vào văn bản Legal, không bị hoàn tác và không có cảnh báo; fixture 12D3 được chỉnh để né",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Phép nối của chính Docling được tách lại theo charspan provenance khi quy tắc nối của Legal từ chối (upstream_merge_undone), xác nhận từng ký tự bằng phần tử pipeline trước khi ghép (conv_res.assembled.elements); bỏ gạch nối không có bằng chứng: giữ, báo upstream_dehyphenation; span không khớp: giữ, báo upstream_merge_kept. Đọc bằng chứng không bao giờ làm hỏng chuyển đổi (5aa4684).",
+   "tests": [
+    "tests/review_phase12d4/test_legal_reaudit.py::test_regression_upstream_merge_is_undone_in_legal (was test_control_*)",
+    "tests/review_phase12d4/test_legal_reaudit.py::test_r2_01_upstream_merge_of_unrelated_items_is_undone_or_reported (xfail removed)",
+    "tests/review_phase12d4/test_legal_reaudit.py::test_r2_01_text_changed_at_a_page_break_is_reported (xfail removed)",
+    "tests/test_ocr_legal_normalizer.py (dehyphen without evidence kept + reported; mismatching evidence ignored)",
+    "tests/test_ocr_legal_pipeline.py::test_convert_file_legal_without_merge_evidence_still_normalizes"
+   ],
+   "red_evidence": null,
+   "green_evidence": "13 tài liệu upstream_merge_undone; Legal 0 nối sai (Standard v1.2.0: 16)",
+   "local_verification": [
+    "W-RC-08",
+    "W-LEG-22"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "R2-02",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "Cú pháp nhấn mạnh Markdown làm đổi số và ký hiệu trên trang Source: '5*3% (tối đa 15*2)' hiển thị '53% (tối đa 152)', '(*) … (*)' mất cả hai dấu, dòng '[1]: https://…' không hiển thị",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Hiển thị Legal thoát mọi ký tự Markdown có nghĩa ('*', '_', '`', '$', '~', '[', ']', '<', '|', '&', '\\'), URL chép nguyên văn; kiểm trên stack React thật (react-markdown + remark-gfm + remark-math + rehype-katex) trong jsdom. Standard hiển thị như v1.2.0 (không đổi theo nguyên tắc).",
+   "tests": [
+    "tests/review_phase12d4/test_legal_reaudit.py::test_r2_02_display_keeps_asterisks_and_backticks (xfail removed)",
+    "frontend/src/components/sources/SourceDetailContent.test.tsx",
+    "tests/fixtures/legal/display_escape_cases.json"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-LEG-24"
+   ],
+   "release_blocker_12d5": "local",
+   "note": "Standard vẫn hiển thị '5*3%' thành in nghiêng như v1.2.0 (test_control_r2_02_same_in_standard ghi nhận) — giữ hành vi v1.2.0 theo yêu cầu."
+  },
+  {
+   "finding_id": "R2-03",
+   "origin": "PHASE12D4",
+   "severity": "P4",
+   "title": "Giá trị không phải mapping trong asset.extraction làm model miền từ chối cả Source",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Asset.extraction có field_validator(mode='before'): giá trị không phải mapping -> None, Source vẫn nạp.",
+   "tests": [
+    "tests/review_phase12d4/test_legal_reaudit.py::test_r2_03_domain_asset_tolerates_a_non_mapping_record (xfail removed)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-LEG-26"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-04",
+   "origin": "PHASE12D4",
+   "severity": "P2",
+   "title": "Backup được chấp nhận không tương ứng với dữ liệu tại thời điểm tạo lại container: dùng lại theo TTL, lấy khi ứng dụng còn phục vụ người dùng, mã tham chiếu tự do",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Bỏ TTL; mỗi lần chạy: bảo trì trên image đã duyệt, chờ tác vụ nền, F1, backup + kiểm restore, F2 == F1, F3 == F1 trước khi tạo lại; mã backup dùng một lần; backup của đơn vị theo hai lần chạy (lead): mã đưa vào lần chạy vừa dừng ghi bị từ chối và đánh dấu đã dùng; lần sau chỉ nhận mã mới khi F1 và container bảo trì không đổi kể từ lúc yêu cầu.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_reaudit.py::test_r2_04_resume_takes_a_new_backup_when_the_data_changed (xfail removed)",
+    "tests/review_phase12d4/test_offline_reaudit.py::test_control_r2_04_backup_runs_while_writes_are_stopped (inverted)",
+    "tests/review_phase12d4/test_offline_evidence_data.py (4 inversions)",
+    "tests/test_offline_package.py::test_an_operator_backup_is_accepted_only_after_the_tool_stopped_the_writes",
+    "tests/test_offline_package.py::test_an_operator_backup_is_refused_when_the_data_changed_since_it_was_requested",
+    "tests/test_offline_package.py::test_an_operator_backup_is_refused_when_the_application_was_recreated_since",
+    "tests/test_offline_package.py::test_a_record_edited_after_the_backup_stops_the_update_before_the_recreate",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-32",
+    "W-FB-05"
+   ],
+   "release_blocker_12d5": "local",
+   "note": "Công cụ chứng minh THỜI ĐIỂM backup (sau khi dừng ghi, dữ liệu không đổi tới lúc tạo lại); NỘI DUNG bản backup của đơn vị vẫn do người vận hành xác nhận (--backup-verified) hoặc BACKUP_VERIFY_CMD."
+  },
+  {
+   "finding_id": "R2-05",
+   "origin": "PHASE12D4",
+   "severity": "P1",
+   "title": "Kiểm tra dữ liệu ở finish / rollback so với mốc vừa chụp: database bị thay bằng database rỗng giữa update và finish vẫn được báo 'completed'; mất một phần không bị phát hiện; mốc không đọc được thì bỏ qua kiểm tra",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Baseline bất biến của attempt (container / image / mount / volume DB, schema, định danh bản ghi 5 bảng, lưu riêng); một data_verdict; không đọc được = FAIL; cờ db_changed / data_changed dính; --acknowledge-data-change ghi ai / khi nào, không restore; rollback một bản hỏng kiểm bằng image cũ.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_reaudit.py::test_r2_05_finish_notices_rows_lost_since_the_update (xfail removed)",
+    "tests/review_phase12d4/test_offline_reaudit.py::test_r2_05_partial_loss_during_finish_is_not_success (xfail removed)",
+    "tests/review_phase12d4/test_offline_evidence_data.py (6 inversions)",
+    "tests/test_offline_package.py::test_data_verdict",
+    "tests/test_offline_package.py::test_database_restart_during_a_recreate_stops_the_update"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-33",
+    "W-OFF-13"
+   ],
+   "release_blocker_12d5": "local",
+   "note": "Chỉ 5 bảng được chụp (source, notebook, note, source_embedding, source_insight); chi phí trên database lớn chưa đo."
+  },
+  {
+   "finding_id": "R2-06",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "'Cùng layer' được coi là 'cùng image': image có layer của gói nhưng cấu hình khác (entrypoint, user, env) được nhận là image đã đóng gói",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Manifest định dạng 3 có image.run_config_sha256; cùng layer khác cấu hình không phải image của gói; tag đích kiểm lại ngay trước mỗi up.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_reaudit.py::test_r2_06_* (xfail removed)",
+    "tests/test_offline_package.py::test_run_config_is_the_same_from_the_archive_and_from_docker_image_inspect",
+    "tests/test_offline_package.py::test_the_target_tag_is_checked_again_right_before_the_recreate",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-40"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "R2-07",
+   "origin": "PHASE12D4",
+   "severity": "P2",
+   "title": "verify-report.json là file không được bảo vệ nhưng thay cho việc xác thực: sửa gói + sửa báo cáo (đặt 'signed': false) ⇒ preflight và update chấp nhận, kể cả khi đã cài khóa ký",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Báo cáo verify tin cậy ở STATE_DIR/verified/<sha256>.json (0600); verify-report.json cạnh gói chỉ để đọc; kiểm chủ sở hữu / quyền của thư mục gói, cha và mọi file; SIGNATURE_POLICY required kiểm lại chữ ký mỗi lần, không hạ cấp.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_reaudit.py::test_r2_07_* (xfail removed)",
+    "tests/review_phase12d4/test_offline_evidence_trust_build.py (inversions)",
+    "tests/test_offline_package.py::test_package_folder_writable_by_others_or_without_a_trusted_record_is_refused",
+    "tests/test_offline_package.py::test_signature_policy_required_is_enforced_on_every_use"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-34"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-08",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "Không có gì ràng buộc image với commit được đóng gói: image không có nhãn revision (và cả không có VERSION) vẫn được đóng gói kèm bundle của commit khác",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "build đòi nhãn revision = commit và /app/VERSION khớp; --allow-unlabelled-image => provenance unverified, verify / preflight từ chối.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_reaudit.py::test_r2_08_* (xfail removed)",
+    "tests/review_phase12d4/test_offline_evidence_trust_build.py::test_build_refuses_an_image_without_provenance"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-39"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-09",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "Tag release đã tồn tại trên máy chủ trỏ commit khác được giữ nguyên, không so với commit của manifest",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Tag phát hành có sẵn trỏ commit khác => từ chối trước khi đổi gì.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_reaudit.py::test_r2_09_* (xfail removed)",
+    "tests/review_phase12d4/test_offline_evidence_state.py::test_existing_release_tag_on_another_commit_is_refused"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-10",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "tiktoken offline: phép dò của health không phân biệt được bộ mã hóa thật với ước lượng theo từ; ước lượng làm chunk sai lặng lẽ; hai chỗ khác nạp bộ mã hóa không qua guard; file model chỉ được so tên + kích thước",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Ứng dụng (bb8b513): một bộ nạp có guard, offline không bao giờ ước lượng, context_builder qua guard, --check. Công cụ (021ce49): health kiểm file cache SHA-256 + nạp bảng mã thật có timeout.",
+   "tests": [
+    "tests/test_token_utils_offline.py (17 test; 6 test bảng mã thật chạy khi có cache đã kiểm)",
+    "tests/review_phase12d4/test_offline_reaudit.py::test_r2_10_health_probe_asserts_the_encoding_itself (xfail removed)",
+    "tests/review_phase12d4/test_offline_reaudit.py::test_regression_r2_10_offline_without_cache_refuses_instead_of_one_chunk (was test_control_*)",
+    "tests/review_phase12d4/test_offline_reaudit.py::test_regression_r2_10_context_building_goes_through_the_guard (was test_control_*)"
+   ],
+   "red_evidence": null,
+   "green_evidence": "Bảng mã o200k_base thật (SHA-256 446a9538…): 17/17 test tokenizer, test_chunking 34/34; script dò của health: ok, 522 token; n_vocab 200019",
+   "local_verification": [
+    "W-TOK-01..06",
+    "W-RAG-08",
+    "W-RAG-10"
+   ],
+   "release_blocker_12d5": "local",
+   "note": "Đường online (không OCR_OFFLINE) giữ nguyên v1.2.0 kể cả ước lượng words x 1.3 khi tải thất bại (đo: ước lượng thấp hơn ở 83/92 fixture) — giữ theo nguyên tắc 'Standard giữ hành vi v1.2.0'; triển khai offline phải đặt OCR_OFFLINE=true (hợp đồng C3, C7)."
+  },
+  {
+   "finding_id": "R2-11",
+   "origin": "PHASE12D4",
+   "severity": "P2",
+   "title": "Nội dung thật mà layout gắn nhãn PAGE_HEADER / PAGE_FOOTER (số hiệu văn bản, tên đơn vị ở trang 1, footnote) vắng mặt ở cả Standard và Legal, không có cảnh báo; item PAGE_HEADER nằm trong thân bị bỏ chỉ theo nhãn; công thức chỉ còn '<!-- formula-not-decoded -->'",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Item nhãn PAGE_HEADER / PAGE_FOOTER / furniture chỉ là artifact khi lặp trên nhiều trang hoặc là số trang khớp chỉ số trang; xuất hiện một lần (số hiệu, tên đơn vị, footnote, caption) thì giữ trong văn bản Legal (furniture_text_kept). Standard bỏ như v1.2.0.",
+   "tests": [
+    "tests/review_phase12d4/test_legal_reaudit.py::test_regression_r2_11_furniture_labelled_content_is_kept_in_legal (was test_control_*)",
+    "tests/review_phase12d4/test_legal_reaudit.py::test_r2_11_unique_furniture_text_is_kept_or_reported (xfail removed)",
+    "tests/test_phase12d5_oracle.py::test_furniture_content_is_measured"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-RC-07"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "R2-12",
+   "origin": "PHASE12D4",
+   "severity": "P1",
+   "title": "Một lần update / rollback bị từ chối vẫn ghi đè image-override.yml dùng chung: 'lệnh duy nhất được phép' trong compose-command.txt khi đó khởi động image CHƯA được duyệt (hoặc image cũ) mà status / health không báo",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Override riêng của attempt; approved.json; chỉ finish / rollback đã kiểm mới chuyển tag; compose-command.txt sinh từ approved.json; lệnh bị từ chối không đổi gì.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_evidence_state.py::test_refused_second_update_leaves_the_recorded_command_starting_the_approved_image",
+    "tests/review_phase12d4/test_offline_evidence_state.py::test_refused_rollback_changes_nothing",
+    "tests/review_phase12d4/test_offline_evidence_state.py::test_closing_the_refused_attempt_keeps_the_approved_image",
+    "tests/test_offline_package.py::test_update_apply_full_flow",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-35"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-13",
+   "origin": "PHASE12D4",
+   "severity": "P2",
+   "title": "Phát hiện lệch bị tắt ở nhiều trạng thái có thật: in_progress / failed / rollback_failed không kiểm gì; rolled_back không kiểm biến môi trường; kill giữa lúc lưu trữ và lần ghi đầu làm mất journal; kill sau `compose up` của finish để ứng dụng mở công khai trong khi journal ghi 'maintenance: true'",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Bản lịch sử trước khi thay journal; intent trước mỗi chuyển tiếp; status / health so ở mọi trạng thái; mã 7 / 8.",
+   "tests": [
+    "tests/test_offline_package.py (interruption matrix, 22 cases)",
+    "tests/review_phase12d4/test_offline_evidence_state.py::test_kill_after_compose_up_in_finish_is_reported_and_recoverable",
+    "tests/test_offline_package.py::test_exit_codes_are_documented"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-41"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-14",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "Oracle preservation(): so khớp chỉ theo chữ nên artifact trùng chữ thay chỗ cho đơn vị bắt buộc bị xóa; không thấy dòng bị dời qua artifact / placeholder; bỏ qua dòng '<!-- image -->'; không đo nội dung gt='furniture'; thứ tự chỉ được khẳng định 'Legal ≤ Standard'; ground truth và vị trí trong fixture do chính tác giả normalizer đặt",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Oracle theo định danh (trang + bbox -> DocItem), số lần xuất hiện, thứ tự, vùng artifact / bắt buộc; số trang trùng chữ không thay được số khoản bị xóa; artifact tham gia kiểm thứ tự.",
+   "tests": [
+    "tests/review_phase12d4/test_normalizer_counterexamples.py::test_r2_14_oracle_sees_a_required_number_deleted_while_its_twin_artifact_stays (xfail removed)",
+    "tests/review_phase12d4/test_normalizer_counterexamples.py::test_r2_14_oracle_sees_an_artifact_reinserted_in_the_middle_of_a_page (xfail removed)",
+    "tests/test_phase12d5_oracle.py"
+   ],
+   "red_evidence": null,
+   "green_evidence": "oracle_mutations.json: 10/10 lớp đột biến, 100 %",
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-15",
+   "origin": "PHASE12D4",
+   "severity": "P2",
+   "title": "Đồng bộ mã nguồn không an toàn khi bị ngắt: kill giữa `git merge` và bước ghi K_source làm guard 'đã đồng bộ' mất tác dụng; lần chạy lại ghi đè previous_commit bằng commit phát hành và rollback không đưa mã nguồn về được",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "K_intent ghi một lần trước git fetch; guard và khôi phục mã nguồn dùng nó.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_evidence_state.py::test_kill_between_source_merge_and_K_step_keeps_the_resume_guard",
+    "tests/test_offline_package.py::test_attempt_is_not_resumed_across_a_source_sync"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-41"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-16",
+   "origin": "PHASE12D4",
+   "severity": "P2",
+   "title": "Sổ sách của pin sai: pin hai lần rồi undo để tên image của triển khai ở image mới; kill sau `docker tag` không undo được; từ lần cập nhật thứ hai không pin được nữa và pin cũ âm thầm chạy phiên bản cũ",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": true,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "Bỏ pin; pin = báo cáo, --apply sửa tag lũy đẳng, --undo từ chối; mọi đường khởi động dùng tag của file compose.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_evidence_pin_drift.py::test_pin_twice_is_idempotent_and_undo_cannot_strand_the_tag",
+    "tests/review_phase12d4/test_offline_evidence_pin_drift.py::test_kill_during_a_pin_repair_is_reported_and_recoverable",
+    "tests/review_phase12d4/test_offline_evidence_pin_drift.py::test_deploy_tag_follows_every_finished_update",
+    "tests/test_offline_real_docker.py (CB5400_REAL_DOCKER=1, Docker 29.10 / Compose 5.7.1, image thay thế)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-INT-05",
+    "W-INT-08",
+    "W-OFF-36"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  },
+  {
+   "finding_id": "R2-17",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "Attempt được tiếp tục dùng quyết định cổng Legal đã cũ",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Cổng Legal là cấu hình của đơn vị, đọc ở mỗi lần chạy; lệnh cổng từ chối.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_evidence_pin_drift.py::test_resume_uses_the_legal_gate_of_the_operator_configuration"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-18",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "Build: lần build lại thất bại xóa gói tốt trước đó; hai lần build đồng thời phá thư mục của nhau và kết thúc bằng traceback",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Chiếm thư mục dựng nguyên tử dưới khóa theo phiên bản; tên tạm + đổi tên; chỉ dọn thứ lần chạy tạo ra.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_evidence_trust_build.py::test_failed_rebuild_keeps_the_previous_good_package",
+    "tests/review_phase12d4/test_offline_evidence_trust_build.py::test_two_builds_racing_are_refused_cleanly"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-38"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-19",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "Bộ nhớ không giới hạn trước khi xác thực: header GNU long-name / pax được tarfile đọc nguyên khối",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Quét trước header tar theo khối 512 byte; GNU long-name / pax > 64 KiB từ chối; giới hạn trước tarfile.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_evidence_trust_build.py::test_pre_authentication_memory_use_is_bounded",
+    "tests/test_offline_package.py::test_prescan_accepts_normal_extended_headers_and_refuses_oversized_ones"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-20",
+   "origin": "PHASE12D4",
+   "severity": "P3",
+   "title": "Ghi 'maintenance: true' cho dịch vụ không publish cổng; rollback khi không có journal chấp nhận bất kỳ image cục bộ nào",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Không publish cổng / --no-maintenance => cần --writes-stopped-confirmed, ghi là bằng chứng; không baseline => --to-image cần --force-image.",
+   "tests": [
+    "tests/review_phase12d4/test_offline_evidence_pin_drift.py::test_maintenance_is_not_claimed_for_a_service_without_published_ports",
+    "tests/review_phase12d4/test_offline_evidence_pin_drift.py::test_rollback_without_a_journal_needs_force_for_another_image"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-OFF-37"
+   ],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-21",
+   "origin": "PHASE12D4",
+   "severity": "P4",
+   "title": "Bộ test phụ thuộc thứ tự chạy: mã OCR đặt TESSDATA_PREFIX của tiến trình, test Tesseract trực tiếp bị skip trong lượt chạy toàn bộ",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "FIXED IN CLOUD",
+   "change_12d5": "Fixture autouse trong tests/conftest.py trả TESSDATA_PREFIX về giá trị lúc bắt đầu mỗi test.",
+   "tests": [
+    "tests/test_ocr_phase12_scripts.py::test_direct_tesseract_layer_is_real (chạy, không skip, trong lượt toàn bộ)"
+   ],
+   "red_evidence": "lượt OCR toàn bộ trên bc7236e: 65 skipped, gồm test_ocr_phase12_scripts.py:162",
+   "green_evidence": "sau sửa: 64 skipped, test đó đạt",
+   "local_verification": [],
+   "release_blocker_12d5": "none",
+   "note": null
+  },
+  {
+   "finding_id": "R2-22",
+   "origin": "PHASE12D4",
+   "severity": "P4",
+   "title": "Nghi ngờ: build-package.ps1 dừng ở `docker image inspect $tag 2>$null` trên Windows PowerShell 5.1 khi tag chưa tồn tại (trường hợp bình thường)",
+   "status_12d4": "NEW (12D4)",
+   "release_blocker_12d4": false,
+   "status_12d5": "LOCAL VERIFICATION REQUIRED",
+   "change_12d5": "build-package.ps1: `docker image inspect $tag 2>$null` -> `docker image ls -q $tag` (không ghi stderr; kiểm $LASTEXITCODE).",
+   "tests": [
+    "(không chạy được PowerShell ở Cloud — kiểm tĩnh; `docker image ls -q <tag không tồn tại>` trả rỗng, mã 0 trên Docker 29 thật)"
+   ],
+   "red_evidence": null,
+   "green_evidence": null,
+   "local_verification": [
+    "W-PS-01",
+    "W-PS-02",
+    "W-PS-03"
+   ],
+   "release_blocker_12d5": "local",
+   "note": null
+  }
+ ]
+}

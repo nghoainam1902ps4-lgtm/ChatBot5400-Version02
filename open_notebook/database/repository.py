@@ -118,6 +118,27 @@ async def repo_query(
             raise
 
 
+async def repo_transaction(query: str, variables: Dict[str, Any]) -> List[Any]:
+    """Check every SurrealQL transaction statement, including commit errors."""
+    async with db_connection() as connection:
+        result = await connection.query_raw(query, variables)
+    statements = result.get("result") if isinstance(result, dict) else None
+    if not isinstance(statements, list) or not statements:
+        raise RuntimeError("Database transaction did not return a verdict")
+    if any(
+        not isinstance(item, dict) or item.get("status") != "OK" for item in statements
+    ):
+        if any(
+            isinstance(item, dict)
+            and item.get("status") == "ERR"
+            and "cb5400_source_changed" in str(item.get("result"))
+            for item in statements
+        ):
+            raise ValueError("Source changed before publication")
+        raise RuntimeError("Database transaction failed")
+    return [parse_record_ids(item.get("result")) for item in statements]
+
+
 async def repo_create(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new record in the specified table"""
     # Remove 'id' attribute if it exists in data
@@ -195,6 +216,26 @@ async def repo_update(
         if "created" in data and isinstance(data["created"], str):
             data["created"] = datetime.fromisoformat(data["created"])
         data["updated"] = datetime.now(timezone.utc)
+        if table == "source" and "full_text" in data:
+            # Publish text and retire vectors for the previous text together.
+            result = await repo_transaction(
+                """
+                BEGIN TRANSACTION;
+                LET $prior = (SELECT * FROM ONLY $target);
+                IF $prior = NONE { THROW 'cb5400_source_changed'; };
+                IF $prior.full_text != $data.full_text {
+                    DELETE source_embedding WHERE source = $target;
+                };
+                UPDATE ONLY $target MERGE $data RETURN AFTER;
+                COMMIT TRANSACTION;
+                """,
+                {"target": record_id, "data": data},
+            )
+            return [
+                row
+                for row in result
+                if isinstance(row, dict) and row.get("id") == str(record_id)
+            ]
         query = "UPDATE $target MERGE $data;"
         # logger.debug(f"Update query: {query}")
         result = await repo_query(query, {"target": record_id, "data": data})
@@ -209,8 +250,23 @@ async def repo_delete(record_id: Union[str, RecordID]):
     """Delete a record by record id"""
 
     try:
+        target = ensure_record_id(record_id)
+        if target.table_name == "source":
+            # The source_delete event clears insights and vectors in this transaction.
+            rows = await repo_transaction(
+                """
+                BEGIN TRANSACTION;
+                DELETE reference WHERE in = $target;
+                DELETE ONLY $target RETURN BEFORE;
+                COMMIT TRANSACTION;
+                """,
+                {"target": target},
+            )
+            return any(
+                isinstance(row, dict) and row.get("id") == str(target) for row in rows
+            )
         async with db_connection() as connection:
-            return await connection.delete(ensure_record_id(record_id))
+            return await connection.delete(target)
     except Exception as e:
         logger.exception(e)
         raise RuntimeError(f"Failed to delete record: {str(e)}")

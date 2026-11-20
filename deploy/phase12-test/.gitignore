@@ -1,0 +1,8 @@
+# Everything this test stack creates on the operator's machine stays local:
+# credentials, database, models, imported PDFs / traineddata, diagnostics.
+.env
+surreal_data/
+notebook_data/
+import/
+diagnostics/
+fonts/

@@ -14,7 +14,14 @@ from typing import (
 )
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_serializer,
+)
 from surreal_commands import submit_command
 from surrealdb import RecordID
 
@@ -449,6 +456,29 @@ class Notebook(ObjectModel):
 class Asset(BaseModel):
     file_path: Optional[str] = None
     url: Optional[str] = None
+    # Phase 12D3 (finding F-07): how the stored text was produced, when it was
+    # not the standard export - {"mode": "legal", "status": "applied" | "failed"
+    # | "skipped", "version", "counts", "warnings", "operations"} (bounded, no
+    # document text; removed lines are identified by page + SHA-256).
+    # `source.asset` is a FLEXIBLE object: no migration, deleted with the Source,
+    # ignored by v1.2.0 (unknown key). Absent / None = standard export.
+    extraction: Optional[Dict[str, Any]] = None
+
+    @field_validator("extraction", mode="before")
+    @classmethod
+    def _tolerate_unknown_extraction(cls, value: Any) -> Any:
+        """A value that is not a mapping (written by something else into the
+        FLEXIBLE field) is ignored - the Source reads as a standard one instead
+        of failing to load (Phase 12D5, R2-03)."""
+        return value if isinstance(value, dict) else None
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_extraction(self, handler: Any) -> Dict[str, Any]:
+        """A standard Source is stored exactly as before: no `extraction` key."""
+        data = handler(self)
+        if data.get("extraction") is None:
+            data.pop("extraction", None)
+        return data
 
 
 class SourceEmbedding(ObjectModel):
@@ -577,8 +607,10 @@ class Source(ObjectModel):
     # Approval-field values as last loaded/persisted; lets save() detect (and
     # refuse) in-memory edits to them. See _prepare_save_data.
     _approval_snapshot: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    _persisted_full_text: Optional[str] = PrivateAttr(default=None)
 
     def model_post_init(self, __context: Any) -> None:
+        self._persisted_full_text = self.full_text
         self._snapshot_approval()
 
     def _snapshot_approval(self) -> None:
@@ -604,11 +636,10 @@ class Source(ObjectModel):
                     "UPDATE instead"
                 )
         await super().save()
+        self._persisted_full_text = self.full_text
         self._snapshot_approval()
 
-    @field_validator(
-        "submitted_by", "reviewed_by", "assigned_approver", mode="before"
-    )
+    @field_validator("submitted_by", "reviewed_by", "assigned_approver", mode="before")
     @classmethod
     def _parse_reviewer_links(cls, value):
         return _record_to_str(value)
@@ -688,7 +719,9 @@ class Source(ObjectModel):
         # Callers looping over many sources can batch-fetch insights up front
         # via SourceInsight.get_for_sources() and pass them in here, instead
         # of paying a separate query per source.
-        insight_objects = insights if insights is not None else await self.get_insights()
+        insight_objects = (
+            insights if insights is not None else await self.get_insights()
+        )
         insights = [insight.model_dump() for insight in insight_objects]
         if context_size == "long":
             return dict(
@@ -829,7 +862,9 @@ class Source(ObjectModel):
             return str(command_id)
 
         except Exception as e:
-            logger.exception(f"Error submitting create_insight for source {self.id}: {e}")
+            logger.exception(
+                f"Error submitting create_insight for source {self.id}: {e}"
+            )
             raise DatabaseOperationError(e)
 
     def _prepare_save_data(self) -> dict:
@@ -849,6 +884,12 @@ class Source(ObjectModel):
         if self.id is not None:
             for field in _APPROVAL_FIELDS:
                 data.pop(field, None)
+            if self.full_text == self._persisted_full_text:
+                # A job changing command metadata must not republish the
+                # text from its stale in-memory copy of the Source.
+                data.pop("full_text", None)
+            else:
+                data["full_text"] = self.full_text
             return data
 
         # Reviewer/submitter links are typed record<user> columns.
@@ -909,9 +950,7 @@ class Source(ObjectModel):
             },
         )
         if not rows:
-            raise InvalidInputError(
-                "Only a document awaiting approval can be approved"
-            )
+            raise InvalidInputError("Only a document awaiting approval can be approved")
         self.approval_status = "approved"
         self.reviewed_by = reviewer_id
         self.reviewed_at = datetime.now()
@@ -938,9 +977,7 @@ class Source(ObjectModel):
             {"id": ensure_record_id(self.id)},
         )
         if not rows:
-            raise InvalidInputError(
-                "Only a document awaiting approval can be rejected"
-            )
+            raise InvalidInputError("Only a document awaiting approval can be rejected")
         self.approval_status = "rejected"
         self._snapshot_approval()
         await self.delete()
@@ -969,7 +1006,11 @@ class Source(ObjectModel):
             )
         else:
             assignment = f"assigned_approver = NONE AND {in_scope}"
-        return f"approval_status = 'pending' AND {assignment}", " AND out IN $ids", params
+        return (
+            f"approval_status = 'pending' AND {assignment}",
+            " AND out IN $ids",
+            params,
+        )
 
     @classmethod
     async def get_pending(
@@ -986,9 +1027,7 @@ class Source(ObjectModel):
         try:
             if scope_ids is not None and not scope_ids and not reviewer_id:
                 return []
-            where, nb_scope_filter, params = cls._pending_scope(
-                scope_ids, reviewer_id
-            )
+            where, nb_scope_filter, params = cls._pending_scope(scope_ids, reviewer_id)
             rows = await repo_query(
                 f"""
                 SELECT id, title, asset, approval_status, submitted_at, submitted_by,
@@ -1040,6 +1079,7 @@ class Source(ObjectModel):
 
     async def delete(self) -> bool:
         """Delete source and clean up associated file, embeddings, and insights."""
+        deleted = await super().delete()
         # Clean up uploaded file if it exists
         if self.asset and self.asset.file_path:
             file_path = Path(self.asset.file_path)
@@ -1049,41 +1089,14 @@ class Source(ObjectModel):
                     logger.info(f"Deleted file for source {self.id}: {file_path}")
                 except Exception as e:
                     logger.warning(
-                        f"Failed to delete file {file_path} for source {self.id}: {e}. "
-                        "Continuing with database deletion."
+                        f"Failed to delete file {file_path} for source {self.id}: {e}"
                     )
             else:
                 logger.debug(
                     f"File {file_path} not found for source {self.id}, skipping cleanup"
                 )
 
-        # Delete associated embeddings, insights and notebook links to prevent
-        # orphaned records / dangling graph edges.
-        try:
-            source_id = ensure_record_id(self.id)
-            await repo_query(
-                "DELETE source_embedding WHERE source = $source_id",
-                {"source_id": source_id},
-            )
-            await repo_query(
-                "DELETE source_insight WHERE source = $source_id",
-                {"source_id": source_id},
-            )
-            await repo_query(
-                "DELETE reference WHERE in = $source_id",
-                {"source_id": source_id},
-            )
-            logger.debug(
-                f"Deleted embeddings, insights and references for source {self.id}"
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to delete embeddings/insights/references for source "
-                f"{self.id}: {e}. Continuing with source deletion."
-            )
-
-        # Call parent delete to remove database record
-        return await super().delete()
+        return deleted
 
 
 class Note(ObjectModel):
@@ -1211,8 +1224,7 @@ async def remove_duplicate_notebook_links() -> int:
         # Parameters are deliberately not named $in/$out (the names of a
         # relation's own endpoints).
         edges = await repo_query(
-            "SELECT id, in, out FROM reference "
-            "WHERE in = $src_id AND out = $nb_id",
+            "SELECT id, in, out FROM reference WHERE in = $src_id AND out = $nb_id",
             {
                 "src_id": ensure_record_id(source_id),
                 "nb_id": ensure_record_id(notebook_id),
@@ -1384,6 +1396,7 @@ async def text_search(
 ):
     if not keyword:
         raise InvalidInputError("Search keyword cannot be empty")
+
     async def fetch(count: int) -> List[Dict[str, Any]]:
         return (
             await repo_query(

@@ -254,12 +254,78 @@ def runtime_ensure(offline: bool) -> int:
 # --- commands ----------------------------------------------------------------------
 
 
+def _docling_patch_state() -> dict[str, dict[str, Any]]:
+    """Whether the controlled Docling patches can run here (D8-10, Phase 12D9):
+    the E0-07 TSV text patch (Tesseract engines) and the D8-03 / D8-02 text
+    preservation patches (every Docling conversion). ``ready`` = they apply at
+    conversion time; otherwise the conversion refuses to run (never unpatched)."""
+    from open_notebook.ocr import docling_patches as P
+
+    def one(problems: Any, installed: bool) -> dict[str, Any]:
+        try:
+            found = list(problems())
+        except Exception as e:  # noqa: BLE001 - reported, status never fails
+            found = [f"{type(e).__name__}: {e}"]
+        return {
+            "installed": installed,
+            "ready": installed and not found,
+            "problems": found,
+        }
+
+    docling = P._installed("docling") is not None
+    return {
+        # P.problems() verifies both Tesseract targets: the TSV parse (E0-07) and
+        # the OCR loop that never drops a failed region (E2-04, Phase 12D9)
+        "tsv": {
+            "patch": P.PATCH_ID,
+            "patches": [P.PATCH_ID, P.REGION_PATCH_ID],
+            **one(P.problems, docling),
+        },
+        "text": {
+            "patches": [P.HYPHEN_PATCH_ID, P.FOOTNOTE_PATCH_ID],
+            **one(P.text_problems, P._docling_present()),
+        },
+    }
+
+
+def _patch_line(name: str, state: dict[str, Any]) -> str:
+    if not state["installed"]:
+        return f"{name}: not applicable (Docling is not installed)"
+    if state["ready"]:
+        return f"{name}: ready (applied at conversion time)"
+    return f"{name}: NOT AVAILABLE - conversions refuse to run: " + "; ".join(
+        state["problems"]
+    )
+
+
 def cmd_status(args: argparse.Namespace) -> int:
+    from open_notebook.ocr.options import tesseract_gate_state
     from open_notebook.ocr.status import engine_status
 
     active = _active_engine() if not args.no_db else None
     rows = [engine_status(e, active) for e in catalog.ALL_ENGINE_IDS]
+    # E1-05 (Phase 12D7): whether the orientation gate really runs (D-25).
+    gate = tesseract_gate_state()
+    patches = _docling_patch_state()
     if args.json:
+        # D8-ORI-02 / D8-10 (Phase 12D9): the same states for automation, on the
+        # rows they concern (the list shape of earlier versions is kept).
+        gate_state = {
+            k: gate.get(k)
+            for k in (
+                "enabled",
+                "active",
+                "reason",
+                "min_confidence",
+                "crlf",
+                "executable",
+            )
+        }
+        for r in rows:
+            r["docling_text_preservation"] = patches["text"]
+            if catalog.get_engine(r["id"]).runtime == "tesseract":
+                r["orientation_gate"] = gate_state
+                r["docling_tsv_patch"] = patches["tsv"]
         print(json.dumps(rows, ensure_ascii=False, indent=2, default=str))
         return 0
     print(
@@ -272,6 +338,22 @@ def cmd_status(args: argparse.Namespace) -> int:
         )
         if r.get("error"):
             print(f"{'':<15} error: {r['error']}")
+    print(
+        _patch_line(
+            "docling Tesseract patches (E0-07 TSV text, E2-04 failed OCR region)",
+            patches["tsv"],
+        )
+    )
+    print(
+        _patch_line(
+            "docling text preservation (D8-03 hyphens, D8-02 table / picture footnotes)",
+            patches["text"],
+        )
+    )
+    if gate["active"]:  # last line (scripts of 12D7 read it there)
+        print(f"orientation gate: active (min confidence {gate['min_confidence']})")
+    else:
+        print(f"orientation gate: NOT ACTIVE - {gate['reason']}")
     return 0
 
 

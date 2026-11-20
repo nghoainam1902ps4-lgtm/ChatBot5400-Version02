@@ -36,6 +36,10 @@ class OcrSettings:
     # Frozen here so that activating another version while a document is being
     # processed never changes the model under it (custom_models.py).
     custom_version: str | None = None
+    # Post-OCR text normalization (Phase 12, D-34): "standard" (unchanged
+    # behaviour) or "legal". Already resolved against the deployment gate
+    # OCR_LEGAL_NORMALIZATION_ENABLED, so "legal" here means it really applies.
+    text_normalization: str = "standard"
 
     @classmethod
     def from_content_settings(cls, settings: Any) -> "OcrSettings":
@@ -44,12 +48,17 @@ class OcrSettings:
             engine = catalog.DEFAULT_ENGINE
         threads = getattr(settings, "docling_ocr_num_threads", None)
         enabled = getattr(settings, "docling_ocr", None)
+        from open_notebook.ocr import legal_normalizer
+
         return cls(
             enabled=True if enabled is None else bool(enabled),
             engine=engine,
             num_threads=int(threads) if threads else None,
             force_full_page=bool(
                 getattr(settings, "docling_ocr_force_full_page", False)
+            ),
+            text_normalization=legal_normalizer.effective_mode(
+                getattr(settings, "ocr_text_normalization", None)
             ),
         ).pinned()
 
@@ -60,6 +69,10 @@ class OcrSettings:
         from open_notebook.ocr import custom_models
 
         return replace(self, custom_version=custom_models.active_version(self.engine))
+
+    @property
+    def legal_normalization(self) -> bool:
+        return self.text_normalization == "legal"
 
     @property
     def uses_default_tuning(self) -> bool:
@@ -245,6 +258,58 @@ def tesseract_command(real_cmd: str) -> str:
     return str(gate)
 
 
+def tesseract_gate_state(real_cmd: str | None = None) -> dict[str, Any]:
+    """Whether the orientation gate REALLY runs, and why not (Phase 12D7, E1-05).
+
+    ``OCR_TESSERACT_OSD_GATE`` only says the gate is wanted. It runs through
+    its ``#!`` line, so a copy with Windows line endings (CRLF - a Git checkout
+    on Windows with ``core.autocrlf=true``, built into the image) or without
+    the executable bit cannot start: :func:`tesseract_command` then falls back
+    to the real binary and every low-confidence rotation is applied again.
+    For ``ocr.cli status`` and the diagnostics; not part of any fingerprint.
+    """
+    import os
+    import shutil
+    from pathlib import Path
+
+    from open_notebook.ocr import tesseract_gate
+
+    real = real_cmd or runtime.tesseract_cmd() or "tesseract"
+    gate = Path(tesseract_gate.__file__).resolve()
+    try:
+        with gate.open("rb") as fh:
+            first_line = fh.readline()
+    except OSError:
+        first_line = b""
+    state: dict[str, Any] = {
+        "enabled": tesseract_osd_gate_enabled(),
+        "gate": str(gate),
+        "min_confidence": tesseract_gate.min_confidence(),
+        "crlf": first_line.endswith(b"\r\n"),
+        "executable": os.access(gate, os.X_OK),
+        "tesseract": shutil.which(real) or (real if os.path.isfile(real) else None),
+    }
+    if not state["enabled"]:
+        state["active"], reason = False, f"{TESSERACT_GATE_ENV}=false"
+    elif state["tesseract"] is None:
+        state["active"], reason = False, "Tesseract is not installed (nothing to gate)"
+    else:
+        state["active"] = tesseract_command(real) == str(gate)
+        if state["active"]:
+            reason = None
+        elif state["crlf"]:
+            reason = (
+                "the gate file has Windows (CRLF) line endings, so its #! line "
+                "cannot run: rebuild the image from a checkout with LF endings"
+            )
+        elif not state["executable"]:
+            reason = "the gate file is not executable"
+        else:
+            reason = "the gate cannot be executed (python3 on PATH?)"
+    state["reason"] = reason
+    return state
+
+
 _GATE_OK: dict[tuple[str, str], bool] = {}
 
 
@@ -304,6 +369,12 @@ def build_ocr_options(
             "and activate one with the admin CLI (custom import / custom activate)."
         )
     if spec.docling_kind == "rapidocr":
+        # D12-L1 (Phase 12D13): the recognition dictionary is lost with the
+        # container layer on every recreate; restore the approved one offline
+        # BEFORE RapidOCR starts (it would download it unverified, D-32).
+        from open_notebook.ocr import rapidocr_dictionary
+
+        rapidocr_dictionary.ensure_dictionary()
         extra: dict[str, Any] = {}
         params: dict[str, Any] = {}
         if rapidocr_force_cpu():
@@ -324,6 +395,11 @@ def build_ocr_options(
         if not ok:
             raise ValueError(detail)
         runtime.ensure_tessdata_layout()
+        # E0-07 (Phase 12D7): Docling must read Tesseract's TSV text as text, or
+        # numbers change (0001 -> 1.0). Guarded: refuses on any other Docling.
+        from open_notebook.ocr import docling_patches
+
+        docling_patches.apply()
         cmd = tesseract_command(runtime.tesseract_cmd() or "tesseract")
         tess_extra: dict[str, Any] = {"scale": scale} if scale else {}
         return TesseractCliOcrOptions(

@@ -1,0 +1,595 @@
+{
+ "schema": "chatbot5400-finding-status/12D9",
+ "phase": "12D9",
+ "review_target": "4587eb77e25935db2d4375fe55be64f22341d1bb",
+ "reviewer": "Phase 12D8 final review (Claude, new session) - not Codex",
+ "baseline": "v1.2.0 f2fdf2714a7c0b5b196132f71cfc091928befc06",
+ "commits": [
+  "85ada78",
+  "de55d4e",
+  "949138a",
+  "691fac9",
+  "75c9455",
+  "6485c14",
+  "d03830d",
+  "ff68855",
+  "70f7325",
+  "31f72a8",
+  "c4ea65a",
+  "e2d19fb",
+  "ac34bb9",
+  "42ff481",
+  "662c47e",
+  "520d3e3",
+  "1f32e48",
+  "4b3e1d1"
+ ],
+ "status_values": [
+  "FIXED",
+  "LOCAL VERIFICATION REQUIRED",
+  "OPEN",
+  "DEFERRED WITH JUSTIFICATION"
+ ],
+ "summary": {
+  "findings": 37,
+  "by_status": {
+   "LOCAL VERIFICATION REQUIRED": 8,
+   "FIXED": 28,
+   "DEFERRED WITH JUSTIFICATION": 1
+  },
+  "p0_p1_open": 0,
+  "code_release_blockers_open": 0,
+  "note": "LOCAL VERIFICATION REQUIRED = sửa trong mã, kiểm ở Cloud; chờ nghiệm thu Windows trên commit cuối."
+ },
+ "findings": [
+  {
+   "finding_id": "D8-03",
+   "severity": "P1",
+   "area": "OCR text (Standard + Legal, mọi engine)",
+   "title": "Docling bỏ dấu gạch nối cuối dòng / cuối từ OCR khi ghép chữ của một vùng layout: số hiệu văn bản, khoảng năm, mã số bị đổi",
+   "status": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in": "de55d4e (+ 662c47e: số đếm gạch nối cho cổng Local)",
+   "fix": "Bản vá có kiểm soát sanitize_text / PageAssembleModel.__call__ / ReadingOrderModel._merge_elements (D-41): không bao giờ bỏ '-'; ghép liền chỉ khi hộp chữ cho thấy xuống dòng; cùng dòng / không có bằng chứng giữ ranh giới ô.",
+   "tests": [
+    "tests/test_phase12d9_text_preservation.py (63; RED 44+11 trên 4587eb7)",
+    "tests/review_phase12d8/test_tsv_patch_d8.py (xfail D8-03 đã gỡ)"
+   ],
+   "local_gate": "G-H1 (gạch nối đầu-cuối trên PDF thật, Best / Fast / Agri / RapidOCR / EasyOCR / lớp chữ)"
+  },
+  {
+   "finding_id": "D8-01",
+   "severity": "P2",
+   "area": "Legal normalizer 1.3.0",
+   "title": "Legal đảo thứ tự đọc khi tách phép nối liên trang của Docling: phần tách ra được chèn lại theo tọa độ, mà tọa độ đó sai khi hai trang khác chiều cao; ở trang hai cột phần tách bị đẩy ra sau đoạn đầu cột phải",
+   "status": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in": "de55d4e",
+   "fix": "Legal 1.3.1 (D-43): phần tách ra đặt ngay sau phần đầu, chỉ vượt item Docling bỏ qua và đứng trước nó theo thứ tự đọc của chính Docling; hộp theo chiều cao trang của phần đầu; không chắc ⇒ giữ nối + cảnh báo.",
+   "tests": [
+    "tests/review_phase12d8/test_legal_d8.py (xfail D8-01 đã gỡ)",
+    "tests/test_ocr_legal_normalizer.py",
+    "benchmark docs/review/phase12d9/benchmark_legal_1_3_1.json"
+   ],
+   "local_gate": "G-H3 (trang khác kích thước, ngang → dọc, hai cột trên PDF thật)"
+  },
+  {
+   "finding_id": "D8-02",
+   "severity": "P2",
+   "area": "Legal + Standard (serializer)",
+   "title": "Footnote mà Docling gắn vào bảng / ảnh không có trong nội dung Markdown — ở Standard (upstream, như v1.2.0) và cả Legal; không có cảnh báo",
+   "status": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in": "de55d4e",
+   "fix": "Serializer Markdown viết footnote gắn với bảng / ảnh một lần, ngay sau item (D-42), Standard và Legal; HTML không đổi (giới hạn ghi nhận).",
+   "tests": [
+    "tests/test_phase12d9_text_preservation.py §I",
+    "tests/review_phase12d8/test_legal_d8.py (xfail D8-02 đã gỡ)"
+   ],
+   "local_gate": "G-H2 (footnote dưới bảng / ảnh trên PDF thật)"
+  },
+  {
+   "finding_id": "D8-STD-01",
+   "severity": "P2",
+   "area": "Công cụ nghiệm thu Standard expected-diff",
+   "title": "Khác biệt byte (xuống dòng, gộp đoạn, NBSP) được báo 'unchanged', exit 0",
+   "status": "FIXED",
+   "fixed_in": "75c9455",
+   "fix": "UNCHANGED chỉ khi byte giống hệt; khoảng trắng / cấu trúc là token; padding bảng chuẩn hóa.",
+   "tests": [
+    "tests/review_phase12d8/test_standard_diff_d8.py",
+    "tests/test_phase12d9_standard_gate.py"
+   ],
+   "local_gate": "G-04"
+  },
+  {
+   "finding_id": "D8-STD-02",
+   "severity": "P2",
+   "area": "Công cụ nghiệm thu Standard expected-diff",
+   "title": "Bằng chứng TSV là túi từ của cả tài liệu: một token ở bất kỳ vùng nào 'chứng minh' mọi hunk; không xét ngữ cảnh vùng OCR",
+   "status": "FIXED",
+   "fixed_in": "75c9455",
+   "fix": "Bằng chứng theo crop / phần tử, mỗi thay đổi dùng một lần, gắn ngữ cảnh; crop sở hữu vị trí mà không dự đoán thay đổi ⇒ hồi quy.",
+   "tests": [
+    "tests/review_phase12d8/test_standard_diff_d8.py",
+    "tests/test_phase12d9_standard_gate.py"
+   ],
+   "local_gate": "G-04"
+  },
+  {
+   "finding_id": "D8-STD-03",
+   "severity": "P2",
+   "area": "Công cụ nghiệm thu Standard expected-diff",
+   "title": "Quy trình trong checklist không tạo được bằng chứng cho công cụ; khớp tên file theo tiền tố",
+   "status": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in": "75c9455, 31f72a8, 42ff481",
+   "fix": "phase12d9_standard_export.py ghi TSV thô + provenance của CHÍNH lần chuyển đổi tạo đầu ra; khớp tên chính xác; manifest SHA-256. Phía v1.2.0: image không có docling_patches — công cụ vẫn xuất (không bằng chứng); --out phải mới / rỗng.",
+   "tests": [
+    "tests/test_phase12d9_standard_gate.py (Tesseract thật, pipeline Docling thật trừ layout)"
+   ],
+   "local_gate": "G-04 (xuất trên Windows với model thật)"
+  },
+  {
+   "finding_id": "D8-STD-04",
+   "severity": "P2",
+   "area": "Công cụ nghiệm thu Standard expected-diff",
+   "title": "Mã thoát 0 cho kết quả không chứng minh gì",
+   "status": "FIXED",
+   "fixed_in": "75c9455, 31f72a8",
+   "fix": "Mã thoát 1 / 2 / 3 cho hồi quy / chưa kiểm / run không chứng minh gì (không tài liệu, thiếu một phía, trùng ID, manifest lệch, bằng chứng thiếu / không xác thực). Tài liệu chuyển đổi lỗi (manifest 'error') ở bất kỳ phía nào ⇒ not verified + run thất bại, kể cả khi không phía nào có đầu ra.",
+   "tests": [
+    "tests/review_phase12d8/test_standard_diff_d8.py",
+    "tests/test_phase12d9_standard_gate.py"
+   ],
+   "local_gate": "G-04"
+  },
+  {
+   "finding_id": "D8-ORI-01",
+   "severity": "P2",
+   "area": "Công cụ chẩn đoán hướng xoay",
+   "title": "phase12_orientation_diagnose.py xoay vùng 90° / 270° ngược chiều với Docling",
+   "status": "FIXED",
+   "fixed_in": "6485c14",
+   "fix": "rotated_copy theo quy ước Docling ((-deg) % 360 rồi rotate(-that)); PDF mode ghi một quy ước góc.",
+   "tests": [
+    "tests/review_phase12d8/test_orientation_gate_d8.py (6 xfail đã gỡ)"
+   ],
+   "local_gate": "G-02 (vùng 90° / 270° thật)"
+  },
+  {
+   "finding_id": "D8-OFF-01",
+   "severity": "P2",
+   "area": "Offline — automatic updater",
+   "title": "Chính công cụ không nói update / finish / rollback là EXPERIMENTAL",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "EXPERIMENTAL trong --help, mỗi lần chạy update / finish / rollback / pin, và trong wrapper.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-OFF-02",
+   "severity": "P2",
+   "area": "Offline — tài liệu phát hành",
+   "title": "Release notes 1.3.0-rc.1 trình bày updater tự động như đường nâng cấp offline; không nhắc quy trình thủ công hay EXPERIMENTAL",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "Release notes 1.3.0-rc.1 dẫn production tới OFFLINE_UPDATE_MANUAL_FALLBACK.md, ghi EXPERIMENTAL.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-OFF-06",
+   "severity": "P2 (tiềm ẩn)",
+   "area": "Offline — build",
+   "title": "migration_required không bao giờ đúng qua đường build chính thức",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "build đặt migration_required khi commit thêm migration sau schema của --base-ref (định dạng manifest không đổi); update / quy trình thủ công dừng.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py",
+    "tests/test_offline_package.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-OFF-11",
+   "severity": "P2 (chỉ đọc mã)",
+   "area": "Offline — Windows build",
+   "title": "build-package.ps1 hỏng khi máy có Python nhưng không có uv",
+   "status": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in": "70f7325",
+   "fix": "[string[]]$python giữ mảng một phần tử (sửa tĩnh; Cloud không có PowerShell).",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py (kiểm tĩnh)"
+   ],
+   "local_gate": "G-07 (máy có Python không có uv, PS 5.1 và PS 7, đường dẫn có dấu cách)"
+  },
+  {
+   "finding_id": "D8-OFF-03",
+   "severity": "P3",
+   "area": "Offline — build",
+   "title": "Build thất bại sau khi đổi tên gói (ghi .sha256 lỗi) làm mất cặp gói + hash trước đó; lỗi là traceback OSError",
+   "status": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in": "70f7325",
+   "fix": "Hash mới ghi bên cạnh gói TRƯỚC khi thay gì; ghi .sha256 cuối lỗi ⇒ cặp mới vẫn đủ; lần build sau khôi phục / dọn file mồ côi.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py (POSIX)"
+   ],
+   "local_gate": "G-07 (Windows: thay file đang mở)"
+  },
+  {
+   "finding_id": "D8-OFF-04",
+   "severity": "P3",
+   "area": "Offline — build",
+   "title": "Kill giữa 'cất .sha256 cũ' và 'đổi tên gói': gói cũ còn nhưng mất hash, không lần build nào khôi phục",
+   "status": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in": "70f7325",
+   "fix": "Build bị kill giữa chừng: lần build sau (giữ khóa) trả hash đúng cho gói đang có, xóa phần thừa.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py (POSIX)"
+   ],
+   "local_gate": "G-07"
+  },
+  {
+   "finding_id": "D8-OFF-05",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "§3.3–3.5 không ràng buộc payload với manifest đã ký: SHA256SUMS không được ký, không so với manifest, không thấy file thừa (chỉ hash kênh tin cậy §3.1 xác thực payload)",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "§3.4 thủ công: mọi file đúng manifest ĐÃ KÝ (thừa / thiếu / sửa bị chặn), python3 -I.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py (chạy đúng lệnh của tài liệu)"
+   ],
+   "local_gate": "W-INT (máy chủ thật)"
+  },
+  {
+   "finding_id": "D8-OFF-07",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "Thư mục làm việc đoán trước được (/var/tmp/cb5400-<ver>), install -d chấp nhận thư mục người khác tạo sẵn; chạy lại §4 nối thêm vào $NOTES gây 'STOP' giả",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "Thư mục làm việc MỚI của root (test ! -e && install -o root), WORK có dấu thời gian.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py (root)"
+   ],
+   "local_gate": "W-INT"
+  },
+  {
+   "finding_id": "D8-OFF-08",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "snapshot --compare chỉ phát hiện id bị thiếu, không thấy bản ghi bị sửa tại chỗ",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "snapshot --compare báo bản ghi sửa tại chỗ; --no-writes sau §7.3 thất bại khi có thêm / sửa / dữ liệu không đọc được.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "local_gate": "W-INT"
+  },
+  {
+   "finding_id": "D8-OFF-10",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "Rollback: ứng dụng được lùi và mở lại TRƯỚC khi mã nguồn được đưa về, không recreate sau đó",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "§10: mã nguồn về trước, rồi mới tạo lại ứng dụng trên image cũ.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "local_gate": "W-INT"
+  },
+  {
+   "finding_id": "D8-OFF-12",
+   "severity": "P3",
+   "area": "Offline — Windows",
+   "title": "phase12-test.ps1 còn dùng 2>$null với lệnh native dưới ErrorActionPreference=Stop (chỉ đọc mã)",
+   "status": "LOCAL VERIFICATION REQUIRED",
+   "fixed_in": "70f7325",
+   "fix": "phase12-test.ps1 không chuyển hướng stderr của lệnh native (sửa tĩnh).",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py (kiểm tĩnh)"
+   ],
+   "local_gate": "G-07 (Docker Desktop tắt ⇒ 'Docker is not running')"
+  },
+  {
+   "finding_id": "D8-OFF-13",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "Lệnh python -c nhiều dòng nằm trong mục danh sách bị thụt lề: chép từ file .md thô (gói chỉ có bản thô) ⇒ IndentationError ở bước bắt buộc 'chờ job nền'",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "Lệnh python -c một dòng: chép từ file .md thô vẫn chạy.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-OFF-14",
+   "severity": "P3",
+   "area": "Offline — quy trình thủ công",
+   "title": "Phép chứng minh F1 == F2 đạt cả khi không đọc được dữ liệu (data: null ở cả hai)",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "F1 == F2 thất bại khi dữ liệu không đọc được.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-OFF-15",
+   "severity": "P3",
+   "area": "Offline — hợp đồng tích hợp",
+   "title": "Hợp đồng adapter để --no-deps là tùy chọn; 'DB không bị recreate' dựa vào script vận hành không bị ràng buộc (chỉ đọc mã; phát hiện được sau bằng kiểm container DB)",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "Hợp đồng adapter: --no-deps và tên service ứng dụng BẮT BUỘC; C6 bỏ 'hoặc'.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "local_gate": "W-INT-10 (script vận hành production — cổng tích hợp riêng)"
+  },
+  {
+   "finding_id": "D8-ORI-02",
+   "severity": "P3",
+   "area": "Orientation gate",
+   "title": "Cổng không khởi động được chỉ lộ ở một dòng status dạng chữ và một WARNING: readiness.quality_config()['osd_gate'] = True theo biến môi trường; status --json không có trạng thái cổng; metadata chuyển đổi không ghi",
+   "status": "FIXED",
+   "fixed_in": "949138a",
+   "fix": "Fingerprint readiness ghi cổng THỰC SỰ chạy; status --json mang trạng thái cổng + bản vá.",
+   "tests": [
+    "tests/review_phase12d8/test_orientation_gate_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-ORI-03",
+   "severity": "P3",
+   "area": "Orientation gate",
+   "title": ".gitattributes không sửa checkout Windows đã có: sau khi pull file cổng vẫn w/crlf (blob không đổi nên Git không ghi lại); chỉ sed trong Dockerfile bảo vệ. W-12D7-00c sẽ hiện w/crlf sau pull — dễ đọc nhầm là sửa không đạt",
+   "status": "FIXED",
+   "fixed_in": "(tài liệu 12D9)",
+   "fix": "Checklist 12D7 + D-40: checkout Windows đã có vẫn có thể hiện w/crlf sau pull — chỉ chứng minh khả năng.",
+   "tests": [
+    "docs/review/PHASE12D7_LOCAL_ACCEPTANCE_CHECKLIST.md",
+    "docs/ocr/DECISIONS.md D-40"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-ORI-04",
+   "severity": "P3",
+   "area": "Orientation gate — tài liệu",
+   "title": "W-12D7-01a kết luận 'nguyên nhân E1-05 xác nhận' chỉ từ việc có \\r / dòng log: điều đó chứng minh cổng đã tắt, không chứng minh 11 vùng bị xoay vì thế",
+   "status": "FIXED",
+   "fixed_in": "(tài liệu 12D9)",
+   "fix": "W-12D7-01a chỉ kết luận 'cổng đã tắt'; 12E2: CRLF không phải nguyên nhân 11 cụm (OSD 0°).",
+   "tests": [
+    "docs/review/PHASE12D7_LOCAL_ACCEPTANCE_CHECKLIST.md",
+    "docs/ocr/DECISIONS.md D-40"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-STD-05",
+   "severity": "P3",
+   "area": "Standard expected-diff",
+   "title": "old_parser_form không đúng pandas ở biên (chữ số Unicode, ≥ 2**63, 'NAN'); sửa thật trong bảng Markdown đổi dòng kẻ ⇒ báo nhầm 'unexpected regression'",
+   "status": "FIXED",
+   "fixed_in": "75c9455",
+   "fix": "Văn bản v1.2.0 tính lại bằng pandas thật (parse upstream) và sanitize_text upstream, không mô phỏng.",
+   "tests": [
+    "tests/review_phase12d8/test_standard_diff_d8.py (D8-STD-05 đã gỡ)"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-ORC-01",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Hàng của bảng không được so chữ ở chế độ identity (đổi chỗ ô / hàng trong tài liệu + đầu ra: 0/138 bị phát hiện)",
+   "status": "FIXED",
+   "fixed_in": "d03830d",
+   "fix": "Hàng bảng so với ô KHAI BÁO (đổi chỗ / làm rỗng ô ⇒ altered).",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-ORC-02",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Khối code (fence / thụt 4) vô hình với display_lines: chữ bịa trong đó không bị thấy",
+   "status": "FIXED",
+   "fixed_in": "d03830d",
+   "fix": "display_lines hiển thị khối code (fence / thụt 4).",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-ORC-03",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Chữ artifact đã bỏ (số trang, header) có thể được chèn lại ở chỗ khác mà không bị tính",
+   "status": "FIXED",
+   "fixed_in": "d03830d",
+   "fix": "Chỉ đơn vị tùy chọn ĐANG HIỂN THỊ mới miễn token.",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-ORC-04",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Cấu trúc khối (đoạn ↔ tiêu đề, blockquote) không được đo",
+   "status": "FIXED",
+   "fixed_in": "d03830d",
+   "fix": "Kiểu khối hiển thị phải khớp kiểu item của tài liệu (heading / quote / code / bảng / placeholder).",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-ORC-05",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Đảo thứ tự bão hòa ở fixture Docling vốn đã đảo (f12_two_columns, d5_f02_voucher_*): chỉ 15/37 phép hoán vị thêm bị thấy; cổng pytest chỉ là Legal <= Standard",
+   "status": "FIXED",
+   "fixed_in": "d03830d",
+   "fix": "false_reordering = số cặp sai thứ tự (Kendall); len − LIS giữ ở false_reordering_lis.",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py",
+    "benchmark 1.3.1 tạo lại"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-ORC-06",
+   "severity": "P3",
+   "area": "Oracle",
+   "title": "Nối liên trang của cặp gt='join' không bị tính là lỗi dù 12D7 cấm mọi phép nối; chính sách chỉ được giữ bởi test riêng và counts tự báo",
+   "status": "FIXED",
+   "fixed_in": "d03830d",
+   "fix": "Cặp khai báo bị nối qua trang ⇒ false merge (D-38).",
+   "tests": [
+    "tests/review_phase12d8/test_oracle_d8.py"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-OFF-09",
+   "severity": "P4",
+   "area": "Offline — khóa",
+   "title": "Mọi OSError của flock / msvcrt.locking đều được báo là 'đang bị tiến trình <pid cũ> giữ'",
+   "status": "FIXED",
+   "fixed_in": "70f7325",
+   "fix": "Lỗi khóa khác 'đang bận' (ENOLCK, EOPNOTSUPP) không còn báo 'held by process <pid cũ>'.",
+   "tests": [
+    "tests/review_phase12d8/test_offline_d8.py"
+   ],
+   "local_gate": "G-07 (msvcrt thật)"
+  },
+  {
+   "finding_id": "D8-ORI-05",
+   "severity": "P4",
+   "area": "Orientation gate — test",
+   "title": "Test Dockerfile của 12D7 không bắt được bước tự kiểm bị nuốt lỗi (|| true, | cat, COPY sau đó); Dockerfile thật thì đúng",
+   "status": "FIXED",
+   "fixed_in": "6485c14",
+   "fix": "Test chứng minh bước tự kiểm cổng trong Dockerfile làm hỏng build được (không || true, ; true, pipe, COPY sau).",
+   "tests": [
+    "tests/test_phase12d7_orientation.py::test_the_gate_self_test_can_fail_the_build"
+   ],
+   "local_gate": "G-01a"
+  },
+  {
+   "finding_id": "D8-08",
+   "severity": "P4",
+   "area": "Bản vá TSV",
+   "title": "TSV hỏng mà MỌI dòng có trường thứ 13: cột chỉ mục ngầm được định kiểu khác upstream (str thay vì float); cột và chữ vẫn như upstream, không ảnh hưởng ô OCR",
+   "status": "DEFERRED WITH JUSTIFICATION",
+   "fixed_in": "—",
+   "fix": "TSV hỏng mà mọi dòng có trường thứ 13: chỉ cột chỉ mục ngầm được định kiểu khác upstream; mọi cột và chữ vẫn như upstream, không ảnh hưởng nội dung; Tesseract không ghi dòng như vậy. Giữ test control.",
+   "tests": [
+    "tests/review_phase12d8/test_tsv_patch_d8.py::test_control_d8_08_extra_field_rows_type_the_implicit_index_differently"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-09",
+   "severity": "P4",
+   "area": "Báo cáo hồi quy / test",
+   "title": "Báo cáo 12D5 / 12D7 không ghi tên 3 test bị deselect; một test dùng ssh-keygen không có skip marker; một test phụ thuộc việc EasyOCR đã cài",
+   "status": "FIXED",
+   "fixed_in": "e2d19fb",
+   "fix": "Fixture signing skip khi không có ssh-keygen (phủ cả test review_phase12d4 không có marker — kiểm bằng AST: không còn test nào dùng signing mà không được bảo vệ); test_ocr_engine_manager::TestLifecycle::test_assert_ready_raises_value_error stub bước kiểm dependency (chủ đề là probe runtime; trước đây fail khi chưa cài EasyOCR); test option EasyOCR importorskip('easyocr'). Báo cáo hồi quy 12D9 chạy test_chunking với bảng mã tiktoken thật (không deselect) và ghi tên mọi test không chạy.",
+   "tests": [
+    "tests/test_offline_package.py (fixture signing)",
+    "tests/test_ocr_engine_manager.py",
+    "tests/test_ocr_integration.py",
+    "docs/review/PHASE12D9_REGRESSION_REPORT.md"
+   ],
+   "local_gate": "—"
+  },
+  {
+   "finding_id": "D8-10",
+   "severity": "P4",
+   "area": "Bản vá TSV — hiển thị",
+   "title": "ocr.cli status in trạng thái cổng hướng xoay nhưng không in trạng thái bản vá TSV (docling_patches.status() chỉ được dùng bởi inventory của gói offline)",
+   "status": "FIXED",
+   "fixed_in": "949138a, ac34bb9",
+   "fix": "ocr.cli status in trạng thái bản vá TSV (E0-07) và bản vá chữ (D8-03 / D8-02); --json trên các dòng liên quan. 12D9: dòng Tesseract nêu cả E0-07 và E2-04; --json liệt kê hai patch ID.",
+   "tests": [
+    "tests/review_phase12d8/test_orientation_gate_d8.py",
+    "tests/test_offline_package.py"
+   ],
+   "local_gate": "—"
+  }
+ ],
+ "related_prior_findings": [
+  {
+   "finding_id": "E0-07",
+   "status": "FIXED — Windows 12E2: 383/383 lần gọi, 3184 token số (trên 4587eb7)",
+   "note": "Bản vá giữ nguyên trong 12D9 (stderr được giữ để phân loại + timeout, E2-04); Windows cần chạy lại trên commit cuối."
+  },
+  {
+   "finding_id": "E1-09",
+   "status": "FIXED — Windows 12E2: 4/4 (trên 4587eb7)",
+   "note": "Legal 1.3.1 vẫn không nối qua trang (D-38)."
+  },
+  {
+   "finding_id": "E1-03",
+   "status": "FIXED — Windows 12E2 (trên 4587eb7)",
+   "note": "—"
+  },
+  {
+   "finding_id": "E1-04",
+   "status": "FIXED — Windows 12E2: build PS 5.1 / 7 READY, msvcrt 9 PASS 3 SKIP, build song song bị từ chối, docker save bị ngắt giữ gói + SHA cũ",
+   "note": "12D9 đổi trình tự publish (D8-OFF-03 / 04): G-07 chạy lại."
+  },
+  {
+   "finding_id": "E1-05",
+   "status": "TÁCH: lỗi build cổng hướng xoay = FIXED; chất lượng OCR 11 vùng = E2-02 (NEEDS LOCAL EVIDENCE)",
+   "note": "CRLF image cũ xác nhận và đã sửa; không phải nguyên nhân 11 cụm (OSD 0°)."
+  },
+  {
+   "finding_id": "E0-05",
+   "status": "FIXED — Windows 12E2: OK, DB container không đổi",
+   "note": "—"
+  },
+  {
+   "finding_id": "E1-01",
+   "status": "EVIDENCE REQUIRED",
+   "note": "Windows đã tái hiện bằng fixture tổng hợp; chưa nhận báo cáo đã làm sạch (PHASE12E2_FOLLOWUP_SANITIZED.md) — không suy diễn."
+  },
+  {
+   "finding_id": "E1-02",
+   "status": "EVIDENCE REQUIRED",
+   "note": "Như trên."
+  },
+  {
+   "finding_id": "E1-06",
+   "status": "EVIDENCE REQUIRED",
+   "note": "Như trên."
+  },
+  {
+   "finding_id": "E1-08",
+   "status": "EVIDENCE REQUIRED",
+   "note": "Như trên."
+  }
+ ],
+ "final_code_commit": "4b3e1d1"
+}

@@ -63,6 +63,22 @@ sys.path.insert(0, str(project_root))
 import pytest  # noqa: E402
 
 
+# R2-21 (Phase 12D5): open_notebook.ocr.runtime.ensure_tessdata_prefix() pins
+# TESSDATA_PREFIX for the whole process - by design in the application (D-04),
+# but in the test process it leaked into every later test (a test that lists
+# the system's Tesseract languages then saw the test's own empty tessdata and
+# was SKIPPED in the full run, PASSED alone). Every test now ends with the value
+# it started with.
+@pytest.fixture(autouse=True)
+def _restore_tessdata_prefix():
+    saved = os.environ.get("TESSDATA_PREFIX")
+    yield
+    if saved is None:
+        os.environ.pop("TESSDATA_PREFIX", None)
+    else:
+        os.environ["TESSDATA_PREFIX"] = saved
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """Expose each phase's report as item.rep_<phase> (used by acceptance reports)."""
@@ -99,3 +115,18 @@ def pytest_report_header(config):
 def database_plan(pytestconfig):
     """The database decision of this test run (tests/db_isolation.py)."""
     return pytestconfig._database_plan
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _docling_text_preservation():
+    """Production applies the Phase 12D9 Docling text patches (D8-03 hyphens,
+    D8-02 attached footnotes) before every conversion; the suite runs with
+    them whatever the test order. A test that documents UPSTREAM behaviour
+    uses ``docling_patches.upstream_text_preservation()``."""
+    try:
+        from open_notebook.ocr import docling_patches
+    except Exception:  # noqa: BLE001 - a test run without the OCR package
+        yield
+        return
+    docling_patches.apply_text_preservation(required=False)
+    yield

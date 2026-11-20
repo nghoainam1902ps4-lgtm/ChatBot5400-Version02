@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -46,7 +47,7 @@ import {
   useUpdateOcrConfig,
   useVerifyOcrCustomVersion,
 } from '@/lib/hooks/use-ocr'
-import type { OcrCustomVersion, OcrEngineId, OcrEngineStatus, OcrGeneralInfo, OcrTestResult } from '@/lib/types/api'
+import type { OcrConfig, OcrCustomVersion, OcrEngineId, OcrEngineStatus, OcrGeneralInfo, OcrTestResult, OcrTextNormalization } from '@/lib/types/api'
 
 // Static key maps (the locale test requires literal keys in source).
 const STATE_KEYS: Record<string, string> = {
@@ -712,6 +713,71 @@ function EngineRow({
   )
 }
 
+/**
+ * Phase 12 (docs/ocr D-34): post-OCR text normalization of PDFs. A separate
+ * save so changing it never touches the OCR engine options above. "Legal" can
+ * only be chosen when the deployment enables it (the API refuses otherwise).
+ */
+function TextNormalizationPanel({ config }: { config: OcrConfig }) {
+  const { t } = useTranslation()
+  const updateConfig = useUpdateOcrConfig()
+  const saved: OcrTextNormalization = config.ocr_text_normalization ?? 'standard'
+  const effective: OcrTextNormalization = config.ocr_text_normalization_effective ?? 'standard'
+  const available = !!config.legal_normalization_available
+  const [mode, setMode] = useState<OcrTextNormalization>(saved)
+  useEffect(() => setMode(saved), [saved])
+  const modeLabel = (m: OcrTextNormalization) =>
+    m === 'legal' ? t('ocr.textNormalization.legal') : t('ocr.textNormalization.standard')
+
+  return (
+    <section aria-labelledby="ocr-text-normalization" className="space-y-3" data-testid="ocr-text-normalization">
+      <div>
+        <h3 id="ocr-text-normalization" className="text-sm font-semibold">{t('ocr.textNormalization.title')}</h3>
+        <p className="text-sm text-muted-foreground">{t('ocr.textNormalization.desc')}</p>
+      </div>
+      <RadioGroup
+        value={mode}
+        onValueChange={(v) => setMode(v === 'legal' ? 'legal' : 'standard')}
+        aria-labelledby="ocr-text-normalization"
+      >
+        <div className="flex items-start gap-2">
+          <RadioGroupItem value="standard" id="ocr_norm_standard" className="mt-0.5" />
+          <div className="space-y-0.5">
+            <Label htmlFor="ocr_norm_standard">{t('ocr.textNormalization.standard')}</Label>
+            <p className="text-sm text-muted-foreground">{t('ocr.textNormalization.standardHelp')}</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-2">
+          <RadioGroupItem value="legal" id="ocr_norm_legal" className="mt-0.5" disabled={!available} />
+          <div className="space-y-0.5">
+            <Label htmlFor="ocr_norm_legal">{t('ocr.textNormalization.legal')}</Label>
+            <p className="text-sm text-muted-foreground">{t('ocr.textNormalization.legalHelp')}</p>
+            <p className="text-xs text-muted-foreground">{t('ocr.textNormalization.legalDetail')}</p>
+          </div>
+        </div>
+      </RadioGroup>
+      {!available && (
+        <p className="text-xs text-muted-foreground" data-testid="ocr-norm-unavailable">{t('ocr.textNormalization.unavailable')}</p>
+      )}
+      {saved === 'legal' && effective !== 'legal' && (
+        <Alert><AlertDescription>{t('ocr.textNormalization.inactive')}</AlertDescription></Alert>
+      )}
+      <p className="text-xs text-muted-foreground" data-testid="ocr-norm-effective">
+        {t('ocr.textNormalization.effective', { mode: modeLabel(effective) })}
+        {config.legal_normalizer_version ? ` · v${config.legal_normalizer_version}` : ''}
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={mode === saved || updateConfig.isPending || (mode === 'legal' && !available)}
+        onClick={() => updateConfig.mutate({ ocr_text_normalization: mode })}
+      >
+        {updateConfig.isPending ? t('common.saving') : t('ocr.textNormalization.save')}
+      </Button>
+    </section>
+  )
+}
+
 export function OcrEngineManager() {
   const { t } = useTranslation()
   const { data, isLoading, error, refetch } = useOcrEngines()
@@ -884,6 +950,8 @@ export function OcrEngineManager() {
             {updateConfig.isPending ? t('common.saving') : t('ocr.saveConfig')}
           </Button>
         </section>
+
+        <TextNormalizationPanel config={config} />
       </CardContent>
 
       <TestDialog jobId={testJob?.id ?? null} engineName={testJob?.name ?? ''} onClose={() => setTestJob(null)} />

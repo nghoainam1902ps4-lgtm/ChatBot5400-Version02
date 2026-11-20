@@ -62,6 +62,17 @@ class ContentSettings(RecordModel):
         False,
         description="OCR the whole page even where the PDF has a text layer.",
     )
+    # Phase 12 (docs/ocr D-34): post-OCR text normalization of PDFs. "standard"
+    # keeps the v1.2.0 output byte for byte; "legal" applies only while the
+    # deployment sets OCR_LEGAL_NORMALIZATION_ENABLED=true. The table is
+    # SCHEMALESS and a missing value reads as "standard": no migration.
+    ocr_text_normalization: Optional[Literal["standard", "legal"]] = Field(
+        "standard",
+        description=(
+            "Post-OCR text normalization for PDFs: 'standard' (unchanged) or "
+            "'legal' (Legal Document mode, opt-in per deployment)."
+        ),
+    )
     docling_formulas: Optional[bool] = Field(
         False,
         description=(
