@@ -11,3 +11,7 @@ scripts/offline/rb1/restore_rapidocr_assets.py -text
 scripts/offline/rb1/LICENSE.txt -text
 scripts/offline/rb1/assets/rapidocr/ppocrv6_dict.txt -text
 tests/fixtures/phase12f1/f0_synthetic.py -text
+tests/fixtures/phase12f1/f0_preserve.py -text
+tests/fixtures/phase12f1/f0_schema.py -text
+tests/fixtures/phase12f1/f0_live_control.py -text
+tests/fixtures/phase12f1/f0_case_matrix.py -text

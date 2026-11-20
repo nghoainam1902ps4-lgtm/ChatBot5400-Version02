@@ -461,6 +461,7 @@ def test_preflight_binds_the_service_name_to_the_compose_label(monkeypatch, labe
         )
 
     monkeypatch.setattr(package, "run", run)
+
     def call():
         return setup.preflight(
             _payload(), "b" * 64, IMAGE, TAG, service="open_notebook"

@@ -796,7 +796,7 @@ def _digest(value: Any) -> bool:
 
 def _bound_evidence(
     folder: Path, entry: dict[str, Any], run: dict[str, Any]
-) -> tuple[dict, list, dict]:
+) -> tuple[dict, list, dict, list]:
     """Validate the files and row identities of one completed export."""
     expected = entry.get("evidence_files")
     actual = {

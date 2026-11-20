@@ -47,7 +47,7 @@ def _implementation() -> dict[str, Any]:
 
 
 def _signature(*files: Path) -> tuple:
-    out = []
+    out: list[tuple] = []
     for f in files:
         try:
             st = f.stat()

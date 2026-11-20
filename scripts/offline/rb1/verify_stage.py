@@ -126,7 +126,8 @@ def verify(
         raise Refused("stage folder missing")
     _trusted_parents(stage)
     _trusted(stage, "stage folder")
-    present_files, present_dirs = set(), set()
+    present_files: set[str] = set()
+    present_dirs: set[str] = set()
     for path in stage.rglob("*"):
         rel = path.relative_to(stage).as_posix()
         _trusted(path, rel)
