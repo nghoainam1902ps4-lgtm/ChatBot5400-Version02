@@ -856,19 +856,139 @@ def _bound_evidence(
         if key in elements or not isinstance(key[0], int) or key[0] < 1:
             raise ValueError("duplicate or invalid element identity")
         elements[key] = record
-    return elements, _json_lines(folder / "output_spans.jsonl", identity), crops
+    footnotes = _json_lines(folder / "footnotes.jsonl", identity)
+    return (
+        elements,
+        _json_lines(folder / "output_spans.jsonl", identity),
+        crops,
+        footnotes,
+    )
+
+
+class _NoGeometry:
+    """A cell whose box the evidence does not record: no line-break evidence."""
+
+    rect = None
+
+
+def _recorded_geometry(cells: list[dict[str, Any]]) -> list[Any]:
+    """Stand-ins carrying the boxes the export recorded for TSV-bound cells
+    (top-left origin), for the candidate's own ``same_line_flags``. A cell
+    without a recorded box gives no evidence (its flag is None: no close-up)."""
+    from docling_core.types.doc import BoundingBox, CoordOrigin
+    from docling_core.types.doc.page import BoundingRectangle
+
+    out: list[Any] = []
+    for cell in cells:
+        if "invocation" not in cell or cell.get("bbox") is None:
+            out.append(_NoGeometry())
+            continue
+        left, top, right, bottom = _bounds(cell["bbox"])
+        rect = BoundingRectangle.from_bounding_box(
+            BoundingBox(
+                l=left, t=top, r=right, b=bottom, coord_origin=CoordOrigin.TOPLEFT
+            )
+        )
+        out.append(type("RecordedCell", (), {"rect": rect})())
+    return out
+
+
+def _element_proof(
+    element: dict[str, Any],
+    crops: dict[str, Any],
+    taken: set[tuple[str, int]],
+) -> tuple[str, Optional[str], set[str], set[tuple[str, int]]]:
+    """Rebuild one recorded element from its source evidence ONLY (D12-03).
+
+    Returns (candidate text, v1.2.0 text or None when an OCR cell has no TSV
+    row, the approved causes of their difference, the TSV rows used). Every
+    OCR cell's candidate text must be its own TSV row as the candidate parses
+    it; the candidate text must be the patched join of those cells with the
+    line-break evidence of their recorded boxes; the v1.2.0 text is the
+    upstream join of the same rows as pandas parsed them. Anything else -
+    a token no row holds, a dropped or reordered token, a row used twice, a
+    close-up without box evidence - raises ValueError (NOT VERIFIED).
+    """
+    from open_notebook.ocr.docling_patches import same_line_flags
+
+    cells = element["cells"]
+    if not isinstance(cells, list) or not cells:
+        raise ValueError("element has no source cells")
+    new_tokens: list[str] = []
+    old_tokens: list[str] = []
+    used: set[tuple[str, int]] = set()
+    unmapped = False
+    parse_changed = False
+    for cell in cells:
+        token = cell["text"]
+        if not isinstance(token, str):
+            raise ValueError("invalid cell text")
+        if cell.get("unmapped_ocr"):
+            if "invocation" in cell:
+                raise ValueError("an unmapped OCR cell cannot name a TSV row")
+            unmapped = True  # its v1.2.0 form is unknown
+        elif "invocation" in cell:
+            invocation, row = cell["invocation"], cell["row"]
+            page, crop, rows, baseline = crops[invocation]
+            left, top, right, bottom = _bounds(cell["bbox"])
+            raw = rows[row].strip()
+            key = (invocation, row)
+            if (
+                page != element["page"]
+                or raw != cell["raw"]
+                or token != raw.replace("\x02", "-").strip()
+                or key in used
+                or key in taken
+                or not crop[0] <= (left + right) / 2 <= crop[2]
+                or not crop[1] <= (top + bottom) / 2 <= crop[3]
+            ):
+                raise ValueError("cell does not belong to the recorded crop")
+            used.add(key)
+            previous = baseline.get(row)
+            previous = previous.strip() if previous else None
+            if previous != token:
+                parse_changed = True
+            if previous:
+                old_tokens.append(previous)
+        elif token:
+            old_tokens.append(token)  # a text-layer cell: the same on both sides
+        new_tokens.append(token)
+    flags = same_line_flags(_recorded_geometry(cells))
+    candidate = _patched_join(new_tokens, flags)
+    if candidate != element["text"]:
+        raise ValueError("candidate text does not follow its source cells")
+    causes: set[str] = set()
+    if parse_changed:
+        causes.add("tsv")
+    if _upstream_join(new_tokens) != candidate:
+        causes.add("hyphen")
+    baseline_text = None if unmapped else _upstream_join(old_tokens)
+    return candidate, baseline_text, causes, used
+
+
+def _token_forms(token: str) -> list[str]:
+    """How one cell's text can appear in the Markdown output (as is, after the
+    join's character normalization, after Markdown escaping)."""
+    normalized = _patched_join([token], [])
+    forms = [token, normalized, markdown(normalized)]
+    return list(dict.fromkeys(f for f in forms if f))
 
 
 def verify_bound_output(
     before: str, after: str, folder: Path, entry: dict[str, Any], run: dict[str, Any]
 ) -> dict:
-    """Reconstruct baseline bytes using only serialization spans owned by source items."""
+    """Reconstruct the baseline bytes AND the candidate bytes of every span from
+    its source evidence only (D12-03: nothing the candidate declares about its
+    own text is trusted without the TSV rows / boxes that produced it)."""
     try:
-        elements, spans, crops = _bound_evidence(folder, entry, run)
+        elements, spans, crops, footnotes = _bound_evidence(folder, entry, run)
         output = []
         cursor = 0
         refs: set[str] = set()
         hyphens: set[tuple[str, int]] = set()
+        taken: set[tuple[str, int]] = set()
+        used_elements: set[tuple[Any, Any]] = set()
+        used_notes: set[int] = set()
         expected_hyphens = {
             (invocation, row)
             for invocation, (_, _, rows, _) in crops.items()
@@ -897,55 +1017,84 @@ def verify_bound_output(
                     != span["text"]
                 ):
                     raise ValueError("unbound attached footnotes")
+                for note in notes:
+                    # each note: a footnote the export wrote, and the recorded
+                    # element whose source cells produce exactly that text
+                    n = next(
+                        (
+                            i
+                            for i, rec in enumerate(footnotes)
+                            if i not in used_notes and rec.get("text") == note
+                        ),
+                        None,
+                    )
+                    if n is None:
+                        raise ValueError("attached footnote without its export record")
+                    used_notes.add(n)
+                    owner = [
+                        key
+                        for key, rec in elements.items()
+                        if key not in used_elements
+                        and key[0] == footnotes[n].get("page")
+                        and markdown(str(rec.get("text"))) == note
+                    ]
+                    if len(owner) != 1:
+                        raise ValueError("attached footnote without one source element")
+                    _, _, _, rows_used = _element_proof(
+                        elements[owner[0]], crops, taken
+                    )
+                    used_elements.add(owner[0])
+                    taken |= rows_used
                 output.extend((after[cursor:start], previous))
                 cursor = end
                 classes.add(EXPECTED_FOOTNOTE)
                 continue
-            element = elements[(span["page"], span["cluster"])]
+            key = (span["page"], span["cluster"])
+            element = elements[key]
             if (
-                span["bbox"] != element["bbox"]
+                key in used_elements
+                or span["bbox"] != element["bbox"]
                 or markdown(element["text"]) != after[start:end]
             ):
                 raise ValueError("source span does not match the output")
-            old_cells, cell_ids = [], set()
-            for cell in element["cells"]:
-                token = cell["text"]
-                if cell.get("unmapped_ocr"):
-                    token = None
-                    if span["text"] != span["v120_text"]:
-                        raise ValueError("change includes an unmapped OCR cell")
-                if "invocation" in cell:
-                    invocation, row = cell["invocation"], cell["row"]
-                    page, crop, rows, baseline = crops[invocation]
-                    left, top, right, bottom = _bounds(cell["bbox"])
-                    if (
-                        page != span["page"]
-                        or rows[row].strip() != cell["raw"]
-                        or not crop[0] <= (left + right) / 2 <= crop[2]
-                        or not crop[1] <= (top + bottom) / 2 <= crop[3]
-                    ):
-                        raise ValueError("cell does not belong to the recorded crop")
-                    token = baseline.get(row)
-                    cell_ids.add((invocation, row))
-                if token:
-                    old_cells.append(token.strip())
+            used_elements.add(key)
+            _, baseline_text, causes, cell_ids = _element_proof(element, crops, taken)
+            taken |= cell_ids
             old_text = span["v120_text"]
-            if (
-                old_text != span["text"]
-                and markdown(_upstream_join(old_cells)) != old_text
-            ):
+            changed = old_text != span["text"]
+            if baseline_text is None:
+                if changed:
+                    raise ValueError("change includes an unmapped OCR cell")
+            elif markdown(baseline_text) != old_text:
                 raise ValueError("baseline span does not follow source cells")
+            if changed and not causes:
+                raise ValueError("difference without an approved cause")
             position = start
             mapped = iter(span["hyphens"])
             occurrence = next(mapped, None)
-            for cell in element["cells"]:
+            cells = [cell for cell in element["cells"] if cell["text"]]
+            for n, cell in enumerate(cells):
                 token = cell["text"]
-                if not token:
-                    continue
                 while position < end and after[position].isspace():
                     position += 1
-                if position + len(token) > end or not after.startswith(token, position):
+                form = next(
+                    (
+                        f
+                        for f in _token_forms(token)
+                        if position + len(f) <= end and after.startswith(f, position)
+                    ),
+                    None,
+                )
+                if form is None or (form != token and "-" in token):
+                    # the whole span must be walked: a changed span, or one
+                    # with hyphen rows still to place, is not proven
+                    if changed or any(
+                        "-" in c["text"] and "invocation" in c for c in cells[n:]
+                    ):
+                        raise ValueError("span does not follow its source cells")
+                    position = end
                     break
+                token = form
                 if "-" in token and "invocation" in cell:
                     key = (cell["invocation"], cell["row"])
                     if (
@@ -967,8 +1116,10 @@ def verify_bound_output(
                 position += len(token)
             if occurrence is not None:
                 raise ValueError("unmatched output occurrence")
-            if old_text != span["text"]:
-                causes = _tsv_cause(old_text, span["text"]).split("+")
+            if changed and after[position:end].strip():
+                raise ValueError("span holds text no source cell produced")
+            if changed:
+                # the causes the evidence proves, not a guess from the texts
                 classes.update(CAUSE_CLASS[cause] for cause in causes)
             output.extend((after[cursor:start], old_text))
             cursor = end

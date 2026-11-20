@@ -563,7 +563,6 @@ def test_bound_gate_control_unchanged_span_is_accepted(tmp_path):
     assert report["class"] not in (gate.NOT_VERIFIED, gate.UNEXPECTED), report
 
 
-@pytest.mark.xfail(strict=True, reason=D12_03)
 @pytest.mark.parametrize(
     "joined",
     [
@@ -581,7 +580,6 @@ def test_bound_gate_refuses_candidate_text_its_own_rows_do_not_support(
     assert report["class"] == gate.NOT_VERIFIED, report
 
 
-@pytest.mark.xfail(strict=True, reason=D12_03)
 def test_release_gate_refuses_a_candidate_join_defect_real_ocr(
     d12_rendered,  # noqa: F811
     monkeypatch,
