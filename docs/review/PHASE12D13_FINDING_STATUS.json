@@ -1,0 +1,83 @@
+{
+  "phase": "12D13",
+  "title": "Final targeted remediation (Claude Code, Windows Local)",
+  "date": "2026-11-20",
+  "repository": "nghoainam1902ps4-lgtm/ChatBot5400-Version02",
+  "pr": 50,
+  "pr_state": "draft (unchanged)",
+  "base_candidate": "18eeecbfd2cc42549e57cdb866a405083b41a657",
+  "review_branch": "claude/jolly-knuth-rivla0 (26ff1c1, kept; fast-forwarded into the candidate history, review controls unchanged)",
+  "code_commit": "f165399 (runtime code = 8b94a3f + type annotations only); image built from 8b94a3f",
+  "new_candidate": "see PHASE12D13_HANDOVER.md (head of feature/legal-document-normalization after this phase)",
+  "candidate_image": {
+    "tag": "chatbot5400:phase12-test-8b94a3f",
+    "id": "sha256:f03828c55c9c4b1e7a6fc5e9a1a8cd010f432e6d6df7d4191b2b512b6641d5ed",
+    "revision_label": "8b94a3f5df8c6dddade673adbc2a52bc606503ce",
+    "runtime": {"rapidocr": "3.9.2", "backend": "torch", "torch": "2.14.0+cpu", "docling": "2.129.0", "content-core": "2.0.7"}
+  },
+  "findings": {
+    "D12-03": {
+      "severity": "P1 (release gate)",
+      "status": "FIXED",
+      "commit": "842c9b5",
+      "files": ["scripts/ocr/phase12_standard_diff.py"],
+      "fix": "verify_bound_output rebuilds the candidate text of every span from its TSV rows and recorded boxes (patched join), the v1.2.0 text from the same rows (upstream join); every TSV row used once, every element once, whole-span walk, causes derived from the proof, attached footnotes bound to their export record and one source element; missing provenance -> NOT VERIFIED; exit codes unchanged",
+      "original_controls": "4/4 (RED 4 failed on 26ff1c1 with --runxfail; GREEN 5 passed incl. the valid control)",
+      "markers_removed": 2,
+      "assertions_or_fixtures_changed": false
+    },
+    "D10-06": {"status": "VERIFIED_FIXED (residual D12-03 closed)"},
+    "D10-05": {"status": "VERIFIED_FIXED (12D12), controls pass on the final code"},
+    "D10-07": {"status": "VERIFIED_FIXED (12D12), controls pass on the final code"},
+    "D12-01": {"severity": "P3", "status": "OPEN (not blocking, recorded)", "control": "xfail(strict) kept unchanged"},
+    "D12-02": {"severity": "P3", "status": "OPEN (not blocking, recorded)", "control": "xfail(strict) kept unchanged"},
+    "RB-1": {
+      "status": "HARDENED; startup gate unchanged; RB-G11 PENDING",
+      "commit": "fd058b9",
+      "points": {
+        "1 selector empty success on broken metadata": "FIXED (strict one-line pins, non-zero exit; empty selector caught by verify_stage.py)",
+        "2 staged files vs signed manifest": "FIXED (all eight files, verified before and after placement)",
+        "3 verify -> stage gap": "FIXED (manifest/signature read once; files read once; probes and stage use the verified bytes)",
+        "4 persistent state trust boundary": "FIXED (verify_stage.py: owner/mode/file set, signature with the operator key outside the stage; stage read-only)",
+        "5 service name vs Compose label": "FIXED",
+        "6 independent of the candidate checkout": "FIXED (self-contained stage; not inside the package, $WORK or a git checkout)",
+        "7 fail-closed": "KEPT (startup.sh / runtime_gate.py unchanged; 12D11 control passes)"
+      },
+      "artifact_bytes_unchanged": true
+    },
+    "D12-L1 candidate RapidOCR offline": {
+      "status": "FIXED + PASS on Docker Desktop",
+      "commit": "8b94a3f",
+      "evidence": "d13-lab/out/l1.log (Local)",
+      "reboot_guest": "PENDING (RB-G11)"
+    },
+    "D13-OBS-01": {
+      "severity": "P3",
+      "status": "OBSERVED, pre-existing, not changed",
+      "detail": "a worker killed (SIGKILL) mid-conversion leaves its command 'running' and the Source without text; supervisord restarts the worker but the job is not resumed; no incomplete text or stale vector is published; the Source needs a manual reprocess"
+    }
+  },
+  "local_gates": {
+    "D12-L1": "PASS (Docker Desktop: cold start, recreate x3, restart, stack cold start, 2 real API Sources, negative control); Ubuntu reboot PENDING",
+    "D12-L2": "PASS (SurrealDB 2.7.0 RocksDB, -k server controls 2 passed x 3 runs)",
+    "D12-L3": "PASS (Docker Desktop: update v1.2.0 -> candidate and rollback -> v1.2.0 via the RB-1 gate, 22/22 tables, schema and data digests equal); signed-package rehearsal PENDING",
+    "D12-L4": "PARTIAL (tests with real signatures; real RB-1 startup gate in D12-L3; signed package, adapter, boot guard PENDING on the Ubuntu VM)",
+    "D12-L5": "PARTIAL (300 s timeout + late worker PASS; worker kill: no incomplete text, job stuck = D13-OBS-01; DB error on delete and rename-during-embedding PENDING)",
+    "G-04": "READY FOR LOCAL (D12-03 fixed; NOT VERIFIED documents follow the Local procedure, criteria not lowered)",
+    "RB-G11": "PENDING"
+  },
+  "regression": {"commit": "f165399", "passed": 3582, "failed": 10, "skipped": 67, "xfailed": 2, "xpassed": 0, "errors": 0, "baseline_failures_match_by_name_and_cause": true, "batched": "7 pytest processes (single-process runs aborted in the embedded SurrealDB SDK, see the report)", "mypy_new_errors": 0, "frontend": "unchanged, not rerun"},
+  "verdict": {
+    "D12-03": "FIXED",
+    "D12-03 ORIGINAL CONTROLS": "4/4",
+    "D10 CONTROLS": "16/16",
+    "RB-1 HARDENING": "PASS",
+    "CANDIDATE RAPIDOCR OFFLINE": "PASS",
+    "SURREALDB 2.7.0 CONCURRENCY": "PASS",
+    "22-TABLE PRESERVATION": "PASS",
+    "G-04": "READY FOR LOCAL",
+    "READY FOR RELEASE": "NO",
+    "READY FOR PRODUCTION": "NO",
+    "PRODUCTION": "UNCHANGED"
+  }
+}
