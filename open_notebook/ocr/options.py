@@ -369,6 +369,12 @@ def build_ocr_options(
             "and activate one with the admin CLI (custom import / custom activate)."
         )
     if spec.docling_kind == "rapidocr":
+        # D12-L1 (Phase 12D13): the recognition dictionary is lost with the
+        # container layer on every recreate; restore the approved one offline
+        # BEFORE RapidOCR starts (it would download it unverified, D-32).
+        from open_notebook.ocr import rapidocr_dictionary
+
+        rapidocr_dictionary.ensure_dictionary()
         extra: dict[str, Any] = {}
         params: dict[str, Any] = {}
         if rapidocr_force_cpu():

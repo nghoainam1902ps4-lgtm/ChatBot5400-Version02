@@ -13,7 +13,7 @@
 | Layout/TableFormer | `HF_HOME=/app/data/.cache/huggingface` (có sẵn) | giữ | giữ | không đổi |
 | Trọng số RapidOCR (mặc định) | thư mục gói `rapidocr/models` trong venv | giữ | **mất** | `prepare` khi có Internet; hoặc `OCR_RAPIDOCR_PERSISTENT=true` |
 | Trọng số RapidOCR (`OCR_RAPIDOCR_PERSISTENT=true`) | `/app/data/ocr/models/rapidocr` | giữ | giữ | không cần |
-| Từ điển nhận dạng RapidOCR (backend torch, cả hai chế độ) | thư mục gói `rapidocr/models` trong venv | giữ | **mất** | `prepare` một lần khi có Internet sau recreate (D-32) |
+| Từ điển nhận dạng RapidOCR (backend torch, cả hai chế độ) | thư mục gói `rapidocr/models` trong venv | giữ | **mất** → khôi phục offline lúc khởi động từ artifact trong image (D-32, Phase 12D13) | không cần Internet; `OCR_OFFLINE=true` mà không chứng minh được ⇒ RapidOCR từ chối, không tải |
 | Kết quả readiness | `/app/data/ocr/manifests` | giữ | giữ (lỗi thời nếu phiên bản / cache / trọng số đổi) | `readiness --check` |
 | Cấu hình OCR | SurrealDB | giữ | giữ | – |
 

@@ -175,7 +175,7 @@ Bộ gốc và bộ có điều kiện được báo **riêng**; bộ có điề
 | Trực tiếp: đồng thời + dọn file tạm | Lượt 1: 3/6 (một upload HTTP 500 — xung đột ghi SurrealDB, có sẵn); chạy lại 6/6 | `runs/concurrency_live-9b*.json`, `runs/concurrency_live-9b.NOTE.txt` |
 | GitHub Actions không tự triển khai khi merge | PASS | `OCR_PHASE9B_REPORT.md` §F |
 | Không bí mật, dữ liệu thật, model, cache, backup trong branch | PASS | `OCR_PHASE9B_REPORT.md` §G |
-| RapidOCR lưu bền chạy offline sau recreate | **KHÔNG** — cần "Chuẩn bị" một lần khi có Internet (D-32); readiness báo đúng | `tests/test_ocr_phase9b_review.py` |
+| RapidOCR lưu bền chạy offline sau recreate | **CÓ từ Phase 12D13** cho runtime đã ghim (D-32: từ điển khôi phục offline lúc khởi động, kiểm SHA-256); runtime khác ⇒ từ chối, không tải. Nghiệm thu Local D12-L1; reboot Ubuntu VM PENDING | `tests/test_ocr_phase9b_review.py` |
 | Benchmark tài liệu nghiệp vụ thật | **CHƯA THỰC HIỆN** — việc của người vận hành | `OCR_REAL_DOCUMENT_BENCHMARK.md` |
 | Backup / restore / triển khai production | **CHƯA THỰC HIỆN** — chờ phê duyệt (Phase 9C) | `OCR_PRODUCTION_DEPLOYMENT_PLAN.md` |
 | `offline_verified` trên production | NOT VERIFIED | — |

@@ -417,6 +417,12 @@ Quyết định của chủ dự án, thực hiện trong Phase 8D:
   vào đó file từ điển được đưa vào fingerprint readiness, nên sau recreate trạng thái trở về "chưa kiểm tra"
   thay vì báo sai `offline_ready`. Cách vận hành: sau mỗi lần recreate, chạy "Chuẩn bị" một lần khi có
   Internet (kể cả ở chế độ lưu bền). Giới hạn này được ghi nhận, chưa khắc phục triệt để.
+  **Phase 12D13 (D12-L1):** image mang sẵn từ điển đã kiểm ở Windows (`scripts/offline/rb1/`, cùng artifact
+  của rollback RB-1, SHA-256 ghim, Apache-2.0). Entrypoint khôi phục nó **sau** khi runtime được cài và
+  **trước** supervisord (`open_notebook/ocr/rapidocr_dictionary.py`, helper đã duyệt), và `build_ocr_options`
+  kiểm lại trước mỗi lần cấu hình RapidOCR. Chỉ cho đúng RapidOCR 3.9.2 / torch / Docling 2.129.0 / model đã
+  ghim, đúng vị trí RapidOCR tự tính, không ghi đè file lạ. `OCR_OFFLINE=true` mà không chứng minh được ⇒
+  chuyển đổi dừng (ValueError), không tải, không đổi engine. Không đổi RapidOCR, model hay tham số gọi.
 - **Build arg:** `OCR_INSTALL_TESSERACT` được nối vào khối `build.args` của cả hai file compose (mặc định
   `false`, đọc từ `.env`). Trước đây chỉ truyền được bằng `--build-arg`, nên một lần `up -d --build` sau này
   sẽ dựng lại image không có Tesseract trong khi engine đang chọn vẫn là Tesseract.
